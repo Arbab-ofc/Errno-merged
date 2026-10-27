@@ -33,5 +33,8 @@ struct WorkerRootView: View {
                 }
             }
         }.tint(.errnoGreen)
+            .preferredColorScheme(path.last == .verification ? .light : .dark)
+            // White marketplace cards retain their existing content palette.
+            .environment(\.colorScheme, .light)
     }
 }

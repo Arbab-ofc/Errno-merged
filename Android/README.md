@@ -33,7 +33,7 @@
 
 ### 📜 Legal & Compliance Onboarding
 - **🛡️ Onboarding Consent Gate**: Onboarding agreement gate requiring users to review and accept the **Terms of Service** & **Privacy Policy** before proceeding to role selection/login.
-- **📄 Interactive Legal Viewers**: Complete in-app legal document viewers for [Privacy Policy](file:///C:/Users/Mayank/AndroidStudioProjects/MyApplication/app/src/main/java/com/erno/app/ui/screens/legal/PrivacyPolicyScreen.kt) and [Terms & Conditions](file:///C:/Users/Mayank/AndroidStudioProjects/MyApplication/app/src/main/java/com/erno/app/ui/screens/legal/TermsConditionsScreen.kt).
+- **📄 Interactive Legal Viewers**: Complete in-app legal document viewers for [Privacy Policy](app/src/main/java/com/erno/app/ui/screens/legal/PrivacyPolicyScreen.kt) and [Terms & Conditions](app/src/main/java/com/erno/app/ui/screens/legal/TermsConditionsScreen.kt).
 - **🔑 Mobile OTP Authentication**: Quick 10-digit phone number validation and 6-digit OTP verification.
 
 ---

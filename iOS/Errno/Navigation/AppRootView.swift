@@ -18,6 +18,7 @@ struct AppRootView: View {
 
             case .splash:
                 SplashView()
+                    .preferredColorScheme(.dark)
                     .transition(.opacity)
                     .zIndex(ZLayer.overlay)
 
@@ -37,11 +38,13 @@ struct AppRootView: View {
                             }
                         }
                 }
+                .preferredColorScheme(.light)
                 .transition(.opacity)
                 .zIndex(ZLayer.base)
 
             case .shopkeeperHome:
                 ShopkeeperRootView()
+                    .preferredColorScheme(.light)
                     .transition(.opacity)
                     .zIndex(ZLayer.base)
 

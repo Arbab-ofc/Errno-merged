@@ -33,6 +33,8 @@ struct WorkerProfileView: View {
                     }.background(.white, in: RoundedRectangle(cornerRadius: 16))
                     PrimaryButton(title: "Logout Account", icon: "rectangle.portrait.and.arrow.right", style: .danger) { logout = true }
                 }.padding(20)
+                    // Keep the final action clear of Duo's bottom navigation.
+                    .padding(.bottom, 80)
             }
         }.marketplacePage(dark: true)
             .sheet(item: $panel) { ProfilePanelView(panel: $0, role: .worker) }

@@ -17,7 +17,6 @@ struct ErrnoApp: App {
                 .environment(router)
                 .environment(router.marketplace)
                 .tint(.errnoGreen)
-                .preferredColorScheme(.light)
         }
     }
 }
