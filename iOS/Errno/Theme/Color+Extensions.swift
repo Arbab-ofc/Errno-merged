@@ -9,8 +9,8 @@ import SwiftUI
 extension Color {
     // MARK: — Brand Core
     
-    /// Deep forest green — primary brand, headers, nav backgrounds
-    static let errnoGreen = Color(hex: "#11382A")
+    /// Android action green — primary brand, headers, nav backgrounds
+    static let errnoGreen = Color(hex: "#5B9600")
     
     /// Electric lime — CTAs, highlights, active tab indicators
     static let errnoLime = Color(hex: "#A4E637")
@@ -35,7 +35,7 @@ extension Color {
     static let errnoTextPrimary = Color(hex: "#0B121F")
     
     /// Subtitles, captions, placeholder text
-    static let errnoTextSecondary = Color(hex: "#6B7280")
+    static let errnoTextSecondary = Color(hex: "#6C757D")
     
     /// Text rendered on dark (green/navy) backgrounds
     static let errnoTextOnDark = Color.white
@@ -57,10 +57,10 @@ extension Color {
     static let errnoStroke = Color(hex: "#E5E7EB")
     
     /// Light tint of ErrnoGreen for chip/tag backgrounds
-    static let errnoGreenLight = Color(hex: "#E8F5EE")
+    static let errnoGreenLight = Color(hex: "#EAF5D8")
     
     /// Light tint of ErrnoLime for soft highlights
-    static let errnoLimeLight = Color(hex: "#F3FCD4")
+    static let errnoLimeLight = Color(hex: "#EAF5D8")
     
     // MARK: — Gradient Helpers
     
@@ -96,7 +96,7 @@ extension Color {
         switch sanitized.count {
         case 6: // RGB (no alpha)
             (r, g, b, a) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF, 255)
-        case 8: // ARGB
+        case 8: // RGBA
             (r, g, b, a) = ((int >> 24) & 0xFF, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
         default:
             (r, g, b, a) = (0, 0, 0, 255)

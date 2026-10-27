@@ -2,7 +2,6 @@
 // Errno — Services
 //
 // Protocol-backed mock auth service.
-// Swap MockAuthService → SupabaseAuthService later without touching ViewModels.
 
 import Foundation
 
@@ -39,7 +38,6 @@ struct MockAuthService: AuthServiceProtocol {
     func sendOTP(to phone: String) async throws {
         // Simulate 1.5 s network round-trip
         try await Task.sleep(for: .milliseconds(1500))
-        // Always succeeds in mock — real impl calls Supabase phone auth here
     }
 
     func verifyOTP(_ otp: String, phone: String) async throws -> Bool {

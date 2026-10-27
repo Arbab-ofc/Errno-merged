@@ -39,6 +39,7 @@ struct PrimaryButton: View {
     let action:     () -> Void
     
     @State private var isPressed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     private var backgroundColor: Color {
         guard !isDisabled else { return .errnoStroke }
@@ -54,7 +55,7 @@ struct PrimaryButton: View {
     private var foregroundColor: Color {
         guard !isDisabled else { return .errnoTextSecondary }
         switch style {
-        case .primary:   return .errnoGreen
+        case .primary:   return .errnoNavy
         case .secondary: return .errnoGreen
         case .ghost:     return .errnoLime
         case .danger:    return .white
@@ -83,12 +84,6 @@ struct PrimaryButton: View {
                             .strokeBorder(strokeColor, lineWidth: 1.5)
                     )
                 
-                // Lime gradient shimmer (primary only)
-                if style == .primary && !isDisabled {
-                    RoundedRectangle(cornerRadius: Radius.md)
-                        .fill(Color.errnoLimeGradient)
-                }
-                
                 // Content
                 if isLoading {
                     ProgressView()
@@ -112,8 +107,8 @@ struct PrimaryButton: View {
         }
         .buttonStyle(.plain)
         .scaleEffect(isPressed ? 0.97 : 1.0)
-        .animation(ErrnoAnimation.snappy, value: isPressed)
-        .errnoShadow(style == .primary && !isDisabled ? Shadow.lime : Shadow.subtle)
+        .animation(reduceMotion ? nil : ErrnoAnimation.snappy, value: isPressed)
+        .errnoShadow(Shadow.subtle)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in isPressed = true  }

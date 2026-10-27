@@ -1,180 +1,97 @@
-// ShopkeeperJobsView.swift
-// Errno — Views/Shopkeeper
-//
-// Matches the Android 'Jobs' tab.
-
 import SwiftUI
 
 struct ShopkeeperJobsView: View {
-    @State private var viewModel = ShopkeeperDashboardViewModel()
-    @State private var selectedFilter: String = "Active"
-    let filters = ["All", "Active", "Completed"]
-    
+    @State private var viewModel: ShopkeeperDashboardViewModel
+    @State private var selectedFilter = 1
+    init(store: LocalMarketplaceStore) { _viewModel = State(initialValue: ShopkeeperDashboardViewModel(store: store)) }
+    private var active: [Job] { viewModel.jobs.filter { $0.status == .open || $0.status == .inProgress } }
+    private var completed: [Job] { viewModel.jobs.filter { $0.status == .completed } }
+    private var filtered: [Job] { selectedFilter == 0 ? viewModel.jobs : selectedFilter == 1 ? active : completed }
     var body: some View {
-        ZStack {
-            Color.errnoBackground.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Header (No back button since it's a root tab)
-                HStack {
-                    Text("My Jobs")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(Color.errnoTextPrimary)
-                    Spacer()
-                }
-                .padding(.horizontal, Spacing.lg)
-                .padding(.top, Spacing.md)
-                .padding(.bottom, Spacing.sm)
-                
-                // Segmented Control
-                HStack(spacing: 0) {
-                    ForEach(filters, id: \.self) { filter in
-                        VStack(spacing: 8) {
-                            Text("\(filter) (\(count(for: filter)))")
-                                .font(.system(size: 16, weight: selectedFilter == filter ? .bold : .medium))
-                                .foregroundStyle(selectedFilter == filter ? Color.errnoGreen : Color.errnoTextSecondary)
-                            
-                            Rectangle()
-                                .fill(selectedFilter == filter ? Color.errnoLime : Color.clear)
-                                .frame(height: 3)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedFilter = filter
-                            }
-                        }
+        VStack(spacing: 0) {
+            MarketplaceHeader(title: "My Jobs & Assigned Workers")
+            MarketplaceFilters(labels: ["All (\(viewModel.jobs.count))", "Active (\(active.count))", "Completed (\(completed.count))"], selection: $selectedFilter)
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    if filtered.isEmpty { MarketplaceEmptyState(title: "No jobs found", message: "Your posted jobs will appear here.") }
+                    ForEach(filtered) { job in
+                        NavigationLink(destination: ShopkeeperJobDetailView(jobId: job.id)) {
+                            JobTabCard(job: job, worker: job.assignedWorkerId.flatMap { viewModel.store.user(id: $0) })
+                        }.buttonStyle(.plain)
                     }
-                }
-                .padding(.horizontal, Spacing.lg)
-                
-                Divider().background(Color.errnoStroke)
-                
-                // List
-                ScrollView {
-                    LazyVStack(spacing: Spacing.md) {
-                        ForEach(filteredJobs) { job in
-                            JobTabCard(job: job)
-                        }
-                    }
-                    .padding(Spacing.lg)
-                }
+                }.padding(20)
             }
-        }
-        .navigationBarHidden(true)
-        .onAppear {
-            viewModel.fetchJobs()
-        }
-    }
-    
-    private func count(for filter: String) -> Int {
-        switch filter {
-        case "All": return viewModel.jobs.count
-        case "Active": return viewModel.jobs.filter { $0.status == .open || $0.status == .inProgress }.count
-        case "Completed": return viewModel.jobs.filter { $0.status == .completed }.count
-        default: return 0
-        }
-    }
-    
-    private var filteredJobs: [Job] {
-        switch selectedFilter {
-        case "All": return viewModel.jobs
-        case "Active": return viewModel.jobs.filter { $0.status == .open || $0.status == .inProgress }
-        case "Completed": return viewModel.jobs.filter { $0.status == .completed }
-        default: return viewModel.jobs
-        }
+        }.marketplacePage().toolbar(.hidden, for: .navigationBar)
     }
 }
 
-// MARK: - Job Tab Card Component
-
 private struct JobTabCard: View {
     let job: Job
-    
+    let worker: User?
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack(alignment: .top) {
-                Text(job.title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color.errnoTextPrimary)
-                
-                Spacer()
-                
-                // Status Badge
-                Text(job.status == .open || job.status == .inProgress ? "Active" : job.status.rawValue.capitalized)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(job.status == .open || job.status == .inProgress ? Color.errnoGreen : Color.errnoTextSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background((job.status == .open || job.status == .inProgress ? Color.errnoGreen : Color.errnoTextSecondary).opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) { Text(job.title).font(.system(size: 16, weight: .bold)); Spacer(); StatusBadge(text: job.displayStatus) }
+            Label("\(job.locationLabel) • Scheduled: \(job.scheduleLabel)", systemImage: "mappin.and.ellipse")
+                .font(.system(size: 13)).foregroundStyle(.gray)
+            if let worker {
+                Label("Worker Accepted: \(worker.name) • Profile →", systemImage: "person.fill")
+                    .font(.system(size: 13, weight: .bold)).padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading).background(Color.errnoGreenLight, in: RoundedRectangle(cornerRadius: 12))
             }
-            
-            // Location and Schedule
-            HStack(spacing: 4) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 12))
-                Text("Okhla Store -> Sector 18 Noida • Scheduled: Today")
-                    .font(.system(size: 14))
-            }
-            .foregroundStyle(Color.errnoTextSecondary)
-            
-            // Pay
-            HStack {
-                Text("Settlement Pay: ₹\(Int(job.payAmount))")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.errnoTextPrimary)
-                
-                Spacer()
-                
-                Text("Posted 30m ago")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.errnoTextSecondary)
-            }
-            
-            Divider().background(Color.errnoStroke)
-            
-            // Actions
-            HStack(spacing: Spacing.md) {
-                Button(action: {}) {
-                    HStack {
-                        Image(systemName: "star.fill")
-                        Text("Rate Worker")
+            HStack { Text("Settlement Pay: \(job.payLabel)").bold(); Spacer(); Text(job.createdAt, style: .relative).foregroundStyle(.gray) }.font(.system(size: 12))
+            if job.workerRating > 0 { Text("You rated worker: \(job.workerRating) ★").font(.system(size: 12, weight: .bold)) }
+            if worker != nil { Divider(); Label("View Profile", systemImage: "person").font(.system(size: 12, weight: .bold)).foregroundStyle(Color.errnoGreen).frame(maxWidth: .infinity) }
+        }.marketplaceCard().foregroundStyle(Color.errnoTextPrimary)
+    }
+}
+
+struct ShopkeeperJobDetailView: View {
+    let jobId: UUID
+    @Environment(LocalMarketplaceStore.self) private var store
+    @State private var rating = false
+    @State private var completion = false
+    @State private var error: String?
+    var body: some View {
+        ScrollView {
+            if let job = store.job(id: jobId) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(job.title).font(.system(size: 20, weight: .bold))
+                    StatusBadge(text: job.displayStatus)
+                    Text(job.description).font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
+                    Text("\(job.durationLabel) • \(job.payLabel) total • \(job.scheduleLabel)").font(.system(size: 13, weight: .bold))
+                    WorkerLocationMapView(locationName: job.locationLabel, distanceText: "Shop Location", isDarkTheme: false)
+                    if let id = job.assignedWorkerId, let worker = store.user(id: id) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Assigned Worker Profile").font(.system(size: 18, weight: .bold))
+                            Text(worker.name).font(.system(size: 18, weight: .bold))
+                            Text("Rating: \(worker.rating ?? 0, specifier: "%.1f") ★ • \(worker.totalJobsCompleted ?? 0) Shifts")
+                                .font(.system(size: 12))
+                            Text(id == store.worker.id && store.isVerified ? "Demo Aadhaar Verified • \(store.maskedAadhaar)" : "Identity verification is not confirmed")
+                                .font(.system(size: 11)).foregroundStyle(Color.errnoTextSecondary)
+                            ContactActions(phone: worker.phone)
+                        }.marketplaceCard()
                     }
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .foregroundStyle(Color.errnoGreen)
-                    .background(Color.errnoSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Radius.md)
-                            .strokeBorder(Color.errnoGreen, lineWidth: 1)
-                    )
-                }
-                
-                Button(action: {}) {
-                    HStack {
-                        Image(systemName: "creditcard.fill")
-                        Text("Pay ₹\(Int(job.payAmount))")
+                    NavigationLink("View Job Applications") { ApplicationsView(job: job) }
+                    if job.status == .open {
+                        Button("Add Local Demo Applicants") { store.addDemoApplicants(jobId: jobId) }
+                        MockNotice(text: "Optional fixtures for testing this job's applicant UI. No real applications are acquired.")
                     }
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .foregroundStyle(.white)
-                    .background(Color.errnoLime.gradient) // Reusing lime gradient indirectly
-                    .background(Color.errnoLime) // Fallback
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-                }
+                    if job.status == .inProgress {
+                        PrimaryButton(title: "Simulate Shift Completion", style: .secondary) { completion = true }
+                        MockNotice(text: "Demo control to exercise completion and earnings. No payment is processed.")
+                    }
+                    if job.status == .completed {
+                        PrimaryButton(title: "Rate Hired Worker", style: .secondary) { rating = true }
+                    }
+                    if let error { Text(error).foregroundStyle(Color.errnoError) }
+                }.padding(20).frame(maxWidth: 800).frame(maxWidth: .infinity)
+            } else { MarketplaceEmptyState(title: "Job unavailable", message: "Return to My Jobs and select an existing job.").padding(20) }
+        }.marketplacePage().navigationTitle("Job Details").navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
+            .confirmationDialog("Simulate completion for this job?", isPresented: $completion, titleVisibility: .visible) {
+                Button("Complete Local Shift") { do { try store.complete(jobId: jobId) } catch { self.error = error.localizedDescription } }
+                Button("Cancel", role: .cancel) {}
             }
-        }
-        .padding(Spacing.lg)
-        .background(Color.errnoSurface)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.lg)
-                .strokeBorder(Color.errnoStroke, lineWidth: 1)
-        )
+            .sheet(isPresented: $rating) { RatingDialog(title: "Rate Hired Worker", target: "Worker") { stars, comment in store.rate(jobId: jobId, role: .shopkeeper, stars: stars, comment: comment) } }
     }
 }

@@ -8,6 +8,7 @@ import SwiftUI
 
 struct AppRootView: View {
     @Environment(AppRouter.self) private var router
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var router = router
@@ -17,6 +18,7 @@ struct AppRootView: View {
 
             case .splash:
                 SplashView()
+                    .preferredColorScheme(.dark)
                     .transition(.opacity)
                     .zIndex(ZLayer.overlay)
 
@@ -25,6 +27,8 @@ struct AppRootView: View {
                     RoleSelectionView()
                         .navigationDestination(for: AuthRoute.self) { route in
                             switch route {
+                            case .consent(let role, let registration):
+                                TermsConsentView(role: role, registration: registration)
                             case .login(let role):
                                 LoginView(role: role)
                             case .register(let role):
@@ -34,11 +38,13 @@ struct AppRootView: View {
                             }
                         }
                 }
+                .preferredColorScheme(.light)
                 .transition(.opacity)
                 .zIndex(ZLayer.base)
 
             case .shopkeeperHome:
                 ShopkeeperRootView()
+                    .preferredColorScheme(.light)
                     .transition(.opacity)
                     .zIndex(ZLayer.base)
 
@@ -48,6 +54,6 @@ struct AppRootView: View {
                     .zIndex(ZLayer.base)
             }
         }
-        .animation(ErrnoAnimation.smoothSlow, value: router.appState)
+        .animation(reduceMotion ? nil : ErrnoAnimation.smoothSlow, value: router.appState)
     }
 }

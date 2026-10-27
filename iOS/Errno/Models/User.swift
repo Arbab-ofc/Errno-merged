@@ -1,7 +1,6 @@
 // User.swift
 // Errno — Models
 //
-// Core User model, maps to Supabase "users" table.
 
 import Foundation
 

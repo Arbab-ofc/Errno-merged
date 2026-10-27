@@ -2,7 +2,6 @@
 // Errno — Models
 //
 // Shared role enum used across auth, navigation, and dashboard flows.
-// Supabase-ready: raw String value maps 1:1 to the "role" column.
 
 import Foundation
 

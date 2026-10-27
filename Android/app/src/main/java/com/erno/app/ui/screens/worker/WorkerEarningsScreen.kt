@@ -101,7 +101,7 @@ fun WorkerEarningsScreen(
                                 color = Color(0xFFE8F5E9)
                             ) {
                                 Text(
-                                    text = "Ready to Withdraw",
+                                    text = if (state.totalEarnings > 0) "Ready to Withdraw" else "No earnings yet",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF2E7D32),
@@ -127,7 +127,8 @@ fun WorkerEarningsScreen(
                                 .fillMaxWidth()
                                 .height(46.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = state.totalEarnings > 0
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AccountBalanceWallet,
@@ -184,7 +185,7 @@ fun WorkerEarningsScreen(
                 if (isWithdrawSuccess) {
                     Column {
                         Text(
-                            text = "₹${state.totalEarnings} has been transferred instantly to your UPI account ($upiIdText).",
+                            text = "₹${state.totalEarnings} was deducted from this local demo balance for $upiIdText. No money was transferred.",
                             fontSize = 14.sp,
                             color = Color.DarkGray
                         )
@@ -192,7 +193,9 @@ fun WorkerEarningsScreen(
                 } else {
                     Column {
                         Text(
-                            text = "Enter your UPI ID to transfer ₹${state.totalEarnings} directly to your bank account.",
+                            text = if (state.totalEarnings > 0)
+                                "Enter your UPI ID to simulate a withdrawal of ₹${state.totalEarnings}. No money will be transferred."
+                            else "Complete a job to build a withdrawable balance.",
                             fontSize = 13.sp,
                             color = Color.Gray
                         )
@@ -231,7 +234,7 @@ fun WorkerEarningsScreen(
                     Button(
                         onClick = { isWithdrawSuccess = true },
                         colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
-                        enabled = upiIdText.isNotBlank()
+                        enabled = upiIdText.isNotBlank() && state.totalEarnings > 0
                     ) {
                         Text("Transfer ₹${state.totalEarnings}", color = Color.White, fontWeight = FontWeight.Bold)
                     }

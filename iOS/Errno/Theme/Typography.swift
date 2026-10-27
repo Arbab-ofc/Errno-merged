@@ -19,8 +19,8 @@ extension Font {
     static var errnoHeadlineSmall: Font  { .system(size: 18, weight: .semibold, design: .default) }
     
     // Body — reading text
-    static var errnoBodyLarge: Font  { .system(size: 17, weight: .regular, design: .default) }
-    static var errnoBodyMedium: Font { .system(size: 15, weight: .regular, design: .default) }
+    static var errnoBodyLarge: Font  { .system(size: 16, weight: .regular, design: .default) }
+    static var errnoBodyMedium: Font { .system(size: 14, weight: .regular, design: .default) }
     static var errnoBodySmall: Font  { .system(size: 13, weight: .regular, design: .default) }
     
     // Label — buttons, tags, inputs

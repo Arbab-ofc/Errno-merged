@@ -1,54 +1,20 @@
-// ShopkeeperRootView.swift
-// Errno — Views/Shopkeeper
-//
-// Placeholder for Phase 3.
-
 import SwiftUI
 
 struct ShopkeeperRootView: View {
-    @State private var selectedTab = 0
-
+    @Environment(AppRouter.self) private var router
+    @Environment(LocalMarketplaceStore.self) private var store
     var body: some View {
-        TabView(selection: $selectedTab) {
-            ShopkeeperDashboardView()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
-                .tag(0)
-            
-            NavigationStack {
-                ShopkeeperJobsView()
-            }
-            .tabItem {
-                Label("Jobs", systemImage: "briefcase.fill")
-            }
-            .tag(1)
-            
-            NavigationStack {
-                ApplicationsRootView()
-            }
-            .tabItem {
-                Label("Applications", systemImage: "person.2.fill")
-            }
-            .tag(2)
-            
-            NavigationStack {
-                ShopkeeperProfileView()
-            }
-            .tabItem {
-                Label("Profile", systemImage: "person.fill")
-            }
-            .tag(3)
+        @Bindable var router = router
+        TabView(selection: $router.shopkeeperTab) {
+            ShopkeeperDashboardView(store: store).tag(0)
+            NavigationStack { ShopkeeperJobsView(store: store) }.tag(1)
+            NavigationStack { ApplicationsRootView() }.tag(2)
+            NavigationStack { ShopkeeperProfileView() }.tag(3)
         }
-        .tint(Color.errnoLime)
-        .onAppear {
-            // Apply custom unselected tint if needed
-            let appearance = UITabBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            UITabBar.appearance().standardAppearance = appearance
-            if #available(iOS 15.0, *) {
-                UITabBar.appearance().scrollEdgeAppearance = appearance
-            }
+        .toolbar(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            MarketplaceBottomBar(titles: ["Home", "Jobs", "Applications", "Profile"],
+                                 icons: ["house.fill", "briefcase.fill", "person.2.fill", "person.fill"], selection: $router.shopkeeperTab)
         }
     }
 }

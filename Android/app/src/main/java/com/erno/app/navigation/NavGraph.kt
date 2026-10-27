@@ -22,6 +22,16 @@ import com.erno.app.ui.screens.auth.DigiLockerVerificationScreen
 import com.erno.app.ui.screens.legal.PrivacyPolicyScreen
 import com.erno.app.ui.screens.legal.TermsConditionsScreen
 import com.erno.app.ui.screens.legal.TermsConsentScreen
+import com.erno.app.data.repository.DEMO_OTP_CODE
+
+private fun NavHostController.navigateTab(rootRoute: String, targetRoute: String) {
+    if (currentDestination?.route == targetRoute) return
+    navigate(targetRoute) {
+        popUpTo(rootRoute) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
 
 @Composable
 fun NavGraph(navController: NavHostController) {
@@ -159,9 +169,14 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onVerifyClick = { otp ->
-                    val targetRoute = if (role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
-                    navController.navigate(targetRoute) {
-                        popUpTo(Screen.RoleSelection.route) { inclusive = true }
+                    if (otp == DEMO_OTP_CODE) {
+                        val targetRoute = if (role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
+                        navController.navigate(targetRoute) {
+                            popUpTo(Screen.RoleSelection.route) { inclusive = true }
+                        }
+                        true
+                    } else {
+                        false
                     }
                 },
                 onEditClick = {
@@ -186,10 +201,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onNavigateTab = { tab ->
                     when (tab) {
-                        ShopkeeperTab.HOME -> { /* Already here */ }
-                        ShopkeeperTab.JOBS -> navController.navigate(Screen.ShopkeeperMyJobs.route)
-                        ShopkeeperTab.APPLICATIONS -> navController.navigate(Screen.ShopkeeperApplications.route)
-                        ShopkeeperTab.PROFILE -> navController.navigate(Screen.ShopkeeperProfile.route)
+                        ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
+                        ShopkeeperTab.JOBS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperMyJobs.route)
+                        ShopkeeperTab.APPLICATIONS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperApplications.route)
+                        ShopkeeperTab.PROFILE -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperProfile.route)
                     }
                 }
             )
@@ -276,10 +291,10 @@ fun NavGraph(navController: NavHostController) {
                 onRateWorkerClick = shopkeeperViewModel::rateWorker,
                 onNavigateTab = { tab ->
                     when (tab) {
-                        ShopkeeperTab.HOME -> navController.navigate(Screen.ShopkeeperHome.route)
-                        ShopkeeperTab.JOBS -> { /* Already here */ }
-                        ShopkeeperTab.APPLICATIONS -> navController.navigate(Screen.ShopkeeperApplications.route)
-                        ShopkeeperTab.PROFILE -> navController.navigate(Screen.ShopkeeperProfile.route)
+                        ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
+                        ShopkeeperTab.JOBS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperMyJobs.route)
+                        ShopkeeperTab.APPLICATIONS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperApplications.route)
+                        ShopkeeperTab.PROFILE -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperProfile.route)
                     }
                 }
             )
@@ -292,10 +307,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onNavigateTab = { tab ->
                     when (tab) {
-                        ShopkeeperTab.HOME -> navController.navigate(Screen.ShopkeeperHome.route)
-                        ShopkeeperTab.JOBS -> navController.navigate(Screen.ShopkeeperMyJobs.route)
-                        ShopkeeperTab.APPLICATIONS -> { /* Already here */ }
-                        ShopkeeperTab.PROFILE -> navController.navigate(Screen.ShopkeeperProfile.route)
+                        ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
+                        ShopkeeperTab.JOBS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperMyJobs.route)
+                        ShopkeeperTab.APPLICATIONS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperApplications.route)
+                        ShopkeeperTab.PROFILE -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperProfile.route)
                     }
                 }
             )
@@ -314,10 +329,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onNavigateTab = { tab ->
                     when (tab) {
-                        ShopkeeperTab.HOME -> navController.navigate(Screen.ShopkeeperHome.route)
-                        ShopkeeperTab.JOBS -> navController.navigate(Screen.ShopkeeperMyJobs.route)
-                        ShopkeeperTab.APPLICATIONS -> navController.navigate(Screen.ShopkeeperApplications.route)
-                        ShopkeeperTab.PROFILE -> { /* Already here */ }
+                        ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
+                        ShopkeeperTab.JOBS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperMyJobs.route)
+                        ShopkeeperTab.APPLICATIONS -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperApplications.route)
+                        ShopkeeperTab.PROFILE -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperProfile.route)
                     }
                 }
             )
@@ -333,10 +348,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onNavigateTab = { tab ->
                     when (tab) {
-                        WorkerTab.HOME -> { /* Already here */ }
-                        WorkerTab.MY_JOBS -> navController.navigate(Screen.WorkerMyJobs.route)
-                        WorkerTab.EARNINGS -> navController.navigate(Screen.WorkerEarnings.route)
-                        WorkerTab.PROFILE -> navController.navigate(Screen.WorkerProfile.route)
+                        WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)
+                        WorkerTab.MY_JOBS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerMyJobs.route)
+                        WorkerTab.EARNINGS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerEarnings.route)
+                        WorkerTab.PROFILE -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerProfile.route)
                     }
                 }
             )
@@ -384,10 +399,10 @@ fun NavGraph(navController: NavHostController) {
                 onRateShopkeeperClick = workerViewModel::rateShopkeeper,
                 onNavigateTab = { tab ->
                     when (tab) {
-                        WorkerTab.HOME -> navController.navigate(Screen.WorkerHome.route)
-                        WorkerTab.MY_JOBS -> { /* Already here */ }
-                        WorkerTab.EARNINGS -> navController.navigate(Screen.WorkerEarnings.route)
-                        WorkerTab.PROFILE -> navController.navigate(Screen.WorkerProfile.route)
+                        WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)
+                        WorkerTab.MY_JOBS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerMyJobs.route)
+                        WorkerTab.EARNINGS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerEarnings.route)
+                        WorkerTab.PROFILE -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerProfile.route)
                     }
                 }
             )
@@ -401,10 +416,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onNavigateTab = { tab ->
                     when (tab) {
-                        WorkerTab.HOME -> navController.navigate(Screen.WorkerHome.route)
-                        WorkerTab.MY_JOBS -> navController.navigate(Screen.WorkerMyJobs.route)
-                        WorkerTab.EARNINGS -> { /* Already here */ }
-                        WorkerTab.PROFILE -> navController.navigate(Screen.WorkerProfile.route)
+                        WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)
+                        WorkerTab.MY_JOBS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerMyJobs.route)
+                        WorkerTab.EARNINGS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerEarnings.route)
+                        WorkerTab.PROFILE -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerProfile.route)
                     }
                 }
             )
@@ -426,10 +441,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onNavigateTab = { tab ->
                     when (tab) {
-                        WorkerTab.HOME -> navController.navigate(Screen.WorkerHome.route)
-                        WorkerTab.MY_JOBS -> navController.navigate(Screen.WorkerMyJobs.route)
-                        WorkerTab.EARNINGS -> navController.navigate(Screen.WorkerEarnings.route)
-                        WorkerTab.PROFILE -> { /* Already here */ }
+                        WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)
+                        WorkerTab.MY_JOBS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerMyJobs.route)
+                        WorkerTab.EARNINGS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerEarnings.route)
+                        WorkerTab.PROFILE -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerProfile.route)
                     }
                 }
             )

@@ -1,12 +1,7 @@
-// ApplicationsRootView.swift
-// Errno — Views/Shopkeeper
-//
-// Root view for the Applications tab matching Figma design.
-
 import SwiftUI
 
 struct ApplicantItem: Identifiable {
-    let id = UUID()
+    let id: UUID
     var user: User
     var status: ApplicationStatus
     var jobTitle: String
@@ -15,137 +10,63 @@ struct ApplicantItem: Identifiable {
 }
 
 struct ApplicationsRootView: View {
-    @State private var selectedFilter: String = "All"
-    let filters = ["All", "Pending", "Accepted"]
-    
-    @State private var apps: [ApplicantItem] = [
-        ApplicantItem(
-            user: User(phone: "+919876543211", role: .worker, name: "Amit Kumar", rating: 4.8),
-            status: .pending,
-            jobTitle: "Shop Helper",
-            exp: "2 yrs exp",
-            distance: "1.2 km away"
-        ),
-        ApplicantItem(
-            user: User(phone: "+919876543212", role: .worker, name: "Ramesh Singh", rating: 4.9),
-            status: .pending,
-            jobTitle: "Shop Helper",
-            exp: "3 yrs exp",
-            distance: "0.8 km away"
-        ),
-        ApplicantItem(
-            user: User(phone: "+919876543213", role: .worker, name: "Vikram Patel", rating: 5.0),
-            status: .accepted,
-            jobTitle: "Counter Staff",
-            exp: "4 yrs exp",
-            distance: "1.5 km away"
-        ),
-        ApplicantItem(
-            user: User(phone: "+919876543214", role: .worker, name: "Pooja Sharma", rating: 4.7),
-            status: .accepted,
-            jobTitle: "Store Assistant",
-            exp: "2 yrs exp",
-            distance: "1.0 km away"
-        )
-    ]
-    
-    var filteredApps: [ApplicantItem] {
-        switch selectedFilter {
-        case "All": return apps
-        case "Pending": return apps.filter { $0.status == .pending }
-        case "Accepted": return apps.filter { $0.status == .accepted }
-        default: return apps
-        }
-    }
-    
-    private func count(for filter: String) -> Int {
-        switch filter {
-        case "All": return apps.count
-        case "Pending": return apps.filter { $0.status == .pending }.count
-        case "Accepted": return apps.filter { $0.status == .accepted }.count
-        default: return 0
-        }
-    }
-    
+    @Environment(LocalMarketplaceStore.self) private var store
+    @State private var selection = 0
+    private var apps: [Application] { store.applications.filter { app in store.ownerJobs.contains { $0.id == app.jobId } } }
+    private var filtered: [Application] { selection == 1 ? apps.filter { $0.status == .pending } : selection == 2 ? apps.filter { $0.status == .accepted || $0.status == .completed } : apps }
     var body: some View {
-        ZStack {
-            Color(hex: "F8F9FA").ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Top App Header
-                HStack(spacing: Spacing.md) {
-                    Text("Applications")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Color.errnoTextPrimary)
-                    
-                    Spacer()
-                }
-                .padding(.horizontal, Spacing.lg)
-                .padding(.top, Spacing.md)
-                .padding(.bottom, Spacing.md)
-                .background(Color.white)
-                
-                // Filter Tabs
-                HStack(spacing: 0) {
-                    ForEach(filters, id: \.self) { filter in
-                        VStack(spacing: 10) {
-                            Text("\(filter) (\(count(for: filter)))")
-                                .font(.system(size: 15, weight: selectedFilter == filter ? .bold : .medium))
-                                .foregroundStyle(selectedFilter == filter ? Color.errnoGreen : Color(hex: "757575"))
-                            
-                            Rectangle()
-                                .fill(selectedFilter == filter ? Color.errnoGreen : Color.clear)
-                                .frame(height: 3)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedFilter = filter
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, Spacing.md)
-                .padding(.top, Spacing.xs)
-                .background(Color.white)
-                
-                Divider()
-                    .background(Color(hex: "E0E0E0"))
-                
-                // Applications List
-                ScrollView {
-                    LazyVStack(spacing: 14) {
-                        ForEach(filteredApps) { item in
-                            NewApplicantCard(
-                                item: item,
-                                onAccept: {
-                                    if let idx = apps.firstIndex(where: { $0.id == item.id }) {
-                                        withAnimation(.easeInOut(duration: 0.25)) {
-                                            apps[idx].status = .accepted
-                                        }
-                                    }
-                                },
-                                onDecline: {
-                                    if let idx = apps.firstIndex(where: { $0.id == item.id }) {
-                                        withAnimation(.easeInOut(duration: 0.25)) {
-                                            apps[idx].status = .rejected
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal, Spacing.lg)
-                    .padding(.vertical, Spacing.md)
-                }
-            }
-        }
-        .navigationBarHidden(true)
+        VStack(spacing: 0) {
+            MarketplaceHeader(title: "Worker Applications")
+            MarketplaceFilters(labels: ["All (\(apps.count))", "Pending (\(apps.filter { $0.status == .pending }.count))", "Accepted (\(apps.filter { $0.status == .accepted || $0.status == .completed }.count))"], selection: $selection)
+            ScrollView { ApplicationRows(applications: filtered).padding(20) }
+        }.marketplacePage().toolbar(.hidden, for: .navigationBar)
     }
 }
 
-// MARK: - New Applicant Card Component
+struct ApplicationRows: View {
+    let applications: [Application]
+    @Environment(LocalMarketplaceStore.self) private var store
+    @State private var review: Application?
+    @State private var error: String?
+    var body: some View {
+        LazyVStack(spacing: 16) {
+            if applications.isEmpty {
+                MarketplaceEmptyState(title: "No Applications Received Yet", message: "When workers apply for your posted jobs, their applications will appear here.")
+            }
+            ForEach(applications) { app in
+                if let worker = store.user(id: app.workerId), let job = store.job(id: app.jobId) {
+                    VStack(spacing: 0) {
+                        NewApplicantCard(item: ApplicantItem(id: app.id, user: worker, status: app.status, jobTitle: job.title, exp: "\(worker.totalJobsCompleted ?? 0) shifts", distance: job.distance), onAccept: { hire(app) }, onDecline: { store.decline(applicationId: app.id) })
+                        Button("View Reviews & Profile") { review = app }.font(.system(size: 12, weight: .bold)).padding(10)
+                    }
+                }
+            }
+            if let error { Text(error).foregroundStyle(Color.errnoError) }
+        }
+        .sheet(item: $review) { app in
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let worker = store.user(id: app.workerId) {
+                        Text(worker.name).font(.system(size: 20, weight: .bold))
+                        Text("\(worker.totalJobsCompleted ?? 0) Shifts Completed")
+                        Text("Past Shopkeeper Reviews & Ratings:").bold()
+                        Text("No recorded reviews for this local applicant.").foregroundStyle(.gray)
+                        if app.status == .pending {
+                            PrimaryButton(title: "Accept Worker", style: .dark) { hire(app); review = nil }
+                            PrimaryButton(title: "Decline", style: .secondary) { store.decline(applicationId: app.id); review = nil }
+                        }
+                    }
+                    Spacer()
+                }.padding(20).navigationTitle("Worker Profile").navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { review = nil } } }
+            }.presentationDetents([.medium, .large])
+        }
+    }
+    private func hire(_ app: Application) {
+        do { try store.hire(applicationId: app.id, jobId: app.jobId) }
+        catch { self.error = error.localizedDescription }
+    }
+}
 
 struct NewApplicantCard: View {
     let item: ApplicantItem
@@ -184,7 +105,7 @@ struct NewApplicantCard: View {
                 Spacer()
                 
                 // Status Badge for Accepted
-                if item.status == .accepted {
+                if (item.status == .accepted || item.status == .completed) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .bold))
@@ -230,6 +151,7 @@ struct NewApplicantCard: View {
                 Spacer()
             }
             
+            if item.status == .rejected { StatusBadge(text: "Declined") }
             // Action Buttons
             if item.status == .pending {
                 HStack(spacing: 12) {
@@ -258,11 +180,11 @@ struct NewApplicantCard: View {
                     }
                 }
                 .padding(.top, 4)
-            } else if item.status == .accepted {
+            } else if (item.status == .accepted || item.status == .completed) {
                 // Call Worker full width button
                 Button(action: {
-                    if let url = URL(string: "tel://\(item.user.phone)"), UIApplication.shared.canOpenURL(url) {
-                        openURL(url)
+                    if let url = URL(string: "tel://\(item.user.phone)") {
+                        openURL(url) { accepted in if !accepted { showingCallSheet = true } }
                     } else {
                         showingCallSheet = true
                     }

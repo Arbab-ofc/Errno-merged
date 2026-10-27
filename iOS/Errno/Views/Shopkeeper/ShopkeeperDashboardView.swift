@@ -6,22 +6,25 @@
 import SwiftUI
 
 struct ShopkeeperDashboardView: View {
-    @State private var viewModel = ShopkeeperDashboardViewModel()
-    @State private var showPostJob = false
+    @State private var viewModel: ShopkeeperDashboardViewModel
+    @Environment(AppRouter.self) private var router
+    init(store: LocalMarketplaceStore) { _viewModel = State(initialValue: ShopkeeperDashboardViewModel(store: store)) }
+    @State private var notifications = false
     
     var body: some View {
+        @Bindable var router = router
         NavigationStack {
             ZStack {
                 Color.errnoBackground.ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: Spacing.xl) {
+                    VStack(alignment: .leading, spacing: 16) {
                         
                         // Custom Header
                         HStack {
                             ErrnoLogo(variant: .iconOnly, size: .small, animate: false)
                             Spacer()
-                            Button(action: {}) {
+                            Button(action: { notifications = true }) {
                                 Image(systemName: "bell")
                                     .font(.system(size: 20))
                                     .foregroundStyle(Color.errnoTextPrimary)
@@ -35,20 +38,24 @@ struct ShopkeeperDashboardView: View {
                         // Greeting
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Hello, \(viewModel.currentUser.name.components(separatedBy: " ").first ?? "User") 👋")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(.system(size: 22, weight: .bold))
                                 .foregroundStyle(Color.errnoTextPrimary)
                             Text("Manage your jobs easily")
                                 .errnoBodyLarge(color: .errnoTextSecondary)
                         }
                         
+                        Label("ERRNO Guarantee: Temporary Worker within 15 minutes", systemImage: "timer")
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.errnoGreen)
+                            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.errnoGreenLight, in: RoundedRectangle(cornerRadius: 12))
                         // Summary Cards
                         HStack(spacing: Spacing.md) {
                             SummaryCard(title: "Active Jobs", value: "\(viewModel.jobs.filter { $0.status == .open || $0.status == .inProgress }.count)")
-                            SummaryCard(title: "Total Applications", value: "34") // Mock static for now
+                            SummaryCard(title: "Total Applications", value: "\(viewModel.store.applications.count)")
                         }
                         
                         // Post Job CTA
-                        Button(action: { showPostJob = true }) {
+                        Button(action: { router.postingPresented = true }) {
                             HStack(spacing: Spacing.md) {
                                 Image(systemName: "plus")
                                     .font(.system(size: 24, weight: .regular))
@@ -77,7 +84,7 @@ struct ShopkeeperDashboardView: View {
                                     .foregroundStyle(Color.errnoTextPrimary)
                                 Spacer()
                                 Button("View All") {
-                                    // Navigate to Jobs tab? In TabView, we'd change selection
+                                    router.shopkeeperTab = 1
                                 }
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.errnoGreen)
@@ -88,12 +95,11 @@ struct ShopkeeperDashboardView: View {
                                     .frame(maxWidth: .infinity, alignment: .center)
                                     .padding()
                             } else if viewModel.jobs.isEmpty {
-                                Text("No recent jobs")
-                                    .errnoBodyMedium(color: .errnoTextSecondary)
+                                MarketplaceEmptyState(title: "No Jobs Posted Yet", message: "Post your first job to start hiring workers nearby.")
                             } else {
                                 LazyVStack(spacing: Spacing.md) {
                                     ForEach(viewModel.jobs) { job in
-                                        NavigationLink(destination: ApplicationsView(job: job)) {
+                                        NavigationLink(destination: ShopkeeperJobDetailView(jobId: job.id)) {
                                             JobDashboardCard(job: job)
                                         }
                                         .buttonStyle(.plain)
@@ -102,22 +108,24 @@ struct ShopkeeperDashboardView: View {
                             }
                         }
                         
-                        Spacer(minLength: 80) // Padding for tab bar
+                        Spacer(minLength: 16)
                     }
-                    .padding(.horizontal, Spacing.lg)
+                    .padding(.horizontal, 20)
                     .padding(.top, Spacing.md)
                 }
             }
             .navigationBarHidden(true)
-            .fullScreenCover(isPresented: $showPostJob) {
+            .fullScreenCover(isPresented: $router.postingPresented) {
                 NavigationStack {
-                    PostJobView()
+                    PostJobView(store: viewModel.store)
                 }
             }
             .onAppear {
                 viewModel.fetchJobs()
             }
         }
+        .alert("Notifications", isPresented: $notifications) { Button("OK", role: .cancel) {} }
+        message: { Text("No notifications. Live notifications are not enabled in this local demo.") }
     }
 }
 
@@ -132,7 +140,7 @@ private struct SummaryCard: View {
             Text(title)
                 .errnoBodyMedium(color: .errnoTextSecondary)
             Text(value)
-                .font(.system(size: 32, weight: .bold))
+                .font(.system(size: 24, weight: .bold))
                 .foregroundStyle(Color.errnoTextPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -161,7 +169,7 @@ private struct JobDashboardCard: View {
                 Spacer()
                 
                 // Status Badge
-                Text(job.status == .open || job.status == .inProgress ? "Active" : job.status.rawValue.capitalized)
+                Text(job.displayStatus)
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(job.status == .open || job.status == .inProgress ? Color.errnoGreen : Color.errnoTextSecondary)
                     .padding(.horizontal, 10)
@@ -174,13 +182,13 @@ private struct JobDashboardCard: View {
             HStack(spacing: 4) {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 12))
-                Text("Okhla Store -> Sector 18 Noida") // Mocked for design match
+                Text(job.locationLabel)
                     .font(.system(size: 14))
             }
             .foregroundStyle(Color.errnoTextSecondary)
             
             // Pay
-            Text(job.payType == .hourly ? "₹\(Int(job.payAmount)) - ₹\(Int(job.payAmount) + 100) / hr" : "₹\(Int(job.payAmount))")
+            Text("\(job.payLabel) • \(job.durationLabel)")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.errnoTextPrimary)
                 .padding(.vertical, 4)
@@ -190,12 +198,12 @@ private struct JobDashboardCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: "person.2.fill")
                         .foregroundStyle(Color.blue)
-                    Text("4 Applied") // Mocked
+                    Text(job.displayStatus)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.errnoTextPrimary)
                 }
                 Spacer()
-                Text("Posted 30m ago") // Mocked
+                Text(job.createdAt, style: .relative)
                     .font(.system(size: 12))
                     .foregroundStyle(Color.errnoTextSecondary)
             }

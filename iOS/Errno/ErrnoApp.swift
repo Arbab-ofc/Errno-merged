@@ -15,6 +15,8 @@ struct ErrnoApp: App {
         WindowGroup {
             AppRootView()
                 .environment(router)
+                .environment(router.marketplace)
+                .tint(.errnoGreen)
         }
     }
 }

@@ -7,20 +7,52 @@
 *.p12
 *.p8
 *.key
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
 *credentials*.json
+*service-account*.json
+*serviceAccount*.json
+!*credentials*.example.json
+!service-account.example.json
+!serviceAccount.example.json
+!.env.*.example
+.envrc
+.netrc
+
+# Local database connection tester: contains machine/account credentials.
+# Untracking it does not remove credentials from existing commit history.
+/Android/Backend/TestConnection.py
 
 # macOS
 .DS_Store
 __MACOSX/
+._*
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# JavaScript dependency/cache output (keep source and dependency lockfiles)
+node_modules/
+.npm/
 
 # Android
 .gradle/
@@ -34,3 +66,54 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .build/
+DerivedData-*/
+*.xcresult/
+*.xctestrun
+*.ipa
+*.app/
+*.dSYM/
+
+# Local verification and simulator work. Production app sources and the
+# production Errno.xcodeproj remain tracked; this separate harness is local.
+/iOS/Verification/
+
+# Build, simulator, and generated test output
+**/DerivedData/
+**/build/
+**/Carthage/Build/
+*.xcresult
+*.xcresult/**
+*.xcactivitylog
+*.xctestrun
+*.xcarchive/
+*.ips
+*.crash
+*.log
+*.trace
+*.trace/**
+*.recording
+*.recording/**
+
+# Generated screenshots and recordings are kept local. App asset catalogs
+# and other checked-in design resources remain eligible for tracking.
+**/Screenshots/
+**/Recordings/
+**/TestResults/
+**/TestArtifacts/
+**/SimulatorArtifacts/
+
+# Internal planning, audit, and generated inspection documents
+**/.artifacts/
+**/brain.md
+**/plans.md
+**/implementation_plan.artifact.md
+/Android/FRONTEND_ARCHITECTURE_AND_WORKFLOW.md
+/GIT_HYGIENE_AUDIT.md
+**/*AUDIT*.md
+**/*audit*.md
+**/*RECOVERY_REPORT*.md
+**/*recovery_report*.md
+**/*VERIFICATION_REPORT*.md
+**/*verification_report*.md
+**/*INSPECTION_REPORT*.md
+**/*inspection_report*.md

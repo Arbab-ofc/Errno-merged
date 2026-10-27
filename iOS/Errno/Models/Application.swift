@@ -1,7 +1,6 @@
 // Application.swift
 // Errno — Models
 //
-// Core Application model, maps to Supabase "applications" table.
 // Represents a Worker applying for a Job.
 
 import Foundation

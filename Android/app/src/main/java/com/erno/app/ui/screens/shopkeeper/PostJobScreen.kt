@@ -28,6 +28,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -126,6 +127,7 @@ fun PostJobScreen(
         },
         bottomBar = {
             Surface(
+                modifier = Modifier.imePadding(),
                 color = Color.White,
                 shadowElevation = 8.dp
             ) {
@@ -896,6 +898,7 @@ fun LocationAutocompleteTextField(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var hasFocus by remember { mutableStateOf(false) }
 
     val allLocations = listOf(
         "Okhla Market Store #12, Block B, New Delhi",
@@ -923,9 +926,7 @@ fun LocationAutocompleteTextField(
         }
     }
 
-    LaunchedEffect(suggestions) {
-        expanded = suggestions.isNotEmpty()
-    }
+    val showSuggestions = expanded && hasFocus && suggestions.isNotEmpty()
 
     Column(modifier = modifier) {
         Text(
@@ -937,7 +938,7 @@ fun LocationAutocompleteTextField(
         Spacer(modifier = Modifier.height(6.dp))
 
         ExposedDropdownMenuBox(
-            expanded = expanded && suggestions.isNotEmpty(),
+            expanded = showSuggestions,
             onExpandedChange = { expanded = !expanded }
         ) {
             OutlinedTextField(
@@ -958,7 +959,11 @@ fun LocationAutocompleteTextField(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(),
+                    .menuAnchor()
+                    .onFocusChanged {
+                        hasFocus = it.isFocused
+                        if (!it.isFocused) expanded = false
+                    },
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.Black,
@@ -972,7 +977,7 @@ fun LocationAutocompleteTextField(
             )
 
             ExposedDropdownMenu(
-                expanded = expanded && suggestions.isNotEmpty(),
+                expanded = showSuggestions,
                 onDismissRequest = { expanded = false },
                 modifier = Modifier
                     .background(Color.White)

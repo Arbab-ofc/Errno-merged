@@ -8,6 +8,9 @@ import SwiftUI
 struct PayStructureView: View {
     var viewModel: PostJobViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var custom = false
+    @State private var hours = "5"
+    @State private var amount = "550"
     
     // Mock static options based on design
     let durationOptions = [
@@ -42,7 +45,7 @@ struct PayStructureView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, Spacing.lg)
+                .padding(.horizontal, 20)
                 .padding(.vertical, Spacing.md)
                 
                 // Progress Bar
@@ -51,7 +54,7 @@ struct PayStructureView: View {
                     ProgressStep(title: "2. Duration", state: .active)
                     ProgressStep(title: "3. Location", state: .inactive)
                 }
-                .padding(.horizontal, Spacing.lg)
+                .padding(.horizontal, 20)
                 .padding(.bottom, Spacing.md)
                 
                 Divider().background(Color.errnoStroke)
@@ -59,28 +62,32 @@ struct PayStructureView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.md) {
                         Text("How much time do you need the worker for?")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(Color.errnoTextPrimary)
                             .padding(.top, Spacing.md)
                         
-                        Text("Select one or multiple duration options below for workers to choose from:")
+                        Text("Select ONLY 1 duration option or set a custom time & price below:")
                             .errnoBodyMedium(color: .errnoTextSecondary)
                         
+                        if !durationOptions.contains(where: { Double($0.hours) == viewModel.estimatedDurationHours }) {
+                            Text("Selected: \(Int(viewModel.estimatedDurationHours)) Hours • ₹\(viewModel.payAmountString)")
+                                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.errnoGreen)
+                        }
                         VStack(spacing: Spacing.md) {
                             ForEach(durationOptions, id: \.hours) { option in
                                 DurationOptionCard(
                                     label: option.label,
-                                    rate: option.rate,
+                                    rate: viewModel.estimatedDurationHours == Double(option.hours) ? (Int(viewModel.payAmountString) ?? option.rate) : option.rate,
                                     isSelected: viewModel.estimatedDurationHours == Double(option.hours)
                                 ) {
                                     viewModel.estimatedDurationHours = Double(option.hours)
                                     viewModel.payAmountString = String(option.rate)
-                                    viewModel.payType = .hourly
+                                    viewModel.payType = .fixed
                                 }
                             }
                             
                             // Custom Time Button
-                            Button(action: {}) {
+                            Button(action: { custom = true }) {
                                 HStack {
                                     Text("+")
                                         .font(.system(size: 18, weight: .medium))
@@ -99,7 +106,7 @@ struct PayStructureView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, Spacing.lg)
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 120)
                 }
             }
@@ -133,13 +140,32 @@ struct PayStructureView: View {
                     }
                     // Note: If you want to require a selection, add disabled check.
                 }
-                .padding(.horizontal, Spacing.lg)
+                .padding(.horizontal, 20)
                 .padding(.vertical, Spacing.md)
                 .background(Color.errnoSurface)
                 .shadow(color: Color.black.opacity(0.05), radius: 10, y: -5)
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $custom) {
+            NavigationStack {
+                Form {
+                    TextField("Duration Hours", text: $hours).keyboardType(.numberPad)
+                    TextField("Total Pay (₹)", text: $amount).keyboardType(.numberPad)
+                    Text("Total pay for the selected shift duration.")
+                    Button("Set Duration Option") {
+                        if let h = Int(hours), let pay = Int(amount), h > 0, pay > 0,
+                           let exactHours = Double(exactly: h), Double(exactly: pay) != nil {
+                            viewModel.estimatedDurationHours = exactHours
+                            viewModel.payAmountString = String(pay)
+                            viewModel.payType = .fixed
+                            custom = false
+                        }
+                    }.disabled((Int(hours) ?? 0) <= 0 || (Int(amount) ?? 0) <= 0)
+                }.navigationTitle("Set Custom Duration & Pay")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { custom = false } } }
+            }.presentationDetents([.medium, .large])
+        }
     }
 }
 
@@ -193,24 +219,13 @@ private struct DurationOptionCard: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Spacing.md) {
-                // Checkbox
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(isSelected ? Color.errnoGreen : Color.errnoStroke, lineWidth: 2)
-                        .frame(width: 24, height: 24)
-                        .background(isSelected ? Color.errnoGreen : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                    
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 24)).foregroundStyle(isSelected ? Color.errnoGreen : .gray)
+                    .frame(width: 44, height: 44)
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.errnoTextPrimary)
                     Text("Pay Rate: ₹\(rate)")
                         .errnoBodyMedium(color: .errnoTextSecondary)
@@ -231,7 +246,7 @@ private struct DurationOptionCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
-            .padding(Spacing.lg)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .background(Color.errnoSurface)
             .clipShape(RoundedRectangle(cornerRadius: Radius.md))
             .overlay(
