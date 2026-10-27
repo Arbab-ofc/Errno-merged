@@ -7,6 +7,7 @@ import SwiftUI
 
 struct VerifyOTPView: View {
     @Environment(AppRouter.self) private var router
+    @Environment(LocalMarketplaceStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     let phone: String
@@ -28,10 +29,10 @@ struct VerifyOTPView: View {
                 ZStack {
                     Circle()
                         .fill(Color(hex: "#F0F9E8"))
-                        .frame(width: 100, height: 100)
+                        .frame(width: 140, height: 140)
 
                     Image(systemName: "lock.iphone")
-                        .font(.system(size: 44))
+                        .font(.system(size: 70))
                         .foregroundStyle(Color(hex: "#99E329"))
                 }
                 .padding(.top, Spacing.sm)
@@ -69,6 +70,7 @@ struct VerifyOTPView: View {
                         TextField("", text: $viewModel.otp)
                             .keyboardType(.numberPad)
                             .textContentType(.oneTimeCode)
+                            .accessibilityLabel("Six digit verification code")
                             .focused($isOTPFieldFocused)
                             .accentColor(.clear)
                             .foregroundColor(.clear)
@@ -83,17 +85,17 @@ struct VerifyOTPView: View {
                             }
 
                         // Visible 6 boxes
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             ForEach(0..<6, id: \.self) { index in
                                 let char = characterAt(index)
                                 let isCurrentBox = viewModel.otp.count == index
 
                                 ZStack {
-                                    RoundedRectangle(cornerRadius: 10)
+                                    RoundedRectangle(cornerRadius: 12)
                                         .fill(Color.white)
                                         .frame(height: 50)
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
+                                            RoundedRectangle(cornerRadius: 12)
                                                 .stroke(
                                                     viewModel.isError ? Color.errnoError :
                                                     (isCurrentBox && isOTPFieldFocused ? Color.errnoLime :
@@ -122,6 +124,7 @@ struct VerifyOTPView: View {
                             .foregroundStyle(Color.errnoError)
                     }
 
+                    MockNotice(text: "Local demo • use 123456")
                     // Resend Countdown
                     HStack(spacing: 4) {
                         Text("Resend OTP in")
@@ -140,6 +143,7 @@ struct VerifyOTPView: View {
                     Button {
                         isOTPFieldFocused = false
                         viewModel.verifyOTP(role: role) { verifiedRole in
+                            store.signIn(phone: phone, role: verifiedRole, name: router.registrationName)
                             router.navigateToHome(role: verifiedRole)
                         }
                     } label: {
@@ -150,15 +154,15 @@ struct VerifyOTPView: View {
                             } else {
                                 Text("Verify OTP")
                                     .font(.system(size: 15, weight: .bold))
-                                    .foregroundStyle(viewModel.isOTPComplete ? Color(hex: "#0B121F") : Color.errnoTextSecondary)
+                                    .foregroundStyle(viewModel.isOTPComplete ? Color.white : Color.errnoTextSecondary)
                             }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(viewModel.isOTPComplete ? Color.errnoLime : Color(hex: "#E5E7EB"))
+                        .background(viewModel.isOTPComplete ? Color.errnoGreen : Color(hex: "#E5E7EB"))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .disabled(!viewModel.isOTPComplete || viewModel.isLoading)
+                    .disabled(!viewModel.isOTPComplete || viewModel.isLoading || viewModel.isSuccess)
                     .padding(.top, 4)
 
                     // Resend Link
@@ -182,7 +186,7 @@ struct VerifyOTPView: View {
                 }
                 .padding(20)
                 .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .clipShape(RoundedRectangle(cornerRadius: 24))
                 .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 5)
                 .padding(.horizontal, Spacing.lg)
 
@@ -215,7 +219,8 @@ struct VerifyOTPView: View {
                 .padding(.bottom, Spacing.xl)
             }
         }
-        .background(Color(hex: "#FAFAFA").ignoresSafeArea())
+        .background(Color(hex: "#FFFFFF").ignoresSafeArea())
+        .toolbar(.visible, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -234,11 +239,12 @@ struct VerifyOTPView: View {
                     .foregroundStyle(Color.errnoTextPrimary)
             }
         }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                isOTPFieldFocused = true
-            }
+        .task {
+            viewModel.startTimer()
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            isOTPFieldFocused = true
         }
+        .onDisappear { viewModel.cancel() }
     }
 
     private func characterAt(_ index: Int) -> String {

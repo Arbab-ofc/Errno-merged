@@ -1,22 +1,37 @@
-// WorkerRootView.swift
-// Errno — Views/Worker
-//
-// Placeholder for Phase 4.
-
 import SwiftUI
+
+enum WorkerRoute: Hashable {
+    case details(UUID)
+    case accepting(UUID)
+    case verification
+}
 
 struct WorkerRootView: View {
     @Environment(AppRouter.self) private var router
-
+    @State private var path: [WorkerRoute] = []
     var body: some View {
-        VStack {
-            Text("Worker Home")
-                .errnoHeadlineLarge()
-            
-            PrimaryButton(title: "Sign Out", style: .secondary) {
-                router.signOut()
+        @Bindable var router = router
+        NavigationStack(path: $path) {
+            TabView(selection: $router.workerTab) {
+                WorkerHomeView().tag(0)
+                WorkerMyJobsView().tag(1)
+                WorkerEarningsView().tag(2)
+                WorkerProfileView().tag(3)
             }
-            .padding()
-        }
+            .toolbar(.hidden, for: .tabBar)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                MarketplaceBottomBar(titles: ["Home", "My Jobs", "Earnings", "Profile"],
+                                     icons: ["house.fill", "briefcase.fill", "wallet.pass.fill", "person.fill"],
+                                     selection: $router.workerTab, dark: true)
+            }
+            .navigationDestination(for: WorkerRoute.self) { route in
+                switch route {
+                case .details(let id): WorkerJobDetailsView(jobId: id) { path.append(.accepting(id)) }
+                case .accepting(let id): WorkerAcceptingJobView(jobId: id) { router.workerTab = 1; path.removeAll() }
+                case .verification: DigiLockerVerificationView()
+                }
+            }
+        }.tint(.errnoGreen)
     }
 }

@@ -14,16 +14,20 @@ final class AuthViewModel {
     var errorMessage: String? = nil
 
     private let authService: AuthServiceProtocol
+    @ObservationIgnored private var requestTask: Task<Void, Never>?
+
+    func cancelRequest() { requestTask?.cancel(); isLoading = false }
 
     init(authService: AuthServiceProtocol = MockAuthService()) {
         self.authService = authService
     }
 
     var isValidPhone: Bool {
-        phoneNumber.count == 10
+        phoneNumber.count == 10 && phoneNumber.allSatisfy(\.isNumber)
     }
 
     func requestOTP(role: UserRole, onSuccess: @escaping (String, UserRole) -> Void) {
+        guard !isLoading else { return }
         guard isValidPhone else {
             errorMessage = "Please enter a valid 10-digit number."
             return
@@ -32,9 +36,10 @@ final class AuthViewModel {
         errorMessage = nil
         isLoading = true
 
-        Task {
+        requestTask = Task {
             do {
                 try await authService.sendOTP(to: phoneNumber)
+                try Task.checkCancellation()
                 await MainActor.run {
                     self.isLoading = false
                     onSuccess(self.phoneNumber, role)

@@ -22,6 +22,15 @@ final class OTPViewModel {
     private let authService: AuthServiceProtocol
     private let phone: String
     private var timerCancellable: AnyCancellable?
+    @ObservationIgnored private var verificationTask: Task<Void, Never>?
+    @ObservationIgnored private var resendTask: Task<Void, Never>?
+
+    func cancel() {
+        verificationTask?.cancel()
+        resendTask?.cancel()
+        timerCancellable?.cancel()
+        isLoading = false
+    }
 
     init(phone: String, authService: AuthServiceProtocol = MockAuthService()) {
         self.phone = phone
@@ -30,7 +39,7 @@ final class OTPViewModel {
     }
 
     var isOTPComplete: Bool {
-        otp.count == 6
+        otp.count == 6 && otp.allSatisfy(\.isNumber)
     }
 
     func startTimer() {
@@ -44,7 +53,8 @@ final class OTPViewModel {
                 guard let self = self else { return }
                 if self.timeRemaining > 0 {
                     self.timeRemaining -= 1
-                } else {
+                }
+                if self.timeRemaining == 0 {
                     self.canResend = true
                     self.timerCancellable?.cancel()
                 }
@@ -52,38 +62,41 @@ final class OTPViewModel {
     }
 
     func resendOTP() {
-        guard canResend else { return }
-        
-        // Mock resend logic
+        guard canResend, !isLoading else { return }
         startTimer()
         otp = ""
         isError = false
         errorMessage = nil
+        resendTask = Task {
+            do { try await authService.sendOTP(to: phone) }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 
     func verifyOTP(role: UserRole, onSuccess: @escaping (UserRole) -> Void) {
-        guard isOTPComplete else { return }
+        guard isOTPComplete, !isLoading, !isSuccess else { return }
 
         isLoading = true
         isError = false
         errorMessage = nil
 
-        Task {
+        verificationTask = Task {
             do {
                 let success = try await authService.verifyOTP(otp, phone: phone)
+                try Task.checkCancellation()
+                if success {
+                    isSuccess = true
+                    try await Task.sleep(for: .milliseconds(500))
+                    try Task.checkCancellation()
+                    isLoading = false
+                    onSuccess(role)
+                    return
+                }
                 await MainActor.run {
                     self.isLoading = false
-                    if success {
-                        self.isSuccess = true
-                        // Brief delay for success animation
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            onSuccess(role)
-                        }
-                    } else {
-                        self.isError = true
-                        self.errorMessage = "Incorrect code. Please try again."
-                        self.otp = ""
-                    }
+                    self.isError = true
+                    self.errorMessage = "Incorrect code. Please try again."
+                    self.otp = ""
                 }
             } catch {
                 await MainActor.run {

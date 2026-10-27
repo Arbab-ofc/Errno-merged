@@ -1,159 +1,101 @@
-// PostJobLocationView.swift
-// Errno — Views/Shopkeeper
-//
-// Matches Android "Post a New Job" step 3 (Location).
-
 import SwiftUI
 
 struct PostJobLocationView: View {
-    var viewModel: PostJobViewModel
+    @Bindable var viewModel: PostJobViewModel
     @Environment(\.dismiss) private var dismiss
-    
     var body: some View {
-        ZStack {
-            Color.errnoBackground.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Custom Header
-                HStack(spacing: Spacing.md) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(Color.errnoTextPrimary)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Post a New Job")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(Color.errnoTextPrimary)
-                        Text("Step 3 of 3 • Select Location")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.errnoGreen)
-                    }
-                    Spacer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(viewModel.category.isDelivery ? "Delivery Route Locations" : "Shop Location & Map Pin")
+                    .font(.system(size: 16, weight: .bold))
+                if viewModel.category.isDelivery {
+                    LocationAutocompleteField(title: "Pickup Location", text: $viewModel.pickupLocation)
+                    LocationAutocompleteField(title: "Customer Drop Location", text: $viewModel.dropLocation)
+                } else {
+                    LocationAutocompleteField(title: "Shop / Work Address", text: $viewModel.location)
                 }
-                .padding(.horizontal, Spacing.lg)
-                .padding(.vertical, Spacing.md)
-                
-                // Progress Bar
-                HStack(spacing: 8) {
-                    ProgressStepLocation(title: "1. Details", state: .completed)
-                    ProgressStepLocation(title: "2. Duration", state: .completed)
-                    ProgressStepLocation(title: "3. Location", state: .active)
-                }
-                .padding(.horizontal, Spacing.lg)
-                .padding(.bottom, Spacing.md)
-                
-                Divider().background(Color.errnoStroke)
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Spacing.md) {
-                        Text("Confirm Job Location")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Color.errnoTextPrimary)
-                            .padding(.top, Spacing.md)
-                        
-                        // Fake Map
-                        ZStack {
-                            RoundedRectangle(cornerRadius: Radius.md)
-                                .fill(Color.errnoSurfaceElevated)
-                                .frame(height: 200)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Radius.md)
-                                        .strokeBorder(Color.errnoStroke, lineWidth: 1)
-                                )
-                            
-                            VStack {
-                                Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 40))
-                                    .foregroundStyle(Color.errnoGreen)
-                                Text("Okhla Market Area")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .padding(.top, 4)
-                            }
+                Text("Interactive Location Map Pin:").font(.system(size: 13, weight: .bold))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(["🏬 Shop Main Gate, Okhla", "📍 Store Delivery Bay, Block B", "🚇 Okhla Metro Exit 2", "🏢 Central Market Hub"], id: \.self) { value in
+                            Button(value) {
+                                if viewModel.category.isDelivery { viewModel.pickupLocation = value }
+                                else { viewModel.location = value }
+                            }.font(.system(size: 11, weight: .bold)).padding(8)
+                                .background(Color.errnoGreenLight, in: Capsule())
                         }
                     }
-                    .padding(.horizontal, Spacing.lg)
-                    .padding(.bottom, 120)
                 }
-            }
-            
-            // Bottom Action
-            VStack {
-                Spacer()
-                HStack(spacing: Spacing.md) {
-                    Button(action: { dismiss() }) {
-                        Text("← Back")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .foregroundStyle(Color.errnoTextPrimary)
-                            .background(Color.errnoSurface)
-                            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Radius.md)
-                                    .strokeBorder(Color.errnoStroke, lineWidth: 1)
-                            )
+                WorkerLocationMapView(locationName: viewModel.category.isDelivery ? viewModel.pickupLocation : viewModel.location, isDarkTheme: false)
+            }.padding(20).frame(maxWidth: 800).frame(maxWidth: .infinity)
+        }.marketplacePage()
+            .navigationTitle("Post a New Job").navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
+            .safeAreaInset(edge: .top) { PostingProgress(step: 3) }
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 12) {
+                    PrimaryButton(title: "← Back", style: .secondary) { dismiss() }
+                    NavigationLink(destination: PreviewJobView(viewModel: viewModel)) {
+                        Text("Preview & Post →").font(.system(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(height: 52)
+                            .background(Color.errnoGreen, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(.white)
                     }
-                    
-                    NavigationLink(destination: PostJobSuccessView(viewModel: viewModel)) {
-                        HStack {
-                            if viewModel.isSubmitting {
-                                ProgressView().tint(.white)
-                            } else {
-                                Text("Post Job")
-                            }
-                        }
-                        .font(.system(size: 16, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.errnoGreen)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-                    }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        viewModel.submitJob {}
-                    })
-                }
-                .padding(.horizontal, Spacing.lg)
-                .padding(.vertical, Spacing.md)
-                .background(Color.errnoSurface)
-                .shadow(color: Color.black.opacity(0.05), radius: 10, y: -5)
+                }.padding(16).background(.white)
             }
-        }
-        .navigationBarHidden(true)
     }
 }
 
-// MARK: - Progress Step Component
-
-private struct ProgressStepLocation: View {
-    let title: String
-    let state: ProgressState
-    
+struct PostingProgress: View {
+    let step: Int
     var body: some View {
-        Text(title)
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(textColor)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(bgColor)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        HStack(spacing: 8) {
+            ForEach(Array(["1. Details", "2. Duration", "3. Location"].enumerated()), id: \.offset) { index, title in
+                Text(title).font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .foregroundStyle(index < step ? Color.errnoGreen : .gray)
+                    .background(index < step ? Color.errnoGreenLight : Color(hex: "F0F0F0"), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }.padding(.horizontal, 20).padding(.vertical, 12).background(.white)
     }
-    
-    var textColor: Color {
-        switch state {
-        case .completed: return Color.errnoGreen
-        case .active: return Color.errnoGreen
-        case .inactive: return Color.errnoTextSecondary
-        }
-    }
-    
-    var bgColor: Color {
-        switch state {
-        case .completed: return Color.errnoLimeLight
-        case .active: return Color.errnoLimeLight
-        case .inactive: return Color.errnoStroke.opacity(0.5)
+}
+
+struct LocationAutocompleteField: View {
+    let title: String
+    @Binding var text: String
+    @State private var editing = false
+    static let locations = [
+        "Okhla Market Store #12, Block B, New Delhi", "Okhla Industrial Area Phase 1, New Delhi",
+        "Okhla Industrial Estate Phase 3, Delhi", "Okhla Phase 3 Metro Station Exit 2",
+        "Okhla Main Market, Jamia Nagar, New Delhi", "Sector 18 Noida Market Area, UP",
+        "Sector 15 Noida Metro Station, UP", "Sector 62 Noida IT Park, UP",
+        "Connaught Place Central Market, New Delhi", "Lajpat Nagar Central Market, New Delhi",
+        "Karol Bagh Wholesale Market, New Delhi", "Chandni Chowk Wholesale Store, Delhi",
+        "Nehru Place Electronics Hub, Delhi", "Saket Select Citywalk Area, New Delhi", "South Extension Market Part 1, Delhi"
+    ]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 13, weight: .medium))
+            HStack {
+                Image(systemName: "mappin.and.ellipse").foregroundStyle(.gray)
+                TextField(title, text: $text, onEditingChanged: { editing = $0 })
+                if !text.isEmpty { Button { text = "" } label: { Image(systemName: "xmark.circle").frame(width: 44, height: 44) }.accessibilityLabel("Clear \(title)") }
+            }.padding(.horizontal, 12).frame(minHeight: 52)
+                .background(.white, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.errnoStroke))
+            if editing && text.count >= 2 {
+                ForEach(Self.locations.filter { $0.localizedCaseInsensitiveContains(text) }, id: \.self) { suggestion in
+                    Button(suggestion) { text = suggestion; editing = false }.font(.system(size: 13)).padding(.vertical, 4)
+                }
+            }
+            Button("📍 Use Current GPS Location") { text = Self.locations[0]; editing = false }
+                .font(.system(size: 11, weight: .bold))
+            Text("Demo location preset • GPS is not accessed").font(.system(size: 10)).foregroundStyle(.gray)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach(["Okhla Market #12", "Sector 18 Noida", "Nehru Place Hub", "Connaught Place", "Lajpat Nagar Market"], id: \.self) { chip in
+                        Button(chip) { text = "\(chip), Delhi NCR" }.font(.system(size: 11)).padding(8)
+                            .background(.white, in: Capsule()).overlay(Capsule().stroke(Color.errnoStroke))
+                    }
+                }
+            }
         }
     }
 }

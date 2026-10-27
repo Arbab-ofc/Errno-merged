@@ -15,6 +15,9 @@ struct RegisterView: View {
     @State private var fullName: String = ""
     @State private var phoneNumber: String = ""
     @State private var isLoading: Bool = false
+    @State private var registrationTask: Task<Void, Never>?
+    @State private var initialized = false
+    @State private var googlePlaceholder = false
     @State private var errorMessage: String? = nil
 
     @FocusState private var focusedField: Field?
@@ -140,10 +143,12 @@ struct RegisterView: View {
                     isLoading = true
                     errorMessage = nil
 
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(600))
+                    registrationTask = Task {
+                        do { try await Task.sleep(for: .milliseconds(600)) } catch { isLoading = false; return }
+                        guard !Task.isCancelled else { return }
                         await MainActor.run {
                             isLoading = false
+                            router.registrationName = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
                             router.navigateToOTP(phone: phoneNumber, role: selectedRole)
                         }
                     }
@@ -166,6 +171,11 @@ struct RegisterView: View {
                 .disabled(!isValid || isLoading)
                 .padding(.top, Spacing.xs)
 
+                Button { googlePlaceholder = true } label: {
+                    HStack(spacing: 12) { Text("G").foregroundStyle(.blue).font(.system(size: 20, weight: .bold)); Text("Sign up with Google").font(.system(size: 15, weight: .bold)) }
+                        .frame(maxWidth: .infinity).frame(height: 52)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.errnoStroke))
+                }.foregroundStyle(Color.errnoTextPrimary)
                 // Footer Links
                 VStack(spacing: Spacing.md) {
                     Button {
@@ -186,6 +196,8 @@ struct RegisterView: View {
 
                     Spacer(minLength: 40)
 
+                    LegalLinks()
+                    MockNotice(text: "Demo registration is kept only for this app session.")
                     // Trust Badge
                     HStack(spacing: 6) {
                         Image(systemName: "shield.fill")
@@ -201,7 +213,8 @@ struct RegisterView: View {
             }
             .padding(.horizontal, Spacing.lg)
         }
-        .background(Color(hex: "#FAFAFA").ignoresSafeArea())
+        .background(Color(hex: "#FFFFFF").ignoresSafeArea())
+        .toolbar(.visible, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -220,8 +233,11 @@ struct RegisterView: View {
                     .foregroundStyle(Color.errnoTextPrimary)
             }
         }
+        .alert("Google Sign-Up", isPresented: $googlePlaceholder) { Button("OK", role: .cancel) {} }
+        message: { Text("Google registration is a placeholder in the Android reference. Use the local phone flow.") }
+        .onDisappear { registrationTask?.cancel(); isLoading = false }
         .onAppear {
-            selectedRole = initialRole
+            if !initialized { selectedRole = initialRole; initialized = true }
         }
     }
 }

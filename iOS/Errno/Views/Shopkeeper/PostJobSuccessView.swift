@@ -13,7 +13,7 @@ struct PostJobSuccessView: View {
         ZStack {
             Color.errnoBackground.ignoresSafeArea()
             
-            VStack(spacing: Spacing.xl) {
+            ScrollView { VStack(spacing: Spacing.xl) {
                 Spacer()
                 
                 // Success Icon & Text
@@ -47,7 +47,7 @@ struct PostJobSuccessView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "mappin.and.ellipse")
                                 .font(.system(size: 12))
-                            Text("Okhla Market Area") // Mock
+                            Text(viewModel.postedJob?.locationLabel ?? viewModel.location)
                                 .font(.system(size: 14))
                         }
                         .foregroundStyle(Color.errnoTextSecondary)
@@ -90,11 +90,8 @@ struct PostJobSuccessView: View {
                 // Actions
                 VStack(spacing: Spacing.md) {
                     Button(action: {
-                        // Go to Jobs Tab
-                        router.appState = .splash
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            router.appState = .shopkeeperHome
-                        }
+                        router.postingPresented = false
+                        router.shopkeeperTab = 1
                     }) {
                         Text("Go to My Jobs")
                             .font(.system(size: 16, weight: .bold))
@@ -105,7 +102,7 @@ struct PostJobSuccessView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Radius.md))
                     }
                     
-                    Button(action: {}) {
+                    ShareLink(item: "\(viewModel.postedJob?.title ?? viewModel.title) • \(viewModel.postedJob?.locationLabel ?? viewModel.location) • ₹\(viewModel.payAmountString) (local demo)") {
                         Text("Share Job")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(Color.errnoGreen)
@@ -115,7 +112,8 @@ struct PostJobSuccessView: View {
                 .padding(.horizontal, Spacing.lg)
                 .padding(.bottom, Spacing.xl)
             }
-        }
+        }}
         .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
     }
 }

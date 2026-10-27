@@ -20,6 +20,7 @@ enum AppState: Equatable {
 /// Type-safe route enum for the auth NavigationStack.
 /// All associated values are Hashable — Swift synthesises Hashable automatically.
 enum AuthRoute: Hashable {
+    case consent(role: UserRole, registration: Bool)
     case login(role: UserRole)
     case register(role: UserRole)
     case verifyOTP(phone: String, role: UserRole)
@@ -30,6 +31,11 @@ enum AuthRoute: Hashable {
 @Observable
 @MainActor
 final class AppRouter {
+    let marketplace = LocalMarketplaceStore()
+    var registrationName = ""
+    var shopkeeperTab = 0
+    var workerTab = 0
+    var postingPresented = false
     var appState: AppState   = .splash
     var authPath: [AuthRoute] = []
 
@@ -44,11 +50,21 @@ final class AppRouter {
     // MARK: Auth Navigation
 
     func navigateToLogin(role: UserRole) {
+        registrationName = ""
         authPath.append(.login(role: role))
     }
 
     func navigateToRegister(role: UserRole) {
         authPath.append(.register(role: role))
+    }
+
+    func requestConsent(role: UserRole, registration: Bool = false) {
+        authPath.append(.consent(role: role, registration: registration))
+    }
+
+    func finishConsent(role: UserRole, registration: Bool) {
+        if !authPath.isEmpty { authPath.removeLast() }
+        if registration { navigateToRegister(role: role) } else { navigateToLogin(role: role) }
     }
 
     func navigateToOTP(phone: String, role: UserRole) {
@@ -66,6 +82,8 @@ final class AppRouter {
     func navigateToHome(role: UserRole) {
         withAnimation(ErrnoAnimation.smoothSlow) {
             authPath.removeAll()
+            shopkeeperTab = 0
+            workerTab = 0
             switch role {
             case .shopkeeper: appState = .shopkeeperHome
             case .worker:     appState = .workerHome
@@ -76,6 +94,11 @@ final class AppRouter {
     // MARK: Sign Out
 
     func signOut() {
+        marketplace.signOut()
+        postingPresented = false
+        registrationName = ""
+        shopkeeperTab = 0
+        workerTab = 0
         authPath.removeAll()
         withAnimation(ErrnoAnimation.smoothSlow) {
             appState = .auth

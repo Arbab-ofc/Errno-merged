@@ -12,29 +12,21 @@ struct RoleSelectionView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: Spacing.lg) {
-                // Top Mini Brand Logo
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(hex: "#0B121F"))
-                        .frame(width: 38, height: 38)
-
-                    ErrnoIconMark(size: 22, color: .errnoLime)
-                }
-                .padding(.top, Spacing.md)
+                ErrnoLogo(size: .small).padding(.top, 16)
 
                 // Welcome Header
                 VStack(spacing: 6) {
                     HStack(spacing: 6) {
                         Text("Welcome to")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 26, weight: .bold))
                             .foregroundStyle(Color.errnoTextPrimary)
                         Text("ERRNO")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 26, weight: .bold))
                             .foregroundStyle(Color.errnoLime)
                     }
 
                     Text("On-demand workforce platform for work-based jobs.")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 14, weight: .regular))
                         .foregroundStyle(Color.errnoTextSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Spacing.md)
@@ -42,9 +34,9 @@ struct RoleSelectionView: View {
 
                 // Banner Illustration Card
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(hex: "#F2F9E8"))
-                        .frame(height: 128)
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color(hex: "#F1F8E9"))
+                        .frame(height: 140)
 
                     if selectedRole == .shopkeeper {
                         Image(systemName: "storefront")
@@ -64,7 +56,7 @@ struct RoleSelectionView: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Color.errnoTextPrimary)
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: 16) {
                         // Shop Owner Option Card
                         RoleCard(
                             role: .shopkeeper,
@@ -100,7 +92,7 @@ struct RoleSelectionView: View {
                 VStack(spacing: Spacing.md) {
                     // Continue Button
                     Button {
-                        router.navigateToLogin(role: selectedRole)
+                        router.requestConsent(role: selectedRole)
                     } label: {
                         Text("Continue")
                             .font(.system(size: 16, weight: .bold))
@@ -108,12 +100,12 @@ struct RoleSelectionView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(Color.errnoLime)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
 
                     // Create Account Link
                     Button {
-                        router.navigateToRegister(role: selectedRole)
+                        router.requestConsent(role: selectedRole, registration: true)
                     } label: {
                         HStack(spacing: 4) {
                             Text("New to ERRNO?")
@@ -137,18 +129,13 @@ struct RoleSelectionView: View {
                     }
                     .padding(.top, 4)
 
-                    // Legal Footnote
-                    Text("By continuing, you agree to our \(Text("Terms of Service").foregroundColor(Color.errnoLime).fontWeight(.semibold)) and \(Text("Privacy Policy").foregroundColor(Color.errnoLime).fontWeight(.semibold))")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.errnoTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Spacing.lg)
-                        .padding(.top, 6)
+                    LegalLinks().padding(.top, 6)
                 }
                 .padding(.horizontal, Spacing.lg)
                 .padding(.bottom, Spacing.xl)
             }
         }
+        .frame(maxWidth: 600).frame(maxWidth: .infinity)
         .background(Color.white.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -185,12 +172,12 @@ private struct RoleCard: View {
                         .minimumScaleFactor(0.85)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .frame(minHeight: 120)
                 .padding(.horizontal, 10)
                 .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 16)
                         .stroke(isSelected ? Color.errnoLime : Color.errnoStroke, lineWidth: isSelected ? 2 : 1)
                 )
 

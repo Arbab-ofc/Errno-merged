@@ -19,8 +19,8 @@ struct LoginView: View {
                 // Top Illustration Banner
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(hex: "#F2F9E8"))
-                        .frame(height: 120)
+                        .fill(Color(hex: "#F1F8E9"))
+                        .frame(height: 130)
 
                     if role == .shopkeeper {
                         Image(systemName: "storefront")
@@ -41,10 +41,10 @@ struct LoginView: View {
                     ZStack {
                         Circle()
                             .fill(Color(hex: "#EBF8DC"))
-                            .frame(width: 48, height: 48)
+                            .frame(width: 52, height: 52)
 
                         Image(systemName: role == .shopkeeper ? "storefront" : "person.badge.shield.checkmark")
-                            .font(.system(size: 22))
+                            .font(.system(size: 26))
                             .foregroundStyle(Color(hex: "#84CC16"))
                     }
                     .padding(.top, 4)
@@ -111,6 +111,7 @@ struct LoginView: View {
                     Button {
                         isPhoneFocused = false
                         viewModel.requestOTP(role: role) { phone, selectedRole in
+                            router.registrationName = ""
                             router.navigateToOTP(phone: phone, role: selectedRole)
                         }
                     } label: {
@@ -134,7 +135,7 @@ struct LoginView: View {
                 }
                 .padding(20)
                 .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .clipShape(RoundedRectangle(cornerRadius: 24))
                 .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 5)
                 .padding(.horizontal, Spacing.lg)
 
@@ -142,7 +143,7 @@ struct LoginView: View {
                 VStack(spacing: Spacing.md) {
                     // Create Account Link
                     Button {
-                        router.navigateToRegister(role: role)
+                        router.requestConsent(role: role, registration: true)
                     } label: {
                         HStack(spacing: 4) {
                             Text("New to ERRNO?")
@@ -154,8 +155,8 @@ struct LoginView: View {
                         }
                     }
 
-                    // Worker-only: "OR" & Continue with Google
-                    if role == .worker {
+                    // Android shows the mock Google option for both roles.
+                    Group {
                         HStack(spacing: 12) {
                             Rectangle()
                                 .fill(Color.errnoStroke)
@@ -171,15 +172,16 @@ struct LoginView: View {
                         .padding(.vertical, 2)
 
                         Button {
-                            // Demo Google login for worker
-                            router.navigateToHome(role: .worker)
+                            // Android-equivalent mock: route through OTP for the selected role.
+                            router.registrationName = ""
+                            router.navigateToOTP(phone: "9876543210", role: role)
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 18))
+                                Text("G")
+                                    .font(.system(size: 20, weight: .bold))
                                     .foregroundStyle(Color.errnoTextPrimary)
 
-                                Text("Continue with Google")
+                                Text("Sign in with Google")
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(Color.errnoTextPrimary)
                             }
@@ -195,6 +197,8 @@ struct LoginView: View {
                         .padding(.horizontal, Spacing.lg)
                     }
 
+                    LegalLinks()
+                    MockNotice(text: "Local demo • OTP: 123456 • No SMS is sent")
                     // Trust Guarantee
                     HStack(spacing: 6) {
                         Image(systemName: "shield.fill")
@@ -209,8 +213,11 @@ struct LoginView: View {
                 .padding(.bottom, Spacing.xl)
             }
         }
-        .background(Color(hex: "#FAFAFA").ignoresSafeArea())
+        .frame(maxWidth: 600).frame(maxWidth: .infinity)
+        .background(Color.white.ignoresSafeArea())
+        .toolbar(.visible, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
+        .onDisappear { viewModel.cancelRequest() }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {

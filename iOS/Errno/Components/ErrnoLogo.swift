@@ -37,6 +37,7 @@ struct ErrnoLogo: View {
     var animate: Bool             = false
     
     @State private var isAnimating = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     private var iconColor: Color {
         switch variant {
@@ -55,34 +56,14 @@ struct ErrnoLogo: View {
     }
     
     var body: some View {
-        HStack(spacing: size.spacing) {
-            // Icon Mark — stylized "E"
-            ErrnoIconMark(size: size.iconSize, color: iconColor)
-                .scaleEffect(isAnimating ? 1.0 : (animate ? 0.6 : 1.0))
-                .opacity(isAnimating ? 1.0 : (animate ? 0.0 : 1.0))
-            
-            if variant != .iconOnly {
-                // Wordmark & Subtitle
-                VStack(alignment: .leading, spacing: size == .large ? 4 : 0) {
-                    Text("Errno")
-                        .font(.system(size: size.textSize, weight: .semibold, design: .rounded))
-                        .foregroundStyle(textColor)
-                        .opacity(isAnimating ? 1.0 : (animate ? 0.0 : 1.0))
-                        .offset(x: isAnimating ? 0 : (animate ? -8 : 0))
-                    
-                    if size == .large {
-                        Text("SMART SOLUTIONS")
-                            .font(.system(size: size.textSize * 0.25, weight: .bold, design: .default))
-                            .foregroundStyle(Color.errnoLime)
-                            .tracking(2)
-                            .opacity(isAnimating ? 1.0 : (animate ? 0.0 : 1.0))
-                            .offset(x: isAnimating ? 0 : (animate ? -8 : 0))
-                    }
-                }
-            }
-        }
+        Image("ErrnoLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(height: size == .large ? 64 : (size == .medium ? 40 : 28))
+            .scaleEffect(isAnimating ? 1 : (animate ? 0.7 : 1))
+            .opacity(isAnimating ? 1 : (animate ? 0 : 1))
         .onAppear {
-            guard animate else {
+            guard animate && !reduceMotion else {
                 isAnimating = true
                 return
             }
@@ -136,11 +117,7 @@ struct ErrnoIconMark: View {
                 path.addLine(to: CGPoint(x: w * 0.7, y: h * 0.5))
             }
             .stroke(
-                LinearGradient(
-                    colors: [Color.errnoLime, Color.errnoGreen],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
+                color,
                 style: StrokeStyle(lineWidth: size * 0.18, lineCap: .round, lineJoin: .round)
             )
         }
