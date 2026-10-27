@@ -1,0 +1,36 @@
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.p8
+*.key
+*credentials*.json
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.db
+*.sqlite
+*.sqlite3
+
+# Android
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+
+# iOS
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.build/
