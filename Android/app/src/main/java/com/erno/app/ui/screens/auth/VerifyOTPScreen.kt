@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
+import com.erno.app.data.repository.DEMO_OTP_CODE
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,13 +37,14 @@ import kotlinx.coroutines.delay
 fun VerifyOTPScreen(
     phoneNumber: String,
     onBackClick: () -> Unit,
-    onVerifyClick: (String) -> Unit,
+    onVerifyClick: (String) -> Boolean,
     onEditClick: () -> Unit,
     onResendClick: () -> Unit
 ) {
     var otpValues by remember { mutableStateOf(List(6) { "" }) }
     val focusRequesters = remember { List(6) { FocusRequester() } }
     var timerSeconds by remember { mutableIntStateOf(30) }
+    var verificationError by remember { mutableStateOf<String?>(null) }
 
     // Dynamic Countdown Timer
     LaunchedEffect(timerSeconds) {
@@ -177,6 +179,7 @@ fun VerifyOTPScreen(
                             OutlinedTextField(
                                 value = value,
                                 onValueChange = { newValue ->
+                                    verificationError = null
                                     if (newValue.length <= 1) {
                                         val newList = otpValues.toMutableList()
                                         newList[index] = newValue
@@ -219,6 +222,15 @@ fun VerifyOTPScreen(
                         }
                     }
 
+                    Text(
+                        text = "Local demo code: $DEMO_OTP_CODE",
+                        fontSize = 12.sp,
+                        color = ErnoTextSecondary
+                    )
+                    verificationError?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                    }
+
                     Spacer(modifier = Modifier.height(20.dp))
 
                     if (timerSeconds > 0) {
@@ -244,7 +256,10 @@ fun VerifyOTPScreen(
 
                     // Verify Button
                     Button(
-                        onClick = { onVerifyClick(otpValues.joinToString("")) },
+                        onClick = {
+                            verificationError = if (onVerifyClick(otpValues.joinToString(""))) null
+                            else "Incorrect code. Please try again."
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
@@ -276,6 +291,7 @@ fun VerifyOTPScreen(
                             modifier = Modifier.clickable(enabled = timerSeconds == 0) {
                                 timerSeconds = 30
                                 otpValues = List(6) { "" }
+                                verificationError = null
                                 onResendClick()
                             }
                         )

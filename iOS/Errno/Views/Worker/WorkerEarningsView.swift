@@ -9,8 +9,12 @@ struct WorkerEarningsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack { Text("Available Balance").font(.system(size: 13)).foregroundStyle(Color.errnoTextSecondary); Spacer(); StatusBadge(text: "Demo Balance") }
+                        HStack { Text("Available Balance").font(.system(size: 13)).foregroundStyle(Color.errnoTextSecondary); Spacer(); StatusBadge(text: store.balance > 0 ? "Ready to Withdraw" : "No earnings yet") }
                         Text("₹\(Int(store.balance))").font(.system(size: 32, weight: .bold))
+                        if store.balance <= 0 {
+                            Text("Complete a job to build a withdrawable balance.")
+                                .font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary)
+                        }
                         PrimaryButton(title: "Withdraw Earnings to UPI / Bank", icon: "wallet.pass.fill", style: .dark, isDisabled: store.balance <= 0) { withdrawal = true }
                     }.marketplaceCard(padding: 20, radius: 20)
                     Text("Completed Job Settlements").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)

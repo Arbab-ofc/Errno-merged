@@ -2,7 +2,7 @@ import SwiftUI
 
 struct WorkerMyJobsView: View {
     @Environment(LocalMarketplaceStore.self) private var store
-    @State private var filter = 1 // Acceptance is Ongoing in the Android reference.
+    @State private var filter = 0 // Match Android's Upcoming tab as the initial selection.
     private var upcoming: [Job] { [] } // Android acceptance does not produce Upcoming jobs.
     private var ongoing: [Job] { store.workerJobs.filter { $0.status == .inProgress } }
     private var completed: [Job] { store.workerJobs.filter { $0.status == .completed } }

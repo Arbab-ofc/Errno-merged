@@ -5,13 +5,14 @@ struct WorkerLocationMapView: View {
     let locationName: String
     var distanceText = "Location Map Preview"
     var isDarkTheme = true
+    var mapHeight: CGFloat = 200
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dark: Bool
     @State private var details = true
     @State private var failed = false
-    init(locationName: String, distanceText: String = "Location Map Preview", isDarkTheme: Bool = true) {
-        self.locationName = locationName; self.distanceText = distanceText; self.isDarkTheme = isDarkTheme
+    init(locationName: String, distanceText: String = "Location Map Preview", isDarkTheme: Bool = true, mapHeight: CGFloat = 200) {
+        self.locationName = locationName; self.distanceText = distanceText; self.isDarkTheme = isDarkTheme; self.mapHeight = mapHeight
         _dark = State(initialValue: isDarkTheme)
     }
     var body: some View {
@@ -63,7 +64,7 @@ struct WorkerLocationMapView: View {
                     }.font(.system(size: 11)).padding(10).background(.black.opacity(0.7))
                 }.buttonStyle(.plain)
             }.padding(.top, 8)
-        }.foregroundStyle(.white).frame(height: 200)
+        }.foregroundStyle(.white).frame(height: mapHeight)
             .background(dark ? Color(hex: "131D2A") : Color(hex: "E8ECEF"))
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .alert("Unable to open Maps", isPresented: $failed) { Button("OK", role: .cancel) {} }

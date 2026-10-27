@@ -15,6 +15,9 @@ interface AuthRepository {
     fun register(fullName: String, phoneNumber: String, role: String): Flow<Result<AuthResponse>>
 }
 
+/** Used only while the Android UI is running without a configured auth API. */
+const val DEMO_OTP_CODE = "123456"
+
 class AuthRepositoryImpl(
     private val apiService: ErnoApiService? = null
 ) : AuthRepository {
@@ -39,8 +42,8 @@ class AuthRepositoryImpl(
                 val response = apiService.verifyOtp(VerifyOtpRequest(phoneNumber, otpCode))
                 emit(Result.success(response))
             } else {
-                // Local verification check (validates non-empty 6-digit OTP)
-                if (otpCode.length == 6) {
+                // Match the explicit local demo contract; never treat any six digits as verified.
+                if (otpCode == DEMO_OTP_CODE) {
                     emit(
                         Result.success(
                             AuthResponse(
@@ -51,7 +54,7 @@ class AuthRepositoryImpl(
                         )
                     )
                 } else {
-                    emit(Result.failure(IllegalArgumentException("Invalid OTP code")))
+                    emit(Result.failure(IllegalArgumentException("Incorrect code. Please try again.")))
                 }
             }
         } catch (e: Exception) {
