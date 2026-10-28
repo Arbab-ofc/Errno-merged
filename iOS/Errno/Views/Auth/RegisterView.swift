@@ -197,7 +197,7 @@ struct RegisterView: View {
                     Spacer(minLength: 40)
 
                     LegalLinks()
-                    MockNotice(text: "Demo registration is kept only for this app session.")
+                    if AppDependencies.isDemo { MockNotice(text: "Demo registration is kept only for this app session.") }
                     // Trust Badge
                     HStack(spacing: 6) {
                         Image(systemName: "shield.fill")

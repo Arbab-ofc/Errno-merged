@@ -54,6 +54,7 @@ struct AppRootView: View {
                     .zIndex(ZLayer.base)
             }
         }
+        .task { await router.restoreSession() }
         .animation(reduceMotion ? nil : ErrnoAnimation.smoothSlow, value: router.appState)
     }
 }

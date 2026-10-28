@@ -32,7 +32,7 @@ final class OTPViewModel {
         isLoading = false
     }
 
-    init(phone: String, authService: AuthServiceProtocol = MockAuthService()) {
+    init(phone: String, authService: AuthServiceProtocol = AppDependencies.authService()) {
         self.phone = phone
         self.authService = authService
         startTimer()

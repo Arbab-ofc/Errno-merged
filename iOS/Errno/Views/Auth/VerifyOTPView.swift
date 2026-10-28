@@ -124,7 +124,7 @@ struct VerifyOTPView: View {
                             .foregroundStyle(Color.errnoError)
                     }
 
-                    MockNotice(text: "Local demo • use 123456")
+                    if AppDependencies.isDemo { MockNotice(text: "Local demo • use 123456") }
                     // Resend Countdown
                     HStack(spacing: 4) {
                         Text("Resend OTP in")

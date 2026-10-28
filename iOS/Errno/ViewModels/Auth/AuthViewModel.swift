@@ -18,7 +18,7 @@ final class AuthViewModel {
 
     func cancelRequest() { requestTask?.cancel(); isLoading = false }
 
-    init(authService: AuthServiceProtocol = MockAuthService()) {
+    init(authService: AuthServiceProtocol = AppDependencies.authService()) {
         self.authService = authService
     }
 

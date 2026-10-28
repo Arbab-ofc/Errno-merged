@@ -198,7 +198,7 @@ struct LoginView: View {
                     }
 
                     LegalLinks()
-                    MockNotice(text: "Local demo • OTP: 123456 • No SMS is sent")
+                    if AppDependencies.isDemo { MockNotice(text: "Local demo • OTP: 123456 • No SMS is sent") }
                     // Trust Guarantee
                     HStack(spacing: 6) {
                         Image(systemName: "shield.fill")

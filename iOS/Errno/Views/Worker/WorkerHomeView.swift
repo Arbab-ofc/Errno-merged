@@ -4,6 +4,9 @@ struct WorkerHomeView: View {
     @Environment(LocalMarketplaceStore.self) private var store
     @State private var notifications = false
     var body: some View {
+        if !AppDependencies.isDemo { BackendJobsView() } else { demoBody }
+    }
+    private var demoBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 HStack {
