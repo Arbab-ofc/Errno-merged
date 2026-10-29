@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "160328988917",
+    "project_id": "errno-pvt-ltd",
+    "storage_bucket": "errno-pvt-ltd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:160328988917:android:1985ccf199e177395b2dbc",
+        "android_client_info": {
+          "package_name": "com.erno.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "160328988917-39fvmrh7hr7ko121dgbcitbpea5to32d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.erno.app",
+            "certificate_hash": "8cb236dd4aa61a6248d0e474ace9b320be6e8ae2"
+          }
+        },
+        {
+          "client_id": "160328988917-9chf9q4pt1jl2u0e33mo82hcvj22q8rh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKmzt-s0wfvWPqtXzy7GOqG561tfsdNvE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "160328988917-9chf9q4pt1jl2u0e33mo82hcvj22q8rh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "160328988917-k98s8ps7641s864rcv8l2ccldthul38p.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.errno.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

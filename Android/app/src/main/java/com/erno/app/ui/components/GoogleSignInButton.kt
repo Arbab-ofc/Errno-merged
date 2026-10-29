@@ -16,10 +16,12 @@ import androidx.compose.ui.unit.sp
 fun GoogleSignInButton(
     modifier: Modifier = Modifier,
     text: String = "Continue with Google",
+    isLoading: Boolean = false,
     onClick: () -> Unit
 ) {
     OutlinedButton(
         onClick = onClick,
+        enabled = !isLoading,
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp),
@@ -34,13 +36,11 @@ fun GoogleSignInButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            // Google 'G' Icon styled with native brand colors
-            Text(
-                text = "G",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF4285F4) // Google Blue
-            )
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Text(text = "G", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF4285F4))
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = text,

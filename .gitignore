@@ -11,6 +11,7 @@
 *.jks
 *.keystore
 *.mobileprovision
+*.bak
 *.provisionprofile
 *credentials*.json
 *service-account*.json

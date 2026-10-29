@@ -31,6 +31,19 @@ nonisolated struct AuthResponse: Decodable, Sendable {
     let message: String?
     let user: BackendUser?
 }
+nonisolated struct FirebaseUserProfile: Decodable, Sendable {
+    let id: String
+    let firebase_uid: String
+    let name: String?
+    let email: String?
+    let phone_number: String?
+    let role: String?
+    let onboarding_completed: Bool
+}
+nonisolated struct FirebaseLoginResponse: Decodable, Sendable {
+    let success: Bool
+    let user: FirebaseUserProfile
+}
 nonisolated struct BackendShop: Codable, Sendable {
     let id: String
     let owner_id: String
@@ -80,6 +93,15 @@ nonisolated struct BackendApplication: Codable, Sendable {
 
 /// Mirrors existing routes. Definitions do not imply that a route is secure or operational.
 nonisolated enum BackendEndpoints {
+    static func firebaseLogin(token: String) -> APIEndpoint {
+        APIEndpoint(method: "POST", path: ["api", "v1", "auth", "firebase"], bearerToken: token)
+    }
+    static func logout(token: String) -> APIEndpoint {
+        APIEndpoint(method: "POST", path: ["api", "v1", "auth", "logout"], bearerToken: token)
+    }
+    static func currentUser(token: String) -> APIEndpoint {
+        APIEndpoint(method: "GET", path: ["api", "v1", "users", "me"], bearerToken: token)
+    }
     static func jobs(status: String? = nil) -> APIEndpoint {
         APIEndpoint(method: "GET", path: ["jobs"], query: status.map { [URLQueryItem(name: "status_filter", value: $0)] } ?? [])
     }

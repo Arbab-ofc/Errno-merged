@@ -19,8 +19,8 @@ class VerifyOTPRequest(BaseModel):
 class UserResponse(BaseModel):
     id: str
     full_name: Optional[str] = None
-    phone_number: str
-    role: str
+    phone_number: Optional[str] = None
+    role: Optional[str] = None
     is_phone_verified: bool
 
     class Config:

@@ -22,15 +22,12 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 from database import Base
-from models.user import User
+import models  # Register the runtime models on the shared Base metadata.
 from models.Category import Category
-from models.shop import Shop
 from models.workers import Worker
-from models.Job import Job
 from models.Booking import Booking
 from models.Attendance import Attendance
 from models.Rating import Rating
-from models.otp import OTP
 
 
 target_metadata = Base.metadata

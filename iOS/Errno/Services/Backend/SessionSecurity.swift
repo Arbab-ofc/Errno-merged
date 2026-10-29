@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import FirebaseAuth
 
 /// No server-issued credential in the current backend is a verifiable session.
 /// The vault is ready for a future authenticated contract; current auth never writes to it.
@@ -44,10 +45,14 @@ nonisolated struct KeychainCredentialVault: CredentialVault {
 actor BackendSessionManager {
     private let vault: any CredentialVault
     init(vault: any CredentialVault = KeychainCredentialVault()) { self.vault = vault }
-    /// No expiry, refresh, revocation, or authenticated /me route exists. Do not restore identity from a phone lookup.
-    func restore() throws { try vault.clear() }
-    func logout() throws { try vault.clear() }
-    func accept(_ response: AuthResponse) throws { throw APIError.insecureAuthentication }
+    func restore() async throws -> FirebaseUserProfile? {
+        try vault.clear() // Firebase owns the session; never persist an ID token in the app vault.
+        return try await FirebaseGoogleAuth.restore()
+    }
+    func logout() async throws {
+        try vault.clear()
+        try await FirebaseGoogleAuth.logout()
+    }
 }
 
 nonisolated struct BackendAuthService: AuthServiceProtocol {

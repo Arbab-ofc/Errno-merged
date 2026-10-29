@@ -12,8 +12,10 @@ class User(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     full_name = Column(String, nullable=True)
-    phone_number = Column(String, unique=True, index=True, nullable=False)
-    role = Column(String, nullable=False, default="shopkeeper")  # shopkeeper or worker
+    phone_number = Column(String, unique=True, index=True, nullable=True)
+    email = Column(String, nullable=True, index=True)
+    firebase_uid = Column(String, nullable=True, unique=True, index=True)
+    role = Column(String, nullable=True, default=None)  # assigned by the existing onboarding flow
     is_active = Column(Boolean, default=True)
     is_phone_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

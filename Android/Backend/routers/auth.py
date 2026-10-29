@@ -4,6 +4,7 @@ import random
 from database import get_db
 from models import User, OTP, Shop
 from schemas import SendOTPRequest, SendOTPResponse, VerifyOTPRequest, AuthResponse, RegisterRequest, UserResponse
+from firebase_auth import authenticated_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -105,11 +106,8 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     )
 
 @router.get("/me/{phone_number}", response_model=UserResponse)
-def get_user_profile(phone_number: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.phone_number == phone_number).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+def get_user_profile(phone_number: str, user: User = Depends(authenticated_user)):
+    # Preserve the old path shape while resolving identity exclusively from verified Firebase claims.
+    if user.phone_number is not None and user.phone_number != phone_number:
+        raise HTTPException(status_code=403, detail="You may only access your own profile")
     return UserResponse.from_orm(user)

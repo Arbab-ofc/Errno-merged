@@ -34,7 +34,7 @@ nonisolated struct BackendConfiguration: Sendable {
 nonisolated enum APIError: Error, LocalizedError, Equatable {
     case configuration, invalidResponse, decoding, unauthorized, forbidden, notFound
     case validation, rateLimited, server, transport, timedOut
-    case insecureAuthentication, unsupportedFeature, invalidInput
+    case insecureAuthentication, unsupportedFeature, invalidInput, googleSignInConfiguration
 
     var errorDescription: String? {
         switch self {
@@ -49,6 +49,7 @@ nonisolated enum APIError: Error, LocalizedError, Equatable {
         case .transport: return "Unable to connect. Check your connection and retry."
         case .timedOut: return "The request timed out. Please retry."
         case .insecureAuthentication: return "Sign-in is unavailable until the backend supports secure OTP verification and sessions."
+        case .googleSignInConfiguration: return "Google sign-in configuration is incomplete. Download the Firebase plist with its OAuth client ID and URL scheme."
         case .unsupportedFeature: return "This feature is not supported by the current backend."
         }
     }
@@ -59,6 +60,7 @@ nonisolated struct APIEndpoint: Sendable {
     let path: [String]
     var query: [URLQueryItem] = []
     var body: Data? = nil
+    var bearerToken: String? = nil
 
     // Snake case is explicit in DTOs; no global key conversion can silently rename IDs.
     static func json<T: Encodable>(_ method: String, _ path: [String], body: T) throws -> Self {
@@ -121,6 +123,7 @@ nonisolated struct APIClient: Sendable {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        if let token = endpoint.bearerToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         return request
     }
 

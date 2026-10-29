@@ -17,7 +17,6 @@ struct RegisterView: View {
     @State private var isLoading: Bool = false
     @State private var registrationTask: Task<Void, Never>?
     @State private var initialized = false
-    @State private var googlePlaceholder = false
     @State private var errorMessage: String? = nil
 
     @FocusState private var focusedField: Field?
@@ -171,11 +170,32 @@ struct RegisterView: View {
                 .disabled(!isValid || isLoading)
                 .padding(.top, Spacing.xs)
 
-                Button { googlePlaceholder = true } label: {
-                    HStack(spacing: 12) { Text("G").foregroundStyle(.blue).font(.system(size: 20, weight: .bold)); Text("Sign up with Google").font(.system(size: 15, weight: .bold)) }
+                Button {
+                    guard !isLoading else { return }
+                    isLoading = true
+                    errorMessage = nil
+                    registrationTask = Task {
+                        defer { isLoading = false }
+                        do {
+                            let profile = try await FirebaseGoogleAuth.signIn(role: selectedRole)
+                            router.registrationName = profile.name ?? fullName
+                            switch profile.role {
+                            case "worker": router.navigateToHome(role: .worker)
+                            case "shop_owner", "shopkeeper": router.navigateToHome(role: .shopkeeper)
+                            default: errorMessage = "Choose your ERRNO role to continue."
+                            }
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        if isLoading { ProgressView() } else { Text("G").foregroundStyle(.blue).font(.system(size: 20, weight: .bold)) }
+                        Text("Sign up with Google").font(.system(size: 15, weight: .bold))
+                    }
                         .frame(maxWidth: .infinity).frame(height: 52)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.errnoStroke))
-                }.foregroundStyle(Color.errnoTextPrimary)
+                }.foregroundStyle(Color.errnoTextPrimary).disabled(isLoading)
                 // Footer Links
                 VStack(spacing: Spacing.md) {
                     Button {
@@ -233,8 +253,6 @@ struct RegisterView: View {
                     .foregroundStyle(Color.errnoTextPrimary)
             }
         }
-        .alert("Google Sign-Up", isPresented: $googlePlaceholder) { Button("OK", role: .cancel) {} }
-        message: { Text("Google registration is a placeholder in the Android reference. Use the local phone flow.") }
         .onDisappear { registrationTask?.cancel(); isLoading = false }
         .onAppear {
             if !initialized { selectedRole = initialRole; initialized = true }

@@ -36,8 +36,17 @@ final class AppRouter {
     var sessionError: String?
 
     func restoreSession() async {
-        do { try await session.restore() }
-        catch { sessionError = error.localizedDescription }
+        do {
+            guard let profile = try await session.restore() else { return }
+            switch profile.role {
+            case "worker": appState = .workerHome
+            case "shop_owner", "shopkeeper": appState = .shopkeeperHome
+            default: appState = .auth
+            }
+        } catch {
+            sessionError = error.localizedDescription
+            if appState == .splash { appState = .auth }
+        }
     }
     var registrationName = ""
     var shopkeeperTab = 0

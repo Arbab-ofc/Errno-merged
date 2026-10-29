@@ -23,6 +23,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F00000000000000000000001 /* FirebaseCore in Frameworks */,
+				F00000000000000000000002 /* FirebaseAuth in Frameworks */,
+				F00000000000000000000003 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +68,9 @@
 			);
 			name = Errno;
 			packageProductDependencies = (
+				F00000000000000000000011 /* FirebaseCore */,
+				F00000000000000000000012 /* FirebaseAuth */,
+				F00000000000000000000013 /* GoogleSignIn */,
 			);
 			productName = Errno;
 			productReference = 821DCBB7305686FF0075DD41 /* Errno.app */;
@@ -96,6 +102,10 @@
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 821DCBB8305686FF0075DD41 /* Products */;
+			packageReferences = (
+				F00000000000000000000021 /* firebase-ios-sdk */,
+				F00000000000000000000022 /* GoogleSignIn-iOS */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -112,6 +122,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -123,6 +134,15 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+		F00000000000000000000021 /* firebase-ios-sdk */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/firebase/firebase-ios-sdk"; requirement = {kind = upToNextMajorVersion; minimumVersion = 11.0.0; }; };
+		F00000000000000000000022 /* GoogleSignIn-iOS */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/google/GoogleSignIn-iOS"; requirement = {kind = upToNextMajorVersion; minimumVersion = 8.0.0; }; };
+		F00000000000000000000011 /* FirebaseCore */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000021 /* firebase-ios-sdk */; productName = FirebaseCore; };
+		F00000000000000000000012 /* FirebaseAuth */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000021 /* firebase-ios-sdk */; productName = FirebaseAuth; };
+		F00000000000000000000013 /* GoogleSignIn */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000022 /* GoogleSignIn-iOS */; productName = GoogleSignIn; };
+		F00000000000000000000001 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000011 /* FirebaseCore */; };
+		F00000000000000000000002 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000012 /* FirebaseAuth */; };
+		F00000000000000000000003 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000013 /* GoogleSignIn */; };
 
 /* Begin XCBuildConfiguration section */
 		821DCBC0305687010075DD41 /* Debug */ = {
@@ -256,6 +276,7 @@
 				DEVELOPMENT_TEAM = 6MTUWR95N7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ErrnoApp-Info.plist;
 				INFOPLIST_KEY_ErrnoAPIBaseURL = "$(ERRNO_API_BASE_URL)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -289,6 +310,7 @@
 				DEVELOPMENT_TEAM = 6MTUWR95N7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ErrnoApp-Info.plist;
 				INFOPLIST_KEY_ErrnoAPIBaseURL = "$(ERRNO_API_BASE_URL)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

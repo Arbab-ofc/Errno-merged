@@ -11,6 +11,8 @@ struct LoginView: View {
 
     let role: UserRole
     @State private var viewModel = AuthViewModel()
+    @State private var isGoogleLoading = false
+    @State private var googleError: String?
     @FocusState private var isPhoneFocused: Bool
 
     var body: some View {
@@ -172,14 +174,31 @@ struct LoginView: View {
                         .padding(.vertical, 2)
 
                         Button {
-                            // Android-equivalent mock: route through OTP for the selected role.
-                            router.registrationName = ""
-                            router.navigateToOTP(phone: "9876543210", role: role)
+                            guard !isGoogleLoading else { return }
+                            isGoogleLoading = true
+                            googleError = nil
+                            Task {
+                                defer { isGoogleLoading = false }
+                                do {
+                                    let profile = try await FirebaseGoogleAuth.signIn(role: role)
+                                    switch profile.role {
+                                    case "worker": router.navigateToHome(role: .worker)
+                                    case "shop_owner", "shopkeeper": router.navigateToHome(role: .shopkeeper)
+                                    default: googleError = "Choose your ERRNO role to continue."
+                                    }
+                                } catch {
+                                    googleError = error.localizedDescription
+                                }
+                            }
                         } label: {
                             HStack(spacing: 8) {
-                                Text("G")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundStyle(Color.errnoTextPrimary)
+                                if isGoogleLoading {
+                                    ProgressView()
+                                } else {
+                                    Text("G")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundStyle(Color.errnoTextPrimary)
+                                }
 
                                 Text("Sign in with Google")
                                     .font(.system(size: 14, weight: .bold))
@@ -194,7 +213,16 @@ struct LoginView: View {
                                     .stroke(Color.errnoStroke, lineWidth: 1)
                             )
                         }
+                        .disabled(isGoogleLoading)
                         .padding(.horizontal, Spacing.lg)
+                    }
+
+                    if let googleError {
+                        Text(googleError)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.errnoError)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, Spacing.lg)
                     }
 
                     LegalLinks()
