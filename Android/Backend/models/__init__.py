@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Index, func, text
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Index, func, text, JSON
 from sqlalchemy.orm import relationship
 from db_base import Base
 
@@ -106,3 +106,32 @@ class Application(Base):
 
     job = relationship("Job", back_populates="applications")
     worker = relationship("User", back_populates="applications")
+
+
+class AdminPermission(Base):
+    """Operator-provisioned admin access keyed by verified Firebase UID."""
+    __tablename__ = "admin_permissions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    firebase_uid = Column(String, nullable=False, unique=True, index=True)
+    email = Column(String, nullable=True)
+    permissions = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    granted_by_uid = Column(String, nullable=False)
+    reason = Column(String(500), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class AdminAuditLog(Base):
+    """Immutable record of successful privileged actions and permission changes."""
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    administrator_uid = Column(String, nullable=False, index=True)
+    action = Column(String(120), nullable=False)
+    resource_type = Column(String(80), nullable=False)
+    resource_id = Column(String(120), nullable=True)
+    outcome = Column(String(20), nullable=False, default="success", server_default=text("'success'"))
+    change_metadata = Column("metadata", JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)

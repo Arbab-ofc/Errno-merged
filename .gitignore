@@ -118,3 +118,10 @@ DerivedData-*/
 **/*verification_report*.md
 **/*INSPECTION_REPORT*.md
 **/*inspection_report*.md
+
+/Android/gradle.properties.local
+/iOS/Local.xcconfig
+/Admin/.env.local
+/Admin/.env.*.local
+/Admin/node_modules/
+/Admin/dist/

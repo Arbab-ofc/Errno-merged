@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User
+from models import AdminPermission, User
 
 PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "errno-pvt-ltd")
 _bearer = HTTPBearer(auto_error=False)
@@ -62,3 +62,23 @@ def authenticated_user(
 def require_role(user: User, *roles: str) -> None:
     if user.role not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This action is not available for your role")
+
+
+def require_admin(permission: str | None = None):
+    """Return a dependency enforcing persisted, operator-controlled admin access."""
+    def dependency(
+        claims: dict = Depends(verified_claims),
+        db: Session = Depends(get_db),
+    ) -> AdminPermission:
+        admin = db.query(AdminPermission).filter(
+            AdminPermission.firebase_uid == claims["uid"],
+        ).first()
+        if admin is None or not admin.active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
+        account = db.query(User).filter(User.firebase_uid == claims["uid"]).first()
+        if account is not None and not account.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator account is disabled")
+        if permission is not None and permission not in (admin.permissions or []):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator permission required")
+        return admin
+    return dependency

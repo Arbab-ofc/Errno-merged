@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -6,6 +6,7 @@ from database import get_db
 from models import Job, Application, User, Shop
 from schemas import JobCreateRequest, JobResponse, ApplicationResponse
 from firebase_auth import authenticated_user, require_role
+from job_lifecycle import VALID_JOB_STATUSES, can_transition
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -98,7 +99,13 @@ def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Ses
     return ApplicationResponse.from_orm(app)
 
 @router.patch("/{job_id}/status", response_model=JobResponse)
-def update_job_status(job_id: str, new_status: str, worker_id: Optional[str] = None, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+def update_job_status(
+    job_id: str,
+    new_status: str = Query(..., pattern="^(open|assigned|in_progress|inProgress|completed|cancelled)$"),
+    worker_id: Optional[str] = None,
+    user: User = Depends(authenticated_user),
+    db: Session = Depends(get_db),
+):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -107,6 +114,9 @@ def update_job_status(job_id: str, new_status: str, worker_id: Optional[str] = N
     shop = db.query(Shop).filter(Shop.id == job.shop_id, Shop.owner_id == user.id).first()
     if shop is None:
         raise HTTPException(status_code=403, detail="You do not own this job")
+
+    if new_status not in VALID_JOB_STATUSES or not can_transition(job.status, new_status):
+        raise HTTPException(status_code=409, detail="Invalid job status transition")
 
     job.status = new_status
     if worker_id:

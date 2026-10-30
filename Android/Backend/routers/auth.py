@@ -1,109 +1,72 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-import random
 from database import get_db
-from models import User, OTP, Shop
+from models import User, Shop
 from schemas import SendOTPRequest, SendOTPResponse, VerifyOTPRequest, AuthResponse, RegisterRequest, UserResponse
-from firebase_auth import authenticated_user
+from firebase_auth import authenticated_user, verified_claims
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/send-otp", response_model=SendOTPResponse)
 def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
-    # Generate 6-digit OTP code (or 123456 for easy dev testing)
-    otp_code = "123456"
-
-    # Store OTP record
-    otp_record = OTP(
-        phone_number=request.phone_number,
-        otp_code=otp_code
-    )
-    db.add(otp_record)
-    db.commit()
-
-    return SendOTPResponse(
-        success=True,
-        message=f"OTP sent successfully to +91 {request.phone_number}",
-        otp_demo=otp_code
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Phone OTP is disabled because no verified OTP provider is configured. Use Firebase Authentication.",
     )
 
 @router.post("/verify-otp", response_model=AuthResponse)
 def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
-    # Verify OTP
-    otp_record = db.query(OTP).filter(
-        OTP.phone_number == request.phone_number,
-        OTP.otp_code == request.otp_code,
-        OTP.is_verified == False
-    ).order_by(OTP.created_at.desc()).first()
-
-    if not otp_record and request.otp_code != "123456":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP code. Please try again."
-        )
-
-    if otp_record:
-        otp_record.is_verified = True
-        db.commit()
-
-    # Check if user exists
-    user = db.query(User).filter(User.phone_number == request.phone_number).first()
-    if not user:
-        # Create default user if not exists
-        user = User(
-            phone_number=request.phone_number,
-            role="shopkeeper",
-            is_phone_verified=True
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-        # Create default shop for shopkeeper
-        shop = Shop(owner_id=user.id, shop_name="My General Store")
-        db.add(shop)
-        db.commit()
-
-    return AuthResponse(
-        success=True,
-        token=f"bearer_token_{user.id}",
-        message="Authentication successful",
-        user=UserResponse.from_orm(user)
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Phone OTP verification is disabled because no verified OTP provider is configured. Use Firebase Authentication.",
     )
 
 @router.post("/register", response_model=AuthResponse)
-def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.phone_number == request.phone_number).first()
-    if user:
-        user.full_name = request.full_name
-        user.role = request.role
-        user.is_phone_verified = True
-        db.commit()
-        db.refresh(user)
-    else:
-        user = User(
-            full_name=request.full_name,
-            phone_number=request.phone_number,
-            role=request.role,
-            is_phone_verified=True
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-    if user.role == "shopkeeper":
-        existing_shop = db.query(Shop).filter(Shop.owner_id == user.id).first()
-        if not existing_shop:
-            shop = Shop(owner_id=user.id, shop_name=f"{user.full_name}'s Store")
-            db.add(shop)
-            db.commit()
-
-    return AuthResponse(
-        success=True,
-        token=f"bearer_token_{user.id}",
-        message="User registered successfully",
-        user=UserResponse.from_orm(user)
+def register_user(
+    request: RegisterRequest,
+    claims: dict = Depends(verified_claims),
+    db: Session = Depends(get_db),
+):
+    uid = claims["uid"]
+    verified_phone = claims.get("phone_number")
+    digits = lambda value: "".join(character for character in value if character.isdigit())
+    verified_digits = digits(verified_phone or "")
+    requested_digits = digits(request.phone_number)
+    same_verified_phone = verified_digits == requested_digits or (
+        (verified_phone or "").startswith("+91")
+        and len(requested_digits) == 10
+        and verified_digits.endswith(requested_digits)
     )
+    if not verified_phone or not same_verified_phone:
+        raise HTTPException(status_code=403, detail="Registration phone must match the verified Firebase identity")
+
+    user = db.query(User).filter(User.firebase_uid == uid).first()
+    phone_owner = db.query(User).filter(User.phone_number == verified_phone).first()
+    if phone_owner is not None and phone_owner.firebase_uid not in (None, uid):
+        raise HTTPException(status_code=409, detail="Phone number is linked to another account")
+    if user is None:
+        if phone_owner is not None:
+            user = phone_owner
+            user.firebase_uid = uid
+        else:
+            user = User(firebase_uid=uid, email=claims.get("email"), phone_number=verified_phone,
+                        full_name=claims.get("name"), is_phone_verified=True)
+            db.add(user)
+    elif user.phone_number not in (None, verified_phone):
+        raise HTTPException(status_code=409, detail="Account already has a different verified phone number")
+
+    if user.role is not None and user.role != request.role:
+        raise HTTPException(status_code=409, detail="Role has already been selected")
+    user.full_name = request.full_name.strip()
+    user.phone_number = verified_phone
+    user.email = claims.get("email") or user.email
+    user.is_phone_verified = True
+    user.role = request.role
+    if request.role in ("shop_owner", "shopkeeper") and not user.shops:
+        user.shops.append(Shop(shop_name=f"{user.full_name or 'My'} Store"))
+    db.commit()
+    db.refresh(user)
+    return AuthResponse(success=True, token=None, message="Profile registered", user=UserResponse.model_validate(user))
 
 @router.get("/me/{phone_number}", response_model=UserResponse)
 def get_user_profile(phone_number: str, user: User = Depends(authenticated_user)):

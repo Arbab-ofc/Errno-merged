@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -33,9 +33,10 @@ class AuthResponse(BaseModel):
     user: Optional[UserResponse] = None
 
 class RegisterRequest(BaseModel):
-    full_name: str = Field(..., example="Rahul Sharma")
-    phone_number: str = Field(..., example="9971439107")
-    role: str = Field(..., example="shopkeeper")
+    model_config = ConfigDict(extra="forbid")
+    full_name: str = Field(..., min_length=1, max_length=120)
+    phone_number: str = Field(..., min_length=7, max_length=20)
+    role: str = Field(..., pattern="^(worker|shop_owner|shopkeeper)$")
 
 # Shop Schemas
 class ShopCreateRequest(BaseModel):
