@@ -3,14 +3,13 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Shop, User
 from schemas import ShopResponse, ShopCreateRequest
+from firebase_auth import authenticated_user, require_role
 
 router = APIRouter(prefix="/shops", tags=["Shops"])
 
 @router.get("/me/{owner_phone}", response_model=ShopResponse)
-def get_my_shop(owner_phone: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.phone_number == owner_phone).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def get_my_shop(owner_phone: str, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "shop_owner", "shopkeeper")
 
     shop = db.query(Shop).filter(Shop.owner_id == user.id).first()
     if not shop:
@@ -22,10 +21,8 @@ def get_my_shop(owner_phone: str, db: Session = Depends(get_db)):
     return ShopResponse.from_orm(shop)
 
 @router.patch("/me/{owner_phone}", response_model=ShopResponse)
-def update_my_shop(owner_phone: str, request: ShopCreateRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.phone_number == owner_phone).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def update_my_shop(owner_phone: str, request: ShopCreateRequest, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "shop_owner", "shopkeeper")
 
     shop = db.query(Shop).filter(Shop.owner_id == user.id).first()
     if not shop:

@@ -103,6 +103,11 @@ struct RoleSelectionView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
 
+                    if !AppDependencies.isDemo {
+                        NavigationLink("Browse Available Jobs") { BackendJobsView() }
+                            .font(.system(size: 13, weight: .medium))
+                    }
+
                     // Create Account Link
                     Button {
                         router.requestConsent(role: selectedRole, registration: true)

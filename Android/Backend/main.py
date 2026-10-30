@@ -4,10 +4,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from database import get_db, engine, Base
 import models
-from routers import auth, jobs, shops
+from routers import auth, jobs, shops, firebase
 
-# Create database tables automatically if SQLite or DB is initialized
-Base.metadata.create_all(bind=engine)
+# Keep automatic schema creation limited to disposable/local SQLite development.
+# PostgreSQL schema changes are migration-only; startup must never mutate a deployed DB.
+if engine.dialect.name == "sqlite":
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="ERRNO API Backend",
@@ -28,6 +30,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(jobs.router)
 app.include_router(shops.router)
+app.include_router(firebase.router)
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):

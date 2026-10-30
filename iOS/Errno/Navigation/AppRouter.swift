@@ -32,6 +32,22 @@ enum AuthRoute: Hashable {
 @MainActor
 final class AppRouter {
     let marketplace = LocalMarketplaceStore()
+    private let session = BackendSessionManager()
+    var sessionError: String?
+
+    func restoreSession() async {
+        do {
+            guard let profile = try await session.restore() else { return }
+            switch profile.role {
+            case "worker": appState = .workerHome
+            case "shop_owner", "shopkeeper": appState = .shopkeeperHome
+            default: appState = .auth
+            }
+        } catch {
+            sessionError = error.localizedDescription
+            if appState == .splash { appState = .auth }
+        }
+    }
     var registrationName = ""
     var shopkeeperTab = 0
     var workerTab = 0
@@ -95,6 +111,10 @@ final class AppRouter {
 
     func signOut() {
         marketplace.signOut()
+        Task {
+            do { try await session.logout() }
+            catch { sessionError = error.localizedDescription }
+        }
         postingPresented = false
         registrationName = ""
         shopkeeperTab = 0

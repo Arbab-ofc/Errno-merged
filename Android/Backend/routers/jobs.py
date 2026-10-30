@@ -1,19 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
 from models import Job, Application, User, Shop
 from schemas import JobCreateRequest, JobResponse, ApplicationResponse
+from firebase_auth import authenticated_user, require_role
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 @router.post("", response_model=JobResponse)
-def create_job(request: JobCreateRequest, owner_phone: Optional[str] = "9971439107", db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.phone_number == owner_phone).first()
+def create_job(request: JobCreateRequest, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "shop_owner", "shopkeeper")
     shop_id = None
     if user:
         shop = db.query(Shop).filter(Shop.owner_id == user.id).first()
         if shop:
+            shop_id = shop.id
+        else:
+            shop = Shop(owner_id=user.id, shop_name=f"{user.full_name or 'My'} Store")
+            db.add(shop)
+            db.flush()
             shop_id = shop.id
 
     job = Job(
@@ -52,17 +59,13 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     return JobResponse.from_orm(job)
 
 @router.post("/{job_id}/apply", response_model=ApplicationResponse)
-def apply_for_job(job_id: str, worker_phone: str = "9971439107", db: Session = Depends(get_db)):
+def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "worker")
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    worker = db.query(User).filter(User.phone_number == worker_phone).first()
-    if not worker:
-        worker = User(phone_number=worker_phone, role="worker", full_name="Aman Kumar")
-        db.add(worker)
-        db.commit()
-        db.refresh(worker)
+    worker = user
 
     existing_app = db.query(Application).filter(
         Application.job_id == job_id,
@@ -78,19 +81,38 @@ def apply_for_job(job_id: str, worker_phone: str = "9971439107", db: Session = D
         status="pending"
     )
     db.add(app)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The unique job/worker key closes the concurrent duplicate-apply race.
+        db.rollback()
+        existing_app = db.query(Application).filter(
+            Application.job_id == job_id,
+            Application.worker_id == worker.id,
+        ).first()
+        if existing_app is None:
+            raise
+        return ApplicationResponse.from_orm(existing_app)
     db.refresh(app)
 
     return ApplicationResponse.from_orm(app)
 
 @router.patch("/{job_id}/status", response_model=JobResponse)
-def update_job_status(job_id: str, new_status: str, worker_id: Optional[str] = None, db: Session = Depends(get_db)):
+def update_job_status(job_id: str, new_status: str, worker_id: Optional[str] = None, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    require_role(user, "shop_owner", "shopkeeper")
+    shop = db.query(Shop).filter(Shop.id == job.shop_id, Shop.owner_id == user.id).first()
+    if shop is None:
+        raise HTTPException(status_code=403, detail="You do not own this job")
+
     job.status = new_status
     if worker_id:
+        worker = db.query(User).filter(User.id == worker_id).first()
+        if worker is None or worker.role != "worker":
+            raise HTTPException(status_code=422, detail="Assigned user must be a worker")
         job.assigned_worker_id = worker_id
 
     db.commit()

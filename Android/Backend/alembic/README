@@ -1,1 +1,8 @@
 Generic single-database configuration.
+
+The six revisions in this directory are retained as historical migrations.
+They build the legacy integer-ID schema and are not compatible with the active
+FastAPI models. Do not use this environment to initialize a new database. New
+empty databases must use the separate alembic_canonical.ini environment after
+review. Repository history does not establish whether these revisions have
+been applied in environments outside this checkout.

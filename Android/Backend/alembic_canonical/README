@@ -1,0 +1,26 @@
+Canonical initial migrations for new ERRNO databases only.
+
+This directory is intentionally separate from alembic/versions. The six
+existing revisions are retained unchanged because repository history cannot
+establish whether another environment has applied them. Do not run the legacy
+chain against an empty database; its integer-ID schema does not match the
+active FastAPI runtime models.
+
+The canonical environment requires ERRNO_DATABASE_URL and does not load .env.
+Non-loopback targets additionally require ERRNO_PGSSLROOTCERT and force
+sslmode=verify-full plus ERRNO_ALLOW_CANONICAL_MIGRATION=1. Local migration
+validation is limited to the explicitly named errno_phase22_test database with
+ERRNO_ALLOW_LOCAL_TEST_DB=1.
+
+Local disposable database example:
+
+    ERRNO_DATABASE_URL='postgresql+psycopg2://postgres@127.0.0.1:55439/errno_phase22_test' \
+    ERRNO_ALLOW_LOCAL_TEST_DB=1 \
+    .venv/bin/alembic -c alembic_canonical.ini upgrade head
+
+Production command for later review only (not run during Phase 2.2):
+
+    ERRNO_DATABASE_URL="$DATABASE_URL" \
+    ERRNO_PGSSLROOTCERT="/absolute/path/to/prod-ca-2021.crt" \
+    ERRNO_ALLOW_CANONICAL_MIGRATION=1 \
+    .venv/bin/alembic -c alembic_canonical.ini upgrade head

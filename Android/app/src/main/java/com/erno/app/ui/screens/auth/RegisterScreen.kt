@@ -33,7 +33,9 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 fun RegisterScreen(
     onBackClick: () -> Unit,
     onRegisterClick: (String, Role) -> Unit,
-    onLoginClick: () -> Unit
+    onLoginClick: () -> Unit,
+    onGoogleSignInClick: (Role) -> Unit = {},
+    isGoogleLoading: Boolean = false
 ) {
     var fullName by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
@@ -211,7 +213,8 @@ fun RegisterScreen(
 
                 GoogleSignInButton(
                     text = "Sign up with Google",
-                    onClick = { /* Google Sign In */ }
+                    isLoading = isGoogleLoading,
+                    onClick = { onGoogleSignInClick(selectedRole) }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))

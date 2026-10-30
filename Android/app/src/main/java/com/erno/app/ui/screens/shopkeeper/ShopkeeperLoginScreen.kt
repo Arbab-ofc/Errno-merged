@@ -43,7 +43,8 @@ fun ShopkeeperLoginScreen(
     onCreateAccount: () -> Unit,
     onTermsClick: () -> Unit = {},
     onPrivacyClick: () -> Unit = {},
-    onGoogleSignInClick: () -> Unit = { onSendOTP("9876543210") }
+    onGoogleSignInClick: () -> Unit = {},
+    isGoogleLoading: Boolean = false
 ) {
     var phoneNumber by remember { mutableStateOf("") }
     val darkLinkColor = Color(0xFF11382A)
@@ -301,6 +302,7 @@ fun ShopkeeperLoginScreen(
 
                         GoogleSignInButton(
                             text = "Sign in with Google",
+                            isLoading = isGoogleLoading,
                             onClick = onGoogleSignInClick
                         )
                     }

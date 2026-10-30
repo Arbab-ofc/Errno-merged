@@ -21,16 +21,8 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from database import Base
-from models.user import User
-from models.Category import Category
-from models.shop import Shop
-from models.workers import Worker
-from models.Job import Job
-from models.Booking import Booking
-from models.Attendance import Attendance
-from models.Rating import Rating
-from models.otp import OTP
+from db_base import Base
+import models  # Register only the active canonical runtime models.
 
 
 target_metadata = Base.metadata

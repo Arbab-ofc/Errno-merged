@@ -1,6 +1,10 @@
 package com.erno.app.navigation
 
-import androidx.compose.runtime.Composable
+import android.app.Activity
+import android.widget.Toast
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -23,6 +27,9 @@ import com.erno.app.ui.screens.legal.PrivacyPolicyScreen
 import com.erno.app.ui.screens.legal.TermsConditionsScreen
 import com.erno.app.ui.screens.legal.TermsConsentScreen
 import com.erno.app.data.repository.DEMO_OTP_CODE
+import com.erno.app.data.repository.FirebaseGoogleAuth
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 private fun NavHostController.navigateTab(rootRoute: String, targetRoute: String) {
     if (currentDestination?.route == targetRoute) return
@@ -35,6 +42,41 @@ private fun NavHostController.navigateTab(rootRoute: String, targetRoute: String
 
 @Composable
 fun NavGraph(navController: NavHostController) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var googleLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        runCatching { FirebaseGoogleAuth.restore() }.getOrNull()?.let { identity ->
+            val route = when (identity.role) {
+                "worker" -> Screen.WorkerHome.route
+                "shopkeeper", "shop_owner" -> Screen.ShopkeeperHome.route
+                else -> Screen.RoleSelection.route
+            }
+            navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+        }
+    }
+    fun googleSignIn(selectedRole: String) {
+        if (googleLoading) return
+        googleLoading = true
+        scope.launch {
+            try {
+                val activity = context as? Activity ?: error("Sign-in is unavailable in this context.")
+                val identity = FirebaseGoogleAuth.signIn(activity, selectedRole)
+                val route = when (identity.role) {
+                    "worker" -> Screen.WorkerHome.route
+                    "shopkeeper", "shop_owner" -> Screen.ShopkeeperHome.route
+                    else -> Screen.RoleSelection.route
+                }
+                navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+            } catch (error: Exception) {
+                if (error !is CancellationException && error !is GetCredentialCancellationException) {
+                    Toast.makeText(context, error.localizedMessage ?: "Google sign-in failed. Please retry.", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                googleLoading = false
+            }
+        }
+    }
     val shopkeeperViewModel: ShopkeeperViewModel = viewModel()
     val shopkeeperState by shopkeeperViewModel.uiState.collectAsState()
 
@@ -93,6 +135,8 @@ fun NavGraph(navController: NavHostController) {
                 onSendOTP = { phoneNumber ->
                     navController.navigate("verify_otp/$phoneNumber?role=shopkeeper")
                 },
+                onGoogleSignInClick = { googleSignIn("shop_owner") },
+                isGoogleLoading = googleLoading,
                 onCreateAccount = {
                     navController.navigate(Screen.TermsConsent.createRoute(Screen.Register.route))
                 },
@@ -113,6 +157,8 @@ fun NavGraph(navController: NavHostController) {
                 onSendOTP = { phoneNumber ->
                     navController.navigate("verify_otp/$phoneNumber?role=worker")
                 },
+                onGoogleSignInClick = { googleSignIn("worker") },
+                isGoogleLoading = googleLoading,
                 onCreateAccount = {
                     navController.navigate(Screen.TermsConsent.createRoute(Screen.Register.route))
                 },
@@ -138,7 +184,9 @@ fun NavGraph(navController: NavHostController) {
                     navController.navigate(Screen.RoleSelection.route) {
                         popUpTo(Screen.Register.route) { inclusive = true }
                     }
-                }
+                },
+                onGoogleSignInClick = { role -> googleSignIn(if (role == Role.WORKER) "worker" else "shop_owner") },
+                isGoogleLoading = googleLoading
             )
         }
 
@@ -323,8 +371,11 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onLogoutClick = {
-                    navController.navigate(Screen.RoleSelection.route) {
-                        popUpTo(0)
+                    scope.launch {
+                        runCatching { FirebaseGoogleAuth.logout() }
+                        navController.navigate(Screen.RoleSelection.route) {
+                            popUpTo(0)
+                        }
                     }
                 },
                 onNavigateTab = { tab ->
@@ -432,8 +483,11 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onLogoutClick = {
-                    navController.navigate(Screen.RoleSelection.route) {
-                        popUpTo(0)
+                    scope.launch {
+                        runCatching { FirebaseGoogleAuth.logout() }
+                        navController.navigate(Screen.RoleSelection.route) {
+                            popUpTo(0)
+                        }
                     }
                 },
                 onDigiLockerClick = {

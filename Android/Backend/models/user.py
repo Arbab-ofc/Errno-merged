@@ -11,8 +11,10 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    phone_number = Column(String, unique=True, nullable=False, index=True)
-    role = Column(Enum(UserRole), nullable=False)
+    phone_number = Column(String, unique=True, nullable=True, index=True)
+    email = Column(String, nullable=True, index=True)
+    firebase_uid = Column(String, nullable=True, unique=True, index=True)
+    role = Column(Enum(UserRole), nullable=True)
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_phone_verified = Column(Boolean, default=False, nullable=False)
