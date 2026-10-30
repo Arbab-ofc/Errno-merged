@@ -3,6 +3,7 @@ package com.erno.app.ui.screens.shopkeeper
 import androidx.lifecycle.ViewModel
 import com.erno.app.data.model.DurationPay
 import com.erno.app.data.model.JobPost
+import com.erno.app.data.repository.ErrnoMobileApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,6 +11,8 @@ import kotlinx.coroutines.flow.update
 
 data class ShopkeeperState(
     val ownerName: String = "Shopkeeper",
+    val shopName: String = "My Store",
+    val shopAddress: String = "",
     val activeJobsCount: Int = 0,
     val totalApplicationsCount: Int = 0,
     val recentJobs: List<JobPost> = emptyList(), // Starts empty for new login
@@ -24,7 +27,9 @@ data class ShopkeeperState(
     val draftScheduledDate: String = "Today",
     val draftDescription: String = "Deliver parcel/products safely from shop to target location.",
     val draftPayStructure: List<DurationPay> = listOf(DurationPay(2, 249)), // Single duration selection
-    val lastPostedJob: JobPost? = null
+    val lastPostedJob: JobPost? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class ShopkeeperViewModel : ViewModel() {
@@ -155,7 +160,45 @@ class ShopkeeperViewModel : ViewModel() {
         }
     }
 
-    fun postJob(): JobPost {
+    suspend fun refreshJobs() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        runCatching { ErrnoMobileApi.myJobs() }
+            .onSuccess { jobs -> _uiState.update { it.copy(recentJobs = jobs, activeJobsCount = jobs.count { job -> job.status == "Active" }, isLoading = false) } }
+            .onFailure { error -> _uiState.update { it.copy(isLoading = false, errorMessage = error.localizedMessage ?: "Unable to load jobs. Retry.") } }
+    }
+
+    suspend fun updateJobLifecycle(jobId: String, action: String) {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        try {
+            when (action) {
+                "complete" -> ErrnoMobileApi.completeJob(jobId)
+                "cancel" -> ErrnoMobileApi.cancelJob(jobId)
+                else -> error("Unsupported job action")
+            }
+            refreshJobs()
+        } catch (error: Exception) {
+            _uiState.update { it.copy(isLoading = false, errorMessage = error.localizedMessage ?: "Unable to update job.") }
+            throw error
+        }
+    }
+
+    suspend fun refreshProfile() {
+        runCatching {
+            val profile = ErrnoMobileApi.profile()
+            val shop = ErrnoMobileApi.shop()
+            _uiState.update { it.copy(ownerName = profile.optString("name", "Shopkeeper"),
+                shopName = shop?.optString("shop_name", "My Store") ?: "My Store",
+                shopAddress = shop?.optString("address", "") ?: "") }
+        }.onFailure { error -> _uiState.update { it.copy(errorMessage = error.localizedMessage ?: "Unable to load profile.") } }
+    }
+
+    suspend fun saveProfile(name: String, storeName: String) {
+        val updatedProfile = ErrnoMobileApi.updateProfile(name.trim())
+        val updatedShop = ErrnoMobileApi.saveShop(storeName.trim(), _uiState.value.shopAddress, "General Store")
+        _uiState.update { it.copy(ownerName = updatedProfile.optString("name"), shopName = updatedShop.optString("shop_name"), errorMessage = null) }
+    }
+
+    suspend fun postJob(): JobPost {
         val state = _uiState.value
         val computedLocation = if (state.draftIsDelivery) {
             "${state.draftPickupLocation.ifBlank { "Pickup Store" }} -> ${state.draftDropLocation.ifBlank { "Drop Address" }}"
@@ -179,14 +222,16 @@ class ShopkeeperViewModel : ViewModel() {
             packageType = state.draftPackageType,
             scheduledDate = state.draftScheduledDate
         )
+        val persisted = ErrnoMobileApi.postJob(newJob)
         _uiState.update {
             it.copy(
-                recentJobs = listOf(newJob) + it.recentJobs,
+                recentJobs = listOf(persisted) + it.recentJobs,
                 activeJobsCount = it.activeJobsCount + 1,
-                lastPostedJob = newJob
+                lastPostedJob = persisted,
+                errorMessage = null
             )
         }
-        return newJob
+        return persisted
     }
 
     private fun itCopy(state: ShopkeeperState, draftPayStructure: List<DurationPay>): ShopkeeperState {

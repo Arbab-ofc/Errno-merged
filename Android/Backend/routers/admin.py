@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from firebase_auth import require_admin
-from job_lifecycle import JOB_TRANSITIONS
 from models import AdminAuditLog, AdminPermission, Application, Job, Shop, User
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,9 @@ class UserActivePatch(BaseModel):
 
 class JobStatusPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    status: Literal["open", "assigned", "in_progress", "inProgress", "completed", "cancelled"]
+    # Admins may cancel an unstarted job. Assignment, start, and completion are
+    # performed only by the applicant decision, assigned worker, and owner.
+    status: Literal["cancelled"]
 
 
 def _user_summary(user: User) -> dict:
@@ -48,6 +49,9 @@ def _job_summary(job: Job, shop: Shop | None = None) -> dict:
         "category": job.category,
         "pay_amount": job.pay_amount,
         "created_at": job.created_at,
+        "started_at": job.started_at,
+        "completed_at": job.completed_at,
+        "cancelled_at": job.cancelled_at,
         "shop_id": job.shop_id,
         "shop_name": shop.shop_name if shop else None,
         "owner_id": owner.id if owner else None,
@@ -308,16 +312,17 @@ def get_job(job_id: str, _: AdminPermission = Depends(require_admin("jobs.read")
 @router.patch("/jobs/{job_id}/status")
 def patch_job_status(job_id: str, body: JobStatusPatch,
                      admin: AdminPermission = Depends(require_admin("jobs.manage")), db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.id == job_id).with_for_update().first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if body.status == job.status:
         raise HTTPException(status_code=409, detail="Job already has that status")
-    if body.status not in JOB_TRANSITIONS.get(job.status, set()):
+    if body.status not in {"open": {"cancelled"}, "assigned": {"cancelled"}}.get(job.status, set()):
         _write_failure_log("job.status_changed", "job", job.id, "invalid_transition")
         raise HTTPException(status_code=409, detail="Invalid job status transition")
     old_status = job.status
     job.status = body.status
+    job.cancelled_at = datetime.now(timezone.utc)
     _audit(db, admin, "job.status_changed", "job", job.id,
            {"status": {"from": old_status, "to": body.status}})
     db.commit()

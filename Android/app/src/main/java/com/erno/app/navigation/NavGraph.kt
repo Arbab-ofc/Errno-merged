@@ -26,7 +26,6 @@ import com.erno.app.ui.screens.auth.DigiLockerVerificationScreen
 import com.erno.app.ui.screens.legal.PrivacyPolicyScreen
 import com.erno.app.ui.screens.legal.TermsConditionsScreen
 import com.erno.app.ui.screens.legal.TermsConsentScreen
-import com.erno.app.data.repository.DEMO_OTP_CODE
 import com.erno.app.data.repository.FirebaseGoogleAuth
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -217,15 +216,8 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onVerifyClick = { otp ->
-                    if (otp == DEMO_OTP_CODE) {
-                        val targetRoute = if (role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
-                        navController.navigate(targetRoute) {
-                            popUpTo(Screen.RoleSelection.route) { inclusive = true }
-                        }
-                        true
-                    } else {
-                        false
-                    }
+                    Toast.makeText(context, "Phone OTP is not configured. Use Google sign-in.", Toast.LENGTH_LONG).show()
+                    false
                 },
                 onEditClick = {
                     navController.popBackStack()
@@ -238,6 +230,7 @@ fun NavGraph(navController: NavHostController) {
 
         // Shopkeeper Flow Routes
         composable(Screen.ShopkeeperHome.route) {
+            LaunchedEffect(Unit) { shopkeeperViewModel.refreshJobs() }
             ShopkeeperDashboardScreen(
                 state = shopkeeperState,
                 onPostNewJobClick = {
@@ -307,10 +300,13 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onPostJobClick = {
-                    val postedJob = shopkeeperViewModel.postJob()
-                    workerViewModel.addJobFromShopkeeper(postedJob)
-                    navController.navigate(Screen.JobSuccess.route) {
-                        popUpTo(Screen.ShopkeeperHome.route)
+                    scope.launch {
+                        try {
+                            shopkeeperViewModel.postJob()
+                            navController.navigate(Screen.JobSuccess.route) { popUpTo(Screen.ShopkeeperHome.route) }
+                        } catch (error: Exception) {
+                            Toast.makeText(context, error.localizedMessage ?: "Unable to post job. Retry.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             )
@@ -331,12 +327,18 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.ShopkeeperMyJobs.route) {
+            LaunchedEffect(Unit) { shopkeeperViewModel.refreshJobs() }
             ShopkeeperMyJobsScreen(
                 state = shopkeeperState,
+                onRefresh = { scope.launch { shopkeeperViewModel.refreshJobs() } },
                 onBackClick = {
                     navController.popBackStack()
                 },
                 onRateWorkerClick = shopkeeperViewModel::rateWorker,
+                onJobLifecycleAction = { jobId, action -> scope.launch {
+                    try { shopkeeperViewModel.updateJobLifecycle(jobId, action) }
+                    catch (error: Exception) { Toast.makeText(context, error.localizedMessage ?: "Unable to update job", Toast.LENGTH_LONG).show() }
+                } },
                 onNavigateTab = { tab ->
                     when (tab) {
                         ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
@@ -365,8 +367,15 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.ShopkeeperProfile.route) {
+            LaunchedEffect(Unit) { shopkeeperViewModel.refreshProfile() }
             ShopkeeperProfileScreen(
                 state = shopkeeperState,
+                onSaveProfile = { name, shop ->
+                    scope.launch {
+                        try { shopkeeperViewModel.saveProfile(name, shop); Toast.makeText(context, "Profile saved", Toast.LENGTH_SHORT).show() }
+                        catch (error: Exception) { Toast.makeText(context, error.localizedMessage ?: "Unable to save profile", Toast.LENGTH_LONG).show() }
+                    }
+                },
                 onBackClick = {
                     navController.popBackStack()
                 },
@@ -391,12 +400,14 @@ fun NavGraph(navController: NavHostController) {
 
         // Worker Flow Routes
         composable(Screen.WorkerHome.route) {
+            LaunchedEffect(Unit) { workerViewModel.refreshBackendJobs() }
             WorkerHomeScreen(
                 state = workerState,
                 onJobSelect = { job ->
                     workerViewModel.selectJob(job)
                     navController.navigate(Screen.WorkerJobDetails.route)
                 },
+                onRefresh = { scope.launch { workerViewModel.refreshBackendJobs() } },
                 onNavigateTab = { tab ->
                     when (tab) {
                         WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)
@@ -415,13 +426,16 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onDurationSelect = workerViewModel::selectDurationPay,
+                onStartJobClick = { scope.launch { workerViewModel.startAssignedJob(workerState.selectedJob?.id.orEmpty()) } },
                 onAcceptJobClick = {
-                    val currentJob = workerState.selectedJob
-                    workerViewModel.acceptCurrentJob()
-                    if (currentJob != null) {
-                        shopkeeperViewModel.assignWorkerToJob(currentJob.id, workerState.workerName)
+                    scope.launch {
+                        try {
+                            workerViewModel.acceptCurrentJob()
+                            navController.navigate(Screen.WorkerAcceptingJob.route)
+                        } catch (error: Exception) {
+                            Toast.makeText(context, error.localizedMessage ?: "Unable to apply. Retry.", Toast.LENGTH_LONG).show()
+                        }
                     }
-                    navController.navigate(Screen.WorkerAcceptingJob.route)
                 }
             )
         }
@@ -438,6 +452,10 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.WorkerMyJobs.route) {
+            LaunchedEffect(Unit) {
+                workerViewModel.refreshBackendJobs()
+                workerViewModel.refreshApplications()
+            }
             WorkerMyJobsScreen(
                 state = workerState,
                 onBackClick = {
@@ -447,6 +465,8 @@ fun NavGraph(navController: NavHostController) {
                     workerViewModel.selectJob(job)
                     navController.navigate(Screen.WorkerJobDetails.route)
                 },
+                onCancelApplication = { application -> scope.launch { workerViewModel.cancelApplication(application) } },
+                onLoadMoreApplications = { scope.launch { workerViewModel.loadMoreApplications() } },
                 onRateShopkeeperClick = workerViewModel::rateShopkeeper,
                 onNavigateTab = { tab ->
                     when (tab) {

@@ -30,8 +30,7 @@ enum AuthError: LocalizedError {
 
 // MARK: — Mock Implementation
 
-/// Simulates backend auth with realistic network delays.
-/// Mock OTP is always **123456** for any phone number.
+/// Demo mode does not authenticate with a static or synthetic OTP.
 struct MockAuthService: AuthServiceProtocol {
     nonisolated init() {}
 
@@ -41,8 +40,6 @@ struct MockAuthService: AuthServiceProtocol {
     }
 
     func verifyOTP(_ otp: String, phone: String) async throws -> Bool {
-        // Simulate 1 s verification round-trip
-        try await Task.sleep(for: .milliseconds(1000))
-        return otp == "123456"
+        throw APIError.unsupportedFeature
     }
 }

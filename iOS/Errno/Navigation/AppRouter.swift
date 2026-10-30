@@ -38,9 +38,21 @@ final class AppRouter {
     func restoreSession() async {
         do {
             guard let profile = try await session.restore() else { return }
+            marketplace.signIn(profile: profile)
             switch profile.role {
-            case "worker": appState = .workerHome
-            case "shop_owner", "shopkeeper": appState = .shopkeeperHome
+            case "worker":
+                if let repository = try? AppDependencies.backendRepository(), let jobs = try? await repository.workerJobs() {
+                    marketplace.installBackendJobs(jobs)
+                }
+                appState = .workerHome
+            case "shop_owner", "shopkeeper":
+                if let repository = try? AppDependencies.backendRepository() {
+                    if let shop = try? await repository.shop() {
+                        marketplace.updateRemoteShop(name: shop.shop_name, address: shop.address ?? "", category: shop.category)
+                    }
+                    if let jobs = try? await repository.myJobs() { marketplace.installBackendJobs(jobs, ownerID: UUID(uuidString: profile.id)) }
+                }
+                appState = .shopkeeperHome
             default: appState = .auth
             }
         } catch {

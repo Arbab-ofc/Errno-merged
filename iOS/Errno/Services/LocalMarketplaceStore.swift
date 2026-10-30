@@ -23,7 +23,7 @@ final class LocalMarketplaceStore {
     var ownerJobs: [Job] { jobs.filter { $0.shopOwnerId == shopkeeper.id } }
     var availableJobs: [Job] { jobs.filter { $0.status == .open } }
     var workerJobs: [Job] { jobs.filter { $0.assignedWorkerId == worker.id } }
-    var activeCount: Int { ownerJobs.filter { $0.status == .open || $0.status == .inProgress }.count }
+    var activeCount: Int { ownerJobs.filter { $0.status == .open || $0.status == .assigned || $0.status == .inProgress }.count }
     var totalEarned: Double { earnings.filter { $0.workerId == worker.id }.reduce(0) { $0 + $1.amount } }
     var balance: Double { max(0, totalEarned - withdrawnAmount) }
     var isVerified: Bool { !maskedAadhaar.isEmpty }
@@ -39,6 +39,78 @@ final class LocalMarketplaceStore {
             if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { worker.name = name }
             currentUser = worker
         }
+    }
+
+    /// Replace prototype identity with the server profile ID returned after verified Firebase login.
+    func signIn(profile: FirebaseUserProfile) {
+        guard let backendID = UUID(uuidString: profile.id) else { return }
+        if profile.role == "worker" {
+            worker = User(id: backendID, phone: profile.phone_number ?? "", role: .worker,
+                          name: profile.name ?? "Worker", rating: worker.rating, totalJobsCompleted: worker.totalJobsCompleted)
+            currentUser = worker; selectedRole = .worker
+        } else if profile.role == "shop_owner" || profile.role == "shopkeeper" {
+            shopkeeper = User(id: backendID, phone: profile.phone_number ?? "", role: .shopkeeper,
+                              name: profile.name ?? "Shopkeeper", shopName: shopkeeper.shopName)
+            currentUser = shopkeeper; selectedRole = .shopkeeper
+        }
+    }
+
+    func updateRemoteShop(name: String, address: String, category: String?) {
+        shopkeeper.shopName = name
+        shopAddress = address
+        currentUser = shopkeeper
+    }
+
+    func installBackendJobs(_ remote: [BackendJob], ownerID: UUID? = nil) {
+        let owner = ownerID ?? shopkeeper.id
+        let mapped = remote.compactMap { row -> Job? in
+            guard let id = UUID(uuidString: row.id) else { return nil }
+            let status: JobStatus = switch row.status {
+            case "completed": .completed
+            case "cancelled": .cancelled
+            case "assigned": .assigned
+            case "in_progress", "inProgress": .inProgress
+            default: .open
+            }
+            var job = Job(id: id, shopOwnerId: owner, category: JobCategory(rawValue: row.category ?? "") ?? .other,
+                          title: row.title, description: row.description ?? "", payType: .fixed,
+                          payAmount: row.pay_amount, estimatedDurationHours: Double(row.duration_type.filter(\.isNumber)) ?? 1,
+                          latitude: 0, longitude: 0, status: status)
+            job.location = row.location ?? ""
+            job.pickupLocation = row.pickup_location ?? ""
+            job.dropLocation = row.drop_location ?? ""
+            job.assignedWorkerId = row.assigned_worker_id.flatMap(UUID.init(uuidString:))
+            return job
+        }
+        let ids = Set(mapped.map(\.id))
+        jobs.removeAll { $0.shopOwnerId == owner && !ids.contains($0.id) }
+        for job in mapped {
+            if let index = jobs.firstIndex(where: { $0.id == job.id }) { jobs[index] = job }
+            else { jobs.insert(job, at: 0) }
+        }
+    }
+
+    func updateLifecycle(_ row: BackendJob, ownerID: UUID? = nil) {
+        installBackendJobs([row], ownerID: ownerID ?? shopkeeper.id)
+    }
+
+    func installBackendApplications(_ remote: [BackendOwnerApplication]) {
+        var mapped: [Application] = []
+        for row in remote {
+            guard let id = UUID(uuidString: row.id), let jobID = UUID(uuidString: row.job_id),
+                  let workerID = UUID(uuidString: row.worker_id),
+                  let status = ApplicationStatus(rawValue: row.status) else { continue }
+            mapped.append(Application(id: id, jobId: jobID, workerId: workerID, status: status))
+            if !workers.contains(where: { $0.id == workerID }) {
+                workers.append(User(id: workerID, phone: "", role: .worker, name: row.worker_name ?? "Worker"))
+            }
+        }
+        applications = mapped
+    }
+
+    func updateApplicationStatus(id: UUID, status: ApplicationStatus) {
+        guard let index = applications.firstIndex(where: { $0.id == id }) else { return }
+        applications[index].status = status
     }
 
     func signOut() { currentUser = nil; selectedRole = .shopkeeper }

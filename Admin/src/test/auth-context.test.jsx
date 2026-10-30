@@ -25,7 +25,11 @@ beforeEach(() => {
   mocks.currentUser = { email: "admin@example.test", getIdToken: vi.fn() };
   mocks.adminMe.mockResolvedValue({ email: "admin@example.test", active: true, permissions: ["dashboard.read"] });
   mocks.signInWithPopup.mockResolvedValue({});
-  mocks.signOut.mockResolvedValue(undefined);
+  mocks.signOut.mockImplementation(() => {
+    mocks.currentUser = null;
+    mocks.observer?.(null);
+    return Promise.resolve();
+  });
 });
 
 describe("Firebase session observer", () => {
@@ -41,5 +45,7 @@ describe("Firebase session observer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(mocks.signInWithPopup).toHaveBeenCalledOnce());
     expect(mocks.signOut).toHaveBeenCalledOnce();
+    expect(await screen.findByText("signed out")).toBeInTheDocument();
+    expect(screen.getByText("no admin")).toBeInTheDocument();
   });
 });

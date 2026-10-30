@@ -15,7 +15,7 @@ struct WorkerProfileView: View {
                             .frame(width: 72, height: 72).background(Color.errnoGreenLight, in: Circle())
                         Text(store.worker.name).font(.system(size: 20, weight: .bold))
                         Text("Experienced Delivery Partner & Helper").font(.system(size: 13)).foregroundStyle(Color.errnoTextSecondary)
-                        StatusBadge(text: store.isVerified ? "Demo DigiLocker Verified SEIF Worker" : "DigiLocker Verification Pending")
+                        StatusBadge(text: "DigiLocker verification unavailable")
                     }.frame(maxWidth: .infinity).marketplaceCard(padding: 20, radius: 20)
                     HStack(spacing: 12) {
                         stat("Jobs Completed", "\(store.workerJobs.filter { $0.status == .completed }.count)")

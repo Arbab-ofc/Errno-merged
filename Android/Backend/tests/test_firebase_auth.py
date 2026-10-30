@@ -165,7 +165,9 @@ def test_firebase_onboarding_shop_job_and_application_relationships(client):
     assert onboarding.status_code == 200
     assert onboarding.json()["onboarding_completed"] is True
 
-    shop = client.get("/shops/me/unused-path-phone", headers=owner_headers)
+    # Reads must not create placeholder database records; shop creation is an explicit write.
+    assert client.get("/shops/me/unused-path-phone", headers=owner_headers).status_code == 404
+    shop = client.put("/shops/me", headers=owner_headers, json={"shop_name": "Owner Shop"})
     assert shop.status_code == 200
     job = client.post(
         "/jobs",

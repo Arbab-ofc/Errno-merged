@@ -61,7 +61,7 @@ struct ShopkeeperProfileView: View {
                         // Badge
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.seal.fill")
-                            Text("Local Demo Business")
+                            Text("Firebase account linked")
                         }
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color.errnoGreen)

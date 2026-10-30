@@ -37,15 +37,18 @@ import com.erno.app.ui.theme.ErnoGreen
 @Composable
 fun ShopkeeperMyJobsScreen(
     state: ShopkeeperState,
+    onRefresh: () -> Unit,
     onBackClick: () -> Unit,
     onNavigateTab: (ShopkeeperTab) -> Unit,
-    onRateWorkerClick: (jobId: String, rating: Float, comment: String) -> Unit = { _, _, _ -> }
+    onRateWorkerClick: (jobId: String, rating: Float, comment: String) -> Unit = { _, _, _ -> },
+    onJobLifecycleAction: (jobId: String, action: String) -> Unit = { _, _ -> }
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(1) } // 0: All, 1: Active, 2: Completed
     var ratingJob by remember { mutableStateOf<JobPost?>(null) }
     var selectedAssignedWorkerJob by remember { mutableStateOf<JobPost?>(null) }
+    var pendingAction by remember { mutableStateOf<Pair<JobPost, String>?>(null) }
 
-    val activeJobs = state.recentJobs.filter { it.status == "Active" || it.status == "Worker Assigned" }
+    val activeJobs = state.recentJobs.filter { it.status in setOf("Active", "Worker Assigned", "In Progress") }
     val completedJobs = state.recentJobs.filter { it.status == "Completed" }
 
     val filteredJobs = when (selectedTabIndex) {
@@ -142,7 +145,14 @@ fun ShopkeeperMyJobsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (filteredJobs.isEmpty()) {
+            if (state.isLoading) {
+                CircularProgressIndicator(color = ErnoGreen, modifier = Modifier.padding(24.dp))
+            } else if (state.errorMessage != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(state.errorMessage.orEmpty(), color = Color.DarkGray)
+                    TextButton(onClick = onRefresh) { Text("Retry", color = ErnoGreen) }
+                }
+            } else if (filteredJobs.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -164,7 +174,8 @@ fun ShopkeeperMyJobsScreen(
                         ShopkeeperJobManageCard(
                             job = job,
                             onViewWorkerProfile = { selectedAssignedWorkerJob = job },
-                            onRateWorkerClick = { ratingJob = job }
+                            onRateWorkerClick = { ratingJob = job },
+                            onLifecycleAction = { action -> pendingAction = job to action }
                         )
                     }
                     item {
@@ -173,6 +184,16 @@ fun ShopkeeperMyJobsScreen(
                 }
             }
         }
+    }
+
+    pendingAction?.let { (job, action) ->
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(if (action == "complete") "Confirm completed work?" else "Cancel this job?") },
+            text = { Text(if (action == "complete") "This marks ${job.title} as completed. No payment is processed." else "Workers will no longer be able to apply or continue this job.") },
+            confirmButton = { TextButton(onClick = { onJobLifecycleAction(job.id, action); pendingAction = null }) { Text("Confirm") } },
+            dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Keep job") } }
+        )
     }
 
     // Rating Worker Dialog
@@ -347,10 +368,11 @@ fun ShopkeeperMyJobsScreen(
 fun ShopkeeperJobManageCard(
     job: JobPost,
     onViewWorkerProfile: () -> Unit = {},
-    onRateWorkerClick: () -> Unit = {}
+    onRateWorkerClick: () -> Unit = {},
+    onLifecycleAction: (String) -> Unit = {}
 ) {
     val maxPrice = job.payStructure.maxOfOrNull { it.price } ?: 349
-    val isWorkerAssigned = job.isWorkerAssigned || job.assignedWorkerName.isNotBlank() || job.status == "Worker Assigned"
+    val isWorkerAssigned = job.isWorkerAssigned || job.assignedWorkerName.isNotBlank() || job.status in setOf("Worker Assigned", "In Progress")
     val assignedName = if (job.assignedWorkerName.isNotBlank()) job.assignedWorkerName else "Aman"
 
     Surface(
@@ -372,7 +394,15 @@ fun ShopkeeperJobManageCard(
                     color = Color.Black
                 )
 
-                if (isWorkerAssigned) {
+                if (job.status == "In Progress") {
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFFFF3E0)) {
+                        Text("In Progress", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100), modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                } else if (job.status == "Cancelled") {
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFF1F1F1)) {
+                        Text("Cancelled", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                } else if (isWorkerAssigned) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color(0xFFEAF5D8)
@@ -550,6 +580,13 @@ fun ShopkeeperJobManageCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("View Profile", fontSize = 12.sp, color = ErnoGreen, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (job.status == "In Progress" || job.status == "Worker Assigned" || job.status == "Active") {
+                Spacer(modifier = Modifier.height(10.dp))
+                when (job.status) {
+                    "In Progress" -> Button(onClick = { onLifecycleAction("complete") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)) { Text("Confirm work completed") }
+                    else -> OutlinedButton(onClick = { onLifecycleAction("cancel") }, modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, Color(0xFFB3261E))) { Text("Cancel job", color = Color(0xFFB3261E)) }
                 }
             }
         }

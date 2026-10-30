@@ -38,6 +38,7 @@ enum JobCategory: String, Codable, CaseIterable, Hashable, Sendable {
 
 enum JobStatus: String, Codable, Hashable, Sendable {
     case open
+    case assigned
     case inProgress
     case completed
     case cancelled
@@ -84,7 +85,8 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     var displayStatus: String {
         switch status {
         case .open: return "Active"
-        case .inProgress: return "Worker Accepted ✓"
+        case .assigned: return "Worker Assigned"
+        case .inProgress: return "In Progress"
         case .completed: return "Work Completed"
         case .cancelled: return "Cancelled"
         }

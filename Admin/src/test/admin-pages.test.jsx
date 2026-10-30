@@ -14,7 +14,7 @@ vi.mock("../services/api", () => ({ api }));
 
 import { LoginPage } from "../pages/LoginPage";
 import { DashboardPage } from "../pages/DashboardPage";
-import { PeopleListPage } from "../pages/PeoplePages";
+import { PersonDetailPage, PeopleListPage } from "../pages/PeoplePages";
 import { JobsPage } from "../pages/JobsPage";
 import { RequireAdmin } from "../auth/RequireAdmin";
 
@@ -63,12 +63,28 @@ describe("admin authentication gates and live pages", () => {
     await waitFor(() => expect(api.dashboard).toHaveBeenCalledTimes(2));
   });
 
+  it("shows loading and empty dashboard states without inventing records", async () => {
+    let resolveDashboard;
+    api.dashboard.mockReturnValue(new Promise((resolve) => { resolveDashboard = resolve; }));
+    const { rerender } = render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    expect(screen.getByLabelText("Loading data")).toBeInTheDocument();
+    resolveDashboard({
+      metrics: { total_users: 0, total_workers: 0, total_shop_owners: 0, total_shops: 0, total_jobs: 0, active_jobs: 0, completed_jobs: 0, total_applications: 0 },
+      registrations_by_day: [], jobs_by_day: [], recent_registrations: [], recent_jobs: [],
+    });
+    expect(await screen.findByText("No user records yet.")).toBeInTheDocument();
+    expect(screen.getByText("No job records yet.")).toBeInTheDocument();
+    rerender(<MemoryRouter><DashboardPage /></MemoryRouter>);
+  });
+
   it("loads shop owners with server-side search and pagination", async () => {
     api.shopOwners.mockResolvedValue({ items: [{ id: "u-1", name: "Asha Owner", email: "asha@example.test", shop_count: 2, job_count: 3, created_at: null, is_active: true }], total: 1, limit: 20, offset: 0 });
     render(<MemoryRouter><PeopleListPage kind="shop-owners" /></MemoryRouter>);
     expect(await screen.findByText("Asha Owner")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: /search shop owners/i }), { target: { value: "Asha" } });
     await waitFor(() => expect(api.shopOwners).toHaveBeenLastCalledWith(user, expect.objectContaining({ q: "Asha" }), expect.any(AbortSignal)));
+    fireEvent.change(screen.getByRole("combobox", { name: "Account status" }), { target: { value: "false" } });
+    await waitFor(() => expect(api.shopOwners).toHaveBeenLastCalledWith(user, expect.objectContaining({ q: "Asha", active: "false" }), expect.any(AbortSignal)));
   });
 
   it("loads worker rows from the backend", async () => {
@@ -79,12 +95,28 @@ describe("admin authentication gates and live pages", () => {
     expect(api.workers).toHaveBeenCalledWith(user, expect.objectContaining({ limit: 20, offset: 0 }), expect.any(AbortSignal));
   });
 
+  it.each([
+    ["shop owner", "shop-owners", "u-owner", "Asha Owner", "shopOwner", "updateShopOwner",
+      { user: { id: "u-owner", name: "Asha Owner", is_active: true }, shops: [], jobs: [], jobs_truncated: false }],
+    ["worker", "workers", "u-worker", "Nisha Worker", "worker", "updateWorker",
+      { user: { id: "u-worker", name: "Nisha Worker", is_active: true }, applications: [], total_applications: 0, limit: 50, offset: 0 }],
+  ])("sends %s management action to the API", async (_label, route, id, name, detailMethod, updateMethod, detail) => {
+    api[detailMethod].mockResolvedValue(detail);
+    api[updateMethod].mockResolvedValue({ is_active: false });
+    render(<MemoryRouter initialEntries={[`/admin/${route}/${id}`]}><Routes>
+      <Route path={`/admin/${route}/:userId`} element={<PersonDetailPage kind={route} />} />
+    </Routes></MemoryRouter>);
+    expect(await screen.findByRole("heading", { name })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Suspend account" }));
+    await waitFor(() => expect(api[updateMethod]).toHaveBeenCalledWith(user, id, false));
+  });
+
   it("updates a job through the admin API", async () => {
     api.jobs.mockResolvedValue({ items: [{ id: "j-1", title: "Packing shift", shop_name: "Market", owner_name: "Ravi", status: "open", application_count: 2, created_at: null }], total: 1, limit: 20, offset: 0 });
-    api.updateJobStatus.mockResolvedValue({ status: "assigned" });
+    api.updateJobStatus.mockResolvedValue({ status: "cancelled" });
     render(<MemoryRouter><JobsPage /></MemoryRouter>);
     expect(await screen.findByText("Packing shift")).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Change status for Packing shift" }), { target: { value: "assigned" } });
-    await waitFor(() => expect(api.updateJobStatus).toHaveBeenCalledWith(user, "j-1", "assigned"));
+    fireEvent.change(screen.getByRole("combobox", { name: "Change status for Packing shift" }), { target: { value: "cancelled" } });
+    await waitFor(() => expect(api.updateJobStatus).toHaveBeenCalledWith(user, "j-1", "cancelled"));
   });
 });

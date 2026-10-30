@@ -241,7 +241,16 @@ fun ShopkeeperDashboardScreen(
             }
 
             // Recent Jobs List OR Empty State with True Grey Company Logo
-            if (state.recentJobs.isEmpty()) {
+                if (state.isLoading && state.recentJobs.isEmpty()) {
+                    item { CircularProgressIndicator(color = ErnoGreen, modifier = Modifier.padding(24.dp)) }
+                } else if (state.errorMessage != null) {
+                    item {
+                        Column {
+                            Text(state.errorMessage.orEmpty(), color = Color.White)
+                            TextButton(onClick = onViewAllClick) { Text("View jobs / retry", color = ErnoGreen) }
+                        }
+                    }
+                } else if (state.recentJobs.isEmpty()) {
                 item {
                     val monochromeMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
 

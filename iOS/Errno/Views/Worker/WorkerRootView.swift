@@ -27,7 +27,7 @@ struct WorkerRootView: View {
             }
             .navigationDestination(for: WorkerRoute.self) { route in
                 switch route {
-                case .details(let id): WorkerJobDetailsView(jobId: id) { path.append(.accepting(id)) }
+                case .details(let id): WorkerJobDetailsView(jobId: id) {}
                 case .accepting(let id): WorkerAcceptingJobView(jobId: id) { router.workerTab = 1; path.removeAll() }
                 case .verification: DigiLockerVerificationView()
                 }

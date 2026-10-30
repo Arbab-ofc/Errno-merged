@@ -89,4 +89,7 @@ nonisolated enum AppDependencies {
     static func catalog() throws -> any JobCatalogRepository {
         BackendRepository(client: APIClient(configuration: try .bundled()))
     }
+    static func backendRepository() throws -> BackendRepository {
+        BackendRepository(client: APIClient(configuration: try .bundled()))
+    }
 }

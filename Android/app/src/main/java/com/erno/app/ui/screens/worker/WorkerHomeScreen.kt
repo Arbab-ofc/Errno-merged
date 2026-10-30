@@ -37,6 +37,7 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
+    onRefresh: () -> Unit,
     onNavigateTab: (WorkerTab) -> Unit
 ) {
     Scaffold(
@@ -147,7 +148,16 @@ fun WorkerHomeScreen(
                 }
 
                 // Available Job Cards OR Empty State with Big Grey ERRNO Logo
-                if (state.availableJobs.isEmpty()) {
+                if (state.isLoadingJobs) {
+                    item { CircularProgressIndicator(color = ErnoGreen, modifier = Modifier.padding(24.dp)) }
+                } else if (state.jobLoadError != null) {
+                    item {
+                        Column {
+                            Text(state.jobLoadError, color = Color.White)
+                            TextButton(onClick = onRefresh) { Text("Retry", color = ErnoGreen) }
+                        }
+                    }
+                } else if (state.availableJobs.isEmpty()) {
                     item {
                         val monochromeMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
 

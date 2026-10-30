@@ -178,6 +178,7 @@ struct RegisterView: View {
                         defer { isLoading = false }
                         do {
                             let profile = try await FirebaseGoogleAuth.signIn(role: selectedRole)
+                            router.marketplace.signIn(profile: profile)
                             router.registrationName = profile.name ?? fullName
                             switch profile.role {
                             case "worker": router.navigateToHome(role: .worker)

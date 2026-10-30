@@ -54,6 +54,20 @@ data class WorkerJob(
     val reviewComment: String = ""
 )
 
+data class WorkerApplication(
+    val id: String,
+    val jobId: String,
+    val status: String,
+    val createdAt: String,
+    val jobTitle: String,
+    val jobStatus: String,
+    val location: String,
+    val scheduledDate: String,
+    val payAmount: Int,
+    val shopName: String,
+    val shopAddress: String
+)
+
 data class EarningRecord(
     val id: String,
     val jobTitle: String,

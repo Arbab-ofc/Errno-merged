@@ -40,9 +40,10 @@ class RegisterRequest(BaseModel):
 
 # Shop Schemas
 class ShopCreateRequest(BaseModel):
-    shop_name: str = Field(..., example="Rahul General Store")
-    address: Optional[str] = Field(default="Okhla Market Area, New Delhi")
-    category: Optional[str] = Field(default="General Store")
+    model_config = ConfigDict(extra="forbid")
+    shop_name: str = Field(..., min_length=1, max_length=160, example="Rahul General Store")
+    address: Optional[str] = Field(default=None, max_length=500)
+    category: Optional[str] = Field(default=None, max_length=100)
 
 class ShopResponse(BaseModel):
     id: str
@@ -56,13 +57,14 @@ class ShopResponse(BaseModel):
 
 # Job Schemas
 class JobCreateRequest(BaseModel):
-    title: str = Field(..., example="Counter Staff Assistant")
-    category: Optional[str] = Field(default="Store Helper")
-    description: Optional[str] = Field(default="Assist with customer checkout and inventory stocking.")
-    pay_amount: float = Field(default=349.0)
-    duration_type: str = Field(default="Full Shift (8 hrs)")
-    scheduled_date: Optional[str] = Field(default="Today")
-    location: Optional[str] = Field(default="Okhla Market Area, New Delhi")
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(..., min_length=1, max_length=160, example="Counter Staff Assistant")
+    category: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    pay_amount: float = Field(default=349.0, gt=0, le=10000000)
+    duration_type: str = Field(default="Full Shift (8 hrs)", min_length=1, max_length=80)
+    scheduled_date: Optional[str] = Field(default=None, max_length=100)
+    location: Optional[str] = Field(default=None, max_length=500)
     pickup_location: Optional[str] = None
     drop_location: Optional[str] = None
     is_delivery: bool = False
@@ -82,6 +84,10 @@ class JobResponse(BaseModel):
     is_delivery: bool
     status: str
     assigned_worker_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -92,6 +98,44 @@ class ApplicationResponse(BaseModel):
     job_id: str
     worker_id: str
     status: str
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+class ApplicationShopSummary(BaseModel):
+    id: str
+    shop_name: str
+    address: Optional[str] = None
+    category: Optional[str] = None
+
+class ApplicationJobSummary(BaseModel):
+    id: str
+    title: str
+    location: Optional[str] = None
+    status: str
+    pay_amount: float
+    scheduled_date: Optional[str] = None
+    shop: Optional[ApplicationShopSummary] = None
+
+class WorkerApplicationResponse(ApplicationResponse):
+    job: ApplicationJobSummary
+
+class WorkerApplicationsPage(BaseModel):
+    items: List[WorkerApplicationResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+
+class ApplicationDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: str = Field(..., pattern="^(accepted|rejected)$")
+
+class OwnerApplicationResponse(BaseModel):
+    id: str
+    job_id: str
+    job_title: str
+    worker_id: str
+    worker_name: Optional[str] = None
+    status: str

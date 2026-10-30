@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
-import com.erno.app.data.repository.DEMO_OTP_CODE
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -223,7 +222,7 @@ fun VerifyOTPScreen(
                     }
 
                     Text(
-                        text = "Local demo code: $DEMO_OTP_CODE",
+                        text = "Phone verification is unavailable. Please use Google sign-in.",
                         fontSize = 12.sp,
                         color = ErnoTextSecondary
                     )

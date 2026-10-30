@@ -33,6 +33,7 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 @Composable
 fun ShopkeeperProfileScreen(
     state: ShopkeeperState,
+    onSaveProfile: (String, String) -> Unit,
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onNavigateTab: (ShopkeeperTab) -> Unit
@@ -44,8 +45,8 @@ fun ShopkeeperProfileScreen(
     var showTermsPrivacyDialog by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
 
-    var ownerNameInput by remember { mutableStateOf(state.ownerName) }
-    var storeNameInput by remember { mutableStateOf("Rahul General Store") }
+    var ownerNameInput by remember(state.ownerName) { mutableStateOf(state.ownerName) }
+    var storeNameInput by remember(state.shopName) { mutableStateOf(state.shopName) }
 
     Scaffold(
         topBar = {
@@ -137,7 +138,7 @@ fun ShopkeeperProfileScreen(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Okhla Market Area, Block B, New Delhi",
+                                text = state.shopAddress.ifBlank { "Store address not set" },
                                 fontSize = 12.sp,
                                 color = Color.Gray
                             )
@@ -161,7 +162,7 @@ fun ShopkeeperProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Verified Business",
+                                text = "Firebase account linked",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF2E7D32)
@@ -291,7 +292,10 @@ fun ShopkeeperProfileScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = { showEditDetailsDialog = false },
+                    onClick = {
+                        onSaveProfile(ownerNameInput, storeNameInput)
+                        showEditDetailsDialog = false
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -314,7 +318,7 @@ fun ShopkeeperProfileScreen(
             title = { Text("Store Location & Working Hours", fontWeight = FontWeight.Bold, color = Color.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("📍 Address: Okhla Market Area, Block B, New Delhi", fontSize = 13.sp, color = Color.Black)
+                    Text("📍 Address: ${state.shopAddress.ifBlank { "Not set" }}", fontSize = 13.sp, color = Color.Black)
                     Text("🕒 Working Hours: 08:00 AM - 09:00 PM (Mon - Sat)", fontSize = 13.sp, color = Color.Black)
                     WorkerLocationMapView(
                         locationName = "Store Location Map Pin",

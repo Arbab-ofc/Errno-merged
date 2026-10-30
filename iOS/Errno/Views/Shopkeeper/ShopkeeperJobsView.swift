@@ -4,7 +4,7 @@ struct ShopkeeperJobsView: View {
     @State private var viewModel: ShopkeeperDashboardViewModel
     @State private var selectedFilter = 1
     init(store: LocalMarketplaceStore) { _viewModel = State(initialValue: ShopkeeperDashboardViewModel(store: store)) }
-    private var active: [Job] { viewModel.jobs.filter { $0.status == .open || $0.status == .inProgress } }
+    private var active: [Job] { viewModel.jobs.filter { $0.status == .open || $0.status == .assigned || $0.status == .inProgress } }
     private var completed: [Job] { viewModel.jobs.filter { $0.status == .completed } }
     private var filtered: [Job] { selectedFilter == 0 ? viewModel.jobs : selectedFilter == 1 ? active : completed }
     var body: some View {
@@ -13,6 +13,11 @@ struct ShopkeeperJobsView: View {
             MarketplaceFilters(labels: ["All (\(viewModel.jobs.count))", "Active (\(active.count))", "Completed (\(completed.count))"], selection: $selectedFilter)
             ScrollView {
                 LazyVStack(spacing: 16) {
+                    if viewModel.isLoading { ProgressView().padding() }
+                    if let error = viewModel.errorMessage {
+                        MarketplaceEmptyState(title: "Unable to load jobs", message: error)
+                        Button("Retry") { Task { await viewModel.fetchJobs() } }.foregroundStyle(Color.errnoGreen)
+                    }
                     if filtered.isEmpty { MarketplaceEmptyState(title: "No jobs found", message: "Your posted jobs will appear here.") }
                     ForEach(filtered) { job in
                         NavigationLink(destination: ShopkeeperJobDetailView(jobId: job.id)) {
@@ -22,6 +27,7 @@ struct ShopkeeperJobsView: View {
                 }.padding(20)
             }
         }.marketplacePage().toolbar(.hidden, for: .navigationBar)
+            .task { await viewModel.fetchJobs() }
     }
 }
 
@@ -72,13 +78,11 @@ struct ShopkeeperJobDetailView: View {
                         }.marketplaceCard()
                     }
                     NavigationLink("View Job Applications") { ApplicationsView(job: job) }
-                    if job.status == .open {
-                        Button("Add Local Demo Applicants") { store.addDemoApplicants(jobId: jobId) }
-                        MockNotice(text: "Optional fixtures for testing this job's applicant UI. No real applications are acquired.")
+                    if job.status == .open || job.status == .assigned {
+                        PrimaryButton(title: "Cancel Job", style: .secondary) { completion = true }
                     }
                     if job.status == .inProgress {
-                        PrimaryButton(title: "Simulate Shift Completion", style: .secondary) { completion = true }
-                        MockNotice(text: "Demo control to exercise completion and earnings. No payment is processed.")
+                        PrimaryButton(title: "Confirm Work Completed", style: .dark) { completion = true }
                     }
                     if job.status == .completed {
                         PrimaryButton(title: "Rate Hired Worker", style: .secondary) { rating = true }
@@ -88,10 +92,27 @@ struct ShopkeeperJobDetailView: View {
             } else { MarketplaceEmptyState(title: "Job unavailable", message: "Return to My Jobs and select an existing job.").padding(20) }
         }.marketplacePage().navigationTitle("Job Details").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            .confirmationDialog("Simulate completion for this job?", isPresented: $completion, titleVisibility: .visible) {
-                Button("Complete Local Shift") { do { try store.complete(jobId: jobId) } catch { self.error = error.localizedDescription } }
-                Button("Cancel", role: .cancel) {}
+            .confirmationDialog(jobActionTitle, isPresented: $completion, titleVisibility: .visible) {
+                Button(jobActionIsCompletion ? "Confirm completion" : "Cancel job", role: jobActionIsCompletion ? nil : .destructive) {
+                    Task { await performLifecycleAction(jobActionIsCompletion ? "complete" : "cancel") }
+                }
+                Button("Keep job", role: .cancel) {}
             }
             .sheet(isPresented: $rating) { RatingDialog(title: "Rate Hired Worker", target: "Worker") { stars, comment in store.rate(jobId: jobId, role: .shopkeeper, stars: stars, comment: comment) } }
+    }
+
+    private var jobActionTitle: String {
+        store.job(id: jobId)?.status == .inProgress ? "Confirm this work is complete?" : "Cancel this job?"
+    }
+    private var jobActionIsCompletion: Bool { store.job(id: jobId)?.status == .inProgress }
+
+    @MainActor private func performLifecycleAction(_ action: String) async {
+        do {
+            let repository = try AppDependencies.backendRepository()
+            let updated = action == "complete"
+                ? try await repository.completeJob(jobID: jobId.uuidString)
+                : try await repository.cancelJob(jobID: jobId.uuidString)
+            store.updateLifecycle(updated)
+        } catch let requestError { error = requestError.localizedDescription }
     }
 }

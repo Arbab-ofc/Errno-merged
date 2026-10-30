@@ -46,6 +46,8 @@ struct BackendJobDetailsView: View {
     @State private var job: BackendJob?
     @State private var isLoading = false
     @State private var error: String?
+    @State private var isApplying = false
+    @State private var applicationMessage: String?
     var body: some View {
         VStack(spacing: 0) {
             MarketplaceHeader(title: "Job Details", dark: true, back: { dismiss() })
@@ -65,7 +67,7 @@ struct BackendJobDetailsView: View {
                         Text("Choose Duration & Pay").font(.system(size: 16, weight: .bold))
                         if let date = job.scheduled_date { Text("Scheduled: \(date)").font(.system(size: 12)).foregroundStyle(.gray) }
                         StatusBadge(text: job.status)
-                        Text("Applications are unavailable until secure sign-in is supported.").font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary)
+                        if let applicationMessage { Text(applicationMessage).font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary) }
                     }.marketplaceCard(padding: 12, radius: 20).padding(.horizontal, 12).padding(.vertical, 8)
                 }
             }
@@ -79,7 +81,9 @@ struct BackendJobDetailsView: View {
                             Text(job.pay_amount, format: .currency(code: "INR")).bold()
                         }.font(.system(size: 14)).foregroundStyle(Color.errnoTextPrimary)
                             .padding(12).background(Color.errnoBackground, in: RoundedRectangle(cornerRadius: 10))
-                        PrimaryButton(title: "Accept Job", style: .dark) {}.disabled(true)
+                        PrimaryButton(title: isApplying ? "Applying…" : "Apply for Job", style: .dark) {
+                            Task { await apply() }
+                        }.disabled(isApplying || job.status != "open")
                     }.padding(16).background(Color.errnoNavy)
                 }
             }
@@ -95,5 +99,14 @@ struct BackendJobDetailsView: View {
             job = result
         } catch is CancellationError { }
         catch { self.error = error.localizedDescription }
+    }
+    private func apply() async {
+        guard !isApplying else { return }
+        isApplying = true; applicationMessage = nil
+        defer { isApplying = false }
+        do {
+            _ = try await AppDependencies.catalog().apply(jobID: jobID)
+            applicationMessage = "Application submitted. The shop owner will review it."
+        } catch { applicationMessage = error.localizedDescription }
     }
 }

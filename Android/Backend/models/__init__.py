@@ -79,6 +79,9 @@ class Job(Base):
         index=True,
     )
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
         Index("ix_jobs_created_at", created_at.desc()),
         Index("ix_jobs_status_created_at", "status", created_at.desc()),
@@ -98,7 +101,7 @@ class Application(Base):
         nullable=False,
         index=True,
     )
-    status = Column(String, nullable=False, default="pending", server_default=text("'pending'"))  # pending, accepted, rejected
+    status = Column(String, nullable=False, default="pending", server_default=text("'pending'"))  # pending, accepted, rejected, cancelled
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     __table_args__ = (
         Index("uq_applications_job_worker", "job_id", "worker_id", unique=True),

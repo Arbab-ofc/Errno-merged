@@ -34,7 +34,7 @@ fun DigiLockerVerificationScreen(
     onBackClick: () -> Unit,
     onVerificationSuccess: (aadhaarNumber: String) -> Unit
 ) {
-    var step by remember { mutableIntStateOf(if (isAlreadyVerified) 3 else 1) } // 1: Aadhaar Input, 2: OTP, 3: Verified Success
+    var step by remember { mutableIntStateOf(1) } // Live DigiLocker verification is not yet available.
     var aadhaarInput by remember { mutableStateOf("") }
     var otpInput by remember { mutableStateOf("") }
     var consentChecked by remember { mutableStateOf(true) }
@@ -125,7 +125,7 @@ fun DigiLockerVerificationScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 if (step == 1) {
-                    // STEP 1: AADHAAR CARD INPUT
+                    // Live identity verification is unavailable until a verified provider is integrated.
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -134,81 +134,28 @@ fun DigiLockerVerificationScreen(
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
                             Text(
-                                text = "Enter 12-Digit Aadhaar Number",
+                                text = "DigiLocker identity verification",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
                             )
 
                             Text(
-                                text = "SEIF workers require Aadhaar verification via DigiLocker to start accepting jobs.",
+                                text = "DigiLocker is not configured. No Aadhaar data will be collected and no identity check will be claimed.",
                                 fontSize = 12.sp,
                                 color = Color.Gray
                             )
 
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            OutlinedTextField(
-                                value = aadhaarInput,
-                                onValueChange = { if (it.length <= 12 && it.all { char -> char.isDigit() }) aadhaarInput = it },
-                                label = { Text("Aadhaar Number", color = Color.Gray) },
-                                placeholder = { Text("1234 5678 9012", color = Color.Gray) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.VerifiedUser,
-                                        contentDescription = null,
-                                        tint = ErnoGreen
-                                    )
-                                },
-                                textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.Black,
-                                    unfocusedTextColor = Color.Black,
-                                    focusedBorderColor = ErnoGreen,
-                                    unfocusedBorderColor = Color(0xFFCCCCCC)
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // DigiLocker Consent Checkbox
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Checkbox(
-                                    checked = consentChecked,
-                                    onCheckedChange = { consentChecked = it },
-                                    colors = CheckboxDefaults.colors(checkedColor = ErnoGreen)
-                                )
-                                Text(
-                                    text = "I consent to share my Aadhaar card details via DigiLocker for worker identity verification.",
-                                    fontSize = 11.sp,
-                                    color = Color.DarkGray,
-                                    lineHeight = 14.sp
-                                )
-                            }
-
                             Spacer(modifier = Modifier.height(20.dp))
 
                             Button(
-                                onClick = {
-                                    if (aadhaarInput.length == 12 && consentChecked) {
-                                        isLoading = true
-                                        step = 2
-                                        isLoading = false
-                                    }
-                                },
+                                onClick = {},
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(50.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F52BA)),
                                 shape = RoundedCornerShape(12.dp),
-                                enabled = aadhaarInput.length == 12 && consentChecked
+                                enabled = false
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
@@ -218,7 +165,7 @@ fun DigiLockerVerificationScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Fetch from DigiLocker",
+                                    text = "Verification unavailable",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -243,7 +190,7 @@ fun DigiLockerVerificationScreen(
                             )
 
                             Text(
-                                text = "OTP sent to Aadhaar linked mobile number ending in XXXX.",
+                                text = "DigiLocker provider is not configured. No OTP has been sent and no identity check has run.",
                                 fontSize = 12.sp,
                                 color = Color.Gray
                             )
@@ -254,7 +201,7 @@ fun DigiLockerVerificationScreen(
                                 value = otpInput,
                                 onValueChange = { if (it.length <= 6 && it.all { char -> char.isDigit() }) otpInput = it },
                                 label = { Text("6-Digit OTP", color = Color.Gray) },
-                                placeholder = { Text("123456", color = Color.Gray) },
+                                placeholder = { Text("Enter provider code", color = Color.Gray) },
                                 textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold),
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
@@ -271,21 +218,16 @@ fun DigiLockerVerificationScreen(
                             Spacer(modifier = Modifier.height(20.dp))
 
                             Button(
-                                onClick = {
-                                    if (otpInput.length == 6) {
-                                        step = 3
-                                        onVerificationSuccess(aadhaarInput)
-                                    }
-                                },
+                                onClick = {},
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(50.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
                                 shape = RoundedCornerShape(12.dp),
-                                enabled = otpInput.length == 6
+                                enabled = false
                             ) {
                                 Text(
-                                    text = "Verify Aadhaar & Complete",
+                                    text = "Verification unavailable",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White

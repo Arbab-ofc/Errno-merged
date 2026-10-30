@@ -181,6 +181,7 @@ struct LoginView: View {
                                 defer { isGoogleLoading = false }
                                 do {
                                     let profile = try await FirebaseGoogleAuth.signIn(role: role)
+                                    router.marketplace.signIn(profile: profile)
                                     switch profile.role {
                                     case "worker": router.navigateToHome(role: .worker)
                                     case "shop_owner", "shopkeeper": router.navigateToHome(role: .shopkeeper)
@@ -226,7 +227,6 @@ struct LoginView: View {
                     }
 
                     LegalLinks()
-                    if AppDependencies.isDemo { MockNotice(text: "Local demo • OTP: 123456 • No SMS is sent") }
                     // Trust Guarantee
                     HStack(spacing: 6) {
                         Image(systemName: "shield.fill")

@@ -12,14 +12,29 @@ struct ApplicantItem: Identifiable {
 struct ApplicationsRootView: View {
     @Environment(LocalMarketplaceStore.self) private var store
     @State private var selection = 0
+    @State private var isLoading = false
+    @State private var errorMessage: String?
     private var apps: [Application] { store.applications.filter { app in store.ownerJobs.contains { $0.id == app.jobId } } }
     private var filtered: [Application] { selection == 1 ? apps.filter { $0.status == .pending } : selection == 2 ? apps.filter { $0.status == .accepted || $0.status == .completed } : apps }
     var body: some View {
         VStack(spacing: 0) {
             MarketplaceHeader(title: "Worker Applications")
             MarketplaceFilters(labels: ["All (\(apps.count))", "Pending (\(apps.filter { $0.status == .pending }.count))", "Accepted (\(apps.filter { $0.status == .accepted || $0.status == .completed }.count))"], selection: $selection)
-            ScrollView { ApplicationRows(applications: filtered).padding(20) }
+            ScrollView {
+                if isLoading { ProgressView().padding(24) }
+                else if let errorMessage {
+                    MarketplaceEmptyState(title: "Unable to load applications", message: errorMessage)
+                    Button("Retry") { Task { await load() } }.foregroundStyle(Color.errnoGreen)
+                } else { ApplicationRows(applications: filtered).padding(20) }
+            }
         }.marketplacePage().toolbar(.hidden, for: .navigationBar)
+            .task { await load() }
+    }
+    private func load() async {
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do { store.installBackendApplications(try await AppDependencies.backendRepository().ownerApplications()) }
+        catch { errorMessage = error.localizedDescription }
     }
 }
 
@@ -36,7 +51,7 @@ struct ApplicationRows: View {
             ForEach(applications) { app in
                 if let worker = store.user(id: app.workerId), let job = store.job(id: app.jobId) {
                     VStack(spacing: 0) {
-                        NewApplicantCard(item: ApplicantItem(id: app.id, user: worker, status: app.status, jobTitle: job.title, exp: "\(worker.totalJobsCompleted ?? 0) shifts", distance: job.distance), onAccept: { hire(app) }, onDecline: { store.decline(applicationId: app.id) })
+                        NewApplicantCard(item: ApplicantItem(id: app.id, user: worker, status: app.status, jobTitle: job.title, exp: "Profile details unavailable", distance: ""), onAccept: { decide(app, "accepted") }, onDecline: { decide(app, "rejected") })
                         Button("View Reviews & Profile") { review = app }.font(.system(size: 12, weight: .bold)).padding(10)
                     }
                 }
@@ -52,8 +67,8 @@ struct ApplicationRows: View {
                         Text("Past Shopkeeper Reviews & Ratings:").bold()
                         Text("No recorded reviews for this local applicant.").foregroundStyle(.gray)
                         if app.status == .pending {
-                            PrimaryButton(title: "Accept Worker", style: .dark) { hire(app); review = nil }
-                            PrimaryButton(title: "Decline", style: .secondary) { store.decline(applicationId: app.id); review = nil }
+                            PrimaryButton(title: "Accept Worker", style: .dark) { decide(app, "accepted"); review = nil }
+                            PrimaryButton(title: "Decline", style: .secondary) { decide(app, "rejected"); review = nil }
                         }
                     }
                     Spacer()
@@ -62,9 +77,18 @@ struct ApplicationRows: View {
             }.presentationDetents([.medium, .large])
         }
     }
-    private func hire(_ app: Application) {
-        do { try store.hire(applicationId: app.id, jobId: app.jobId) }
-        catch { self.error = error.localizedDescription }
+    private func decide(_ app: Application, _ decision: String) {
+        Task {
+            do {
+                _ = try await AppDependencies.backendRepository().decide(jobID: app.jobId.uuidString,
+                                                                         applicationID: app.id.uuidString,
+                                                                         decision: decision)
+                store.updateApplicationStatus(id: app.id, status: decision == "accepted" ? .accepted : .rejected)
+                if decision == "accepted", let jobs = try? await AppDependencies.backendRepository().myJobs() {
+                    store.installBackendJobs(jobs)
+                }
+            } catch { self.error = error.localizedDescription }
+        }
     }
 }
 
@@ -73,8 +97,6 @@ struct NewApplicantCard: View {
     var onAccept: () -> Void = {}
     var onDecline: () -> Void = {}
     
-    @Environment(\.openURL) private var openURL
-    @State private var showingCallSheet: Bool = false
     
     var body: some View {
         VStack(spacing: 12) {
@@ -138,14 +160,11 @@ struct NewApplicantCard: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Color(hex: "B0B0B0"))
                 
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color(hex: "F5A623"))
-                    
-                    Text(String(format: "%.1f", item.user.rating ?? 5.0))
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.errnoTextPrimary)
+                if let rating = item.user.rating {
+                    HStack(spacing: 3) {
+                        Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(hex: "F5A623"))
+                        Text(String(format: "%.1f", rating)).font(.system(size: 13, weight: .bold)).foregroundStyle(Color.errnoTextPrimary)
+                    }
                 }
                 
                 Spacer()
@@ -180,38 +199,6 @@ struct NewApplicantCard: View {
                     }
                 }
                 .padding(.top, 4)
-            } else if (item.status == .accepted || item.status == .completed) {
-                // Call Worker full width button
-                Button(action: {
-                    if let url = URL(string: "tel://\(item.user.phone)") {
-                        openURL(url) { accepted in if !accepted { showingCallSheet = true } }
-                    } else {
-                        showingCallSheet = true
-                    }
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "phone.fill")
-                            .font(.system(size: 14))
-                        Text("Call Worker")
-                            .font(.system(size: 15, weight: .bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .foregroundStyle(.white)
-                    .background(Color.errnoNavy)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .padding(.top, 4)
-                .alert("Contact \(item.user.name)", isPresented: $showingCallSheet) {
-                    Button("Call \(item.user.phone.isEmpty ? "+91 98765 43210" : item.user.phone)") {
-                        if let url = URL(string: "tel://\(item.user.phone.isEmpty ? "9876543210" : item.user.phone)") {
-                            openURL(url)
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Call \(item.user.name) to coordinate work schedule and store address.")
-                }
             }
         }
         .padding(16)

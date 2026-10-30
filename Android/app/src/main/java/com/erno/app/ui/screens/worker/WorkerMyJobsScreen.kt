@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.data.model.WorkerJob
+import com.erno.app.data.model.WorkerApplication
 import com.erno.app.ui.components.RatingDialog
 import com.erno.app.ui.components.WorkerBottomNavigation
 import com.erno.app.ui.components.WorkerLocationMapView
@@ -39,19 +40,23 @@ fun WorkerMyJobsScreen(
     onBackClick: () -> Unit,
     onNavigateTab: (WorkerTab) -> Unit,
     onJobClick: (WorkerJob) -> Unit = {},
+    onCancelApplication: (WorkerApplication) -> Unit = {},
+    onLoadMoreApplications: () -> Unit = {},
     onRateShopkeeperClick: (jobId: String, rating: Float, comment: String) -> Unit = { _, _, _ -> }
 ) {
-    var selectedTabIndex by remember { mutableIntStateOf(0) } // 0: Upcoming, 1: Ongoing, 2: Completed
+    var selectedTabIndex by remember { mutableIntStateOf(0) } // Applications, Upcoming, Ongoing, Completed
     var ratingJob by remember { mutableStateOf<WorkerJob?>(null) }
+    var selectedApplication by remember { mutableStateOf<WorkerApplication?>(null) }
 
     val upcomingJobs = state.myJobs.filter { it.status == "Upcoming" }
     val ongoingJobs = state.myJobs.filter { it.status == "Ongoing" }
     val completedJobs = state.myJobs.filter { it.status == "Completed" }
 
     val filteredJobs = when (selectedTabIndex) {
-        0 -> upcomingJobs
-        1 -> ongoingJobs
-        else -> completedJobs
+        1 -> upcomingJobs
+        2 -> ongoingJobs
+        3 -> completedJobs
+        else -> emptyList()
     }
 
     Scaffold(
@@ -104,24 +109,15 @@ fun WorkerMyJobsScreen(
                     )
                 }
             ) {
-                Tab(
-                    selected = selectedTabIndex == 0,
-                    onClick = { selectedTabIndex = 0 },
-                    text = {
-                        Text(
-                            text = "Upcoming (${upcomingJobs.size})",
-                            fontSize = 13.sp,
-                            fontWeight = if (selectedTabIndex == 0) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selectedTabIndex == 0) ErnoGreen else Color.Gray
-                        )
-                    }
-                )
+                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, text = {
+                    Text("Applications (${state.applications.size})", fontSize = 11.sp, color = if (selectedTabIndex == 0) ErnoGreen else Color.Gray)
+                })
                 Tab(
                     selected = selectedTabIndex == 1,
                     onClick = { selectedTabIndex = 1 },
                     text = {
                         Text(
-                            text = "Ongoing (${ongoingJobs.size})",
+                            text = "Upcoming (${upcomingJobs.size})",
                             fontSize = 13.sp,
                             fontWeight = if (selectedTabIndex == 1) FontWeight.Bold else FontWeight.Medium,
                             color = if (selectedTabIndex == 1) ErnoGreen else Color.Gray
@@ -133,10 +129,22 @@ fun WorkerMyJobsScreen(
                     onClick = { selectedTabIndex = 2 },
                     text = {
                         Text(
-                            text = "Completed (${completedJobs.size})",
+                            text = "Ongoing (${ongoingJobs.size})",
                             fontSize = 13.sp,
                             fontWeight = if (selectedTabIndex == 2) FontWeight.Bold else FontWeight.Medium,
                             color = if (selectedTabIndex == 2) ErnoGreen else Color.Gray
+                        )
+                    }
+                )
+                Tab(
+                    selected = selectedTabIndex == 3,
+                    onClick = { selectedTabIndex = 3 },
+                    text = {
+                        Text(
+                            text = "Completed (${completedJobs.size})",
+                            fontSize = 13.sp,
+                            fontWeight = if (selectedTabIndex == 3) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedTabIndex == 3) ErnoGreen else Color.Gray
                         )
                     }
                 )
@@ -144,7 +152,34 @@ fun WorkerMyJobsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (filteredJobs.isEmpty()) {
+            if (selectedTabIndex == 0) {
+                when {
+                    state.isLoadingApplications && state.applications.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = ErnoGreen) }
+                    state.applicationsError != null && state.applications.isEmpty() -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Text(state.applicationsError.orEmpty(), color = Color.Gray)
+                        TextButton(onClick = onLoadMoreApplications) { Text("Retry", color = ErnoGreen) }
+                    }
+                    state.applications.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("You have not applied to any jobs yet", color = Color.Gray, fontSize = 14.sp) }
+                    else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (state.isLoadingApplications) item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = ErnoGreen) }
+                        items(state.applications, key = { it.id }) { application ->
+                            Surface(Modifier.fillMaxWidth().clickable { selectedApplication = application }, shape = RoundedCornerShape(14.dp), color = Color.White) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(application.jobTitle, fontWeight = FontWeight.Bold, color = Color.Black)
+                                        Text(application.status.replaceFirstChar { it.uppercase() }, color = ErnoGreen, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Text(application.shopName, color = Color.DarkGray, fontSize = 13.sp)
+                                    Text("${application.shopAddress} • ${application.location}", color = Color.Gray, fontSize = 12.sp)
+                                    Text("Applied ${application.createdAt} • ₹${application.payAmount}", color = Color.Gray, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        if (state.applicationsError != null) item { Text(state.applicationsError.orEmpty(), color = Color.Red) }
+                        if (state.applicationsHasMore) item { TextButton(onClick = onLoadMoreApplications, enabled = !state.isLoadingApplications) { Text(if (state.isLoadingApplications) "Loading…" else "Load more applications", color = ErnoGreen) } }
+                    }
+                }
+            } else if (filteredJobs.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -175,6 +210,16 @@ fun WorkerMyJobsScreen(
                 }
             }
         }
+    }
+
+    selectedApplication?.let { application ->
+        AlertDialog(
+            onDismissRequest = { selectedApplication = null },
+            title = { Text(application.jobTitle) },
+            text = { Text("${application.shopName}\n${application.shopAddress}\n${application.location}\nApplication: ${application.status}\nJob: ${application.jobStatus}\nApplied: ${application.createdAt}\nPay: ₹${application.payAmount}") },
+            confirmButton = { TextButton(onClick = { selectedApplication = null }) { Text("Close") } },
+            dismissButton = { if (application.status == "pending") TextButton(onClick = { onCancelApplication(application); selectedApplication = null }) { Text("Cancel application", color = Color.Red) } }
+        )
     }
 
     // Rate Shopkeeper Dialog

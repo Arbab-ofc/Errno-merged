@@ -153,7 +153,9 @@ def test_user_lists_search_paginate_details_and_audit_supported_mutations(admin_
     client, factory = admin_client
     add_admin(factory)
     owner_id = add_user(factory, "owner-uid", "shop_owner", name="North Shop Owner", email="north@example.test")
+    inactive_owner_id = add_user(factory, "owner-inactive", "shopkeeper", name="South Shop Owner", active=False)
     worker_id = add_user(factory, "worker-uid", "worker", name="Worker One")
+    inactive_worker_id = add_user(factory, "worker-inactive", "worker", name="Worker Two", active=False)
     with factory() as db:
         shop = Shop(owner_id=owner_id, shop_name="North Shop")
         db.add(shop)
@@ -167,24 +169,37 @@ def test_user_lists_search_paginate_details_and_audit_supported_mutations(admin_
     headers = {"Authorization": "Bearer admin-token"}
     page = client.get("/api/v1/admin/shop-owners?q=North&limit=1&offset=0", headers=headers)
     assert page.status_code == 200 and page.json()["total"] == 1
+    inactive_owners = client.get("/api/v1/admin/shop-owners?active=false", headers=headers).json()
+    assert inactive_owners["total"] == 1 and inactive_owners["items"][0]["id"] == inactive_owner_id
     owner_detail = client.get(f"/api/v1/admin/shop-owners/{owner_id}", headers=headers)
     assert owner_detail.status_code == 200
     assert owner_detail.json()["shops"][0]["shop_name"] == "North Shop"
     assert owner_detail.json()["jobs"][0]["title"] == "Morning shift"
 
-    worker_page = client.get("/api/v1/admin/workers?limit=1", headers=headers)
+    worker_page = client.get("/api/v1/admin/workers?active=true&limit=1&offset=0", headers=headers)
     assert worker_page.status_code == 200 and worker_page.json()["total"] == 1
+    inactive_workers = client.get("/api/v1/admin/workers?active=false", headers=headers).json()
+    assert inactive_workers["total"] == 1 and inactive_workers["items"][0]["id"] == inactive_worker_id
+    worker_second_page = client.get("/api/v1/admin/workers?limit=1&offset=1", headers=headers).json()
+    worker_past_end = client.get("/api/v1/admin/workers?limit=1&offset=2", headers=headers).json()
+    assert worker_second_page["total"] == 2 and len(worker_second_page["items"]) == 1
+    assert worker_past_end["items"] == []
     worker_detail = client.get(f"/api/v1/admin/workers/{worker_id}", headers=headers)
     assert worker_detail.status_code == 200
     assert worker_detail.json()["applications"][0]["job_title"] == "Morning shift"
 
     changed = client.patch(f"/api/v1/admin/workers/{worker_id}", headers=headers, json={"is_active": False})
     assert changed.status_code == 200 and changed.json()["is_active"] is False
+    owner_changed = client.patch(f"/api/v1/admin/shop-owners/{owner_id}", headers=headers,
+                                 json={"is_active": False})
+    assert owner_changed.status_code == 200 and owner_changed.json()["is_active"] is False
     with factory() as db:
-        event = db.query(AdminAuditLog).filter_by(resource_id=worker_id).one()
-        assert event.administrator_uid == "admin-uid"
-        assert event.change_metadata["is_active"] == {"from": True, "to": False}
-        assert event.created_at is not None
+        worker_event = db.query(AdminAuditLog).filter_by(resource_id=worker_id).one()
+        owner_event = db.query(AdminAuditLog).filter_by(resource_id=owner_id).one()
+        assert worker_event.administrator_uid == owner_event.administrator_uid == "admin-uid"
+        assert worker_event.change_metadata["is_active"] == {"from": True, "to": False}
+        assert owner_event.change_metadata["is_active"] == {"from": True, "to": False}
+        assert worker_event.created_at is not None and owner_event.created_at is not None
 
 
 def test_job_admin_list_detail_transitions_and_audit(admin_client):
@@ -204,13 +219,16 @@ def test_job_admin_list_detail_transitions_and_audit(admin_client):
         job_id = job.id
 
     headers = {"Authorization": "Bearer admin-token"}
-    listing = client.get("/api/v1/admin/jobs?status_filter=open&q=Stock", headers=headers)
+    listing = client.get("/api/v1/admin/jobs?status_filter=open&q=Stock&limit=1&offset=0", headers=headers)
     assert listing.status_code == 200 and listing.json()["total"] == 1
+    assert client.get("/api/v1/admin/jobs?status_filter=open&q=Stock&limit=1&offset=1",
+                      headers=headers).json()["items"] == []
     detail = client.get(f"/api/v1/admin/jobs/{job_id}", headers=headers)
     assert detail.status_code == 200 and detail.json()["applications"][0]["worker_name"] == "Worker"
-    changed = client.patch(f"/api/v1/admin/jobs/{job_id}/status", headers=headers, json={"status": "assigned"})
-    assert changed.status_code == 200 and changed.json()["status"] == "assigned"
-    invalid = client.patch(f"/api/v1/admin/jobs/{job_id}/status", headers=headers, json={"status": "open"})
+    changed = client.patch(f"/api/v1/admin/jobs/{job_id}/status", headers=headers, json={"status": "cancelled"})
+    assert changed.status_code == 200 and changed.json()["status"] == "cancelled"
+    assert changed.json()["cancelled_at"]
+    invalid = client.patch(f"/api/v1/admin/jobs/{job_id}/status", headers=headers, json={"status": "cancelled"})
     assert invalid.status_code == 409
     with factory() as db:
         assert db.query(AdminAuditLog).filter_by(resource_id=job_id).count() == 1

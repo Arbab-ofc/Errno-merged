@@ -26,9 +26,18 @@ fun WorkerJobDetailsScreen(
     state: WorkerState,
     onBackClick: () -> Unit,
     onDurationSelect: (hours: Int, pay: Int) -> Unit,
-    onAcceptJobClick: () -> Unit
+    onAcceptJobClick: () -> Unit,
+    onStartJobClick: () -> Unit = {}
 ) {
-    val job = state.selectedJob ?: state.availableJobs.first()
+    val job = state.selectedJob ?: state.availableJobs.firstOrNull()
+    if (job == null) {
+        Scaffold(containerColor = Color(0xFF0B121F)) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("Job unavailable. Refresh the marketplace and try again.", color = Color.White)
+            }
+        }
+        return
+    }
     var selectedHours by remember { mutableIntStateOf(job.selectedHours) }
 
     Scaffold(
@@ -55,7 +64,7 @@ fun WorkerJobDetailsScreen(
             )
         },
         bottomBar = {
-            Surface(
+            if (job.status == "Available") Surface(
                 color = Color(0xFF0B121F),
                 tonalElevation = 8.dp
             ) {
@@ -69,12 +78,16 @@ fun WorkerJobDetailsScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = "Accept Job",
+                            text = "Apply for Job",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
+                }
+            } else if (job.status == "Upcoming") Surface(color = Color(0xFF0B121F)) {
+                Button(onClick = onStartJobClick, enabled = !state.lifecycleActionLoading, modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)) {
+                    Text(if (state.lifecycleActionLoading) "Starting…" else "Start Job", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         },
@@ -87,6 +100,7 @@ fun WorkerJobDetailsScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (state.jobLoadError != null) item { Text(state.jobLoadError.orEmpty(), color = Color(0xFFFF8A80)) }
             // Main Details Container
             item {
                 Surface(
@@ -101,6 +115,7 @@ fun WorkerJobDetailsScreen(
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
+                        Text("Status: ${job.status}", fontSize = 12.sp, color = ErnoGreen, fontWeight = FontWeight.SemiBold)
 
                         Spacer(modifier = Modifier.height(4.dp))
 

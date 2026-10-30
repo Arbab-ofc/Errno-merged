@@ -10,10 +10,10 @@ import { LoadingRows, StatePanel } from "../components/StatePanel";
 
 const PAGE_SIZE = 20;
 const transitions = {
-  open: ["assigned", "cancelled"],
-  assigned: ["in_progress", "completed", "cancelled"],
-  in_progress: ["completed", "cancelled"],
-  inProgress: ["completed", "cancelled"],
+  open: ["cancelled"],
+  assigned: ["cancelled"],
+  in_progress: [],
+  inProgress: [],
   completed: [],
   cancelled: [],
 };

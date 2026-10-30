@@ -5,6 +5,11 @@ import UIKit
 
 @MainActor
 enum FirebaseGoogleAuth {
+    static func currentIDToken(forceRefresh: Bool = false) async throws -> String {
+        guard let user = Auth.auth().currentUser else { throw APIError.unauthorized }
+        return try await firebaseIDToken(for: user, forceRefresh: forceRefresh)
+    }
+
     static func signIn(role: UserRole) async throws -> FirebaseUserProfile {
         guard let clientID = FirebaseApp.app()?.options.clientID, !clientID.isEmpty else {
             throw APIError.googleSignInConfiguration
