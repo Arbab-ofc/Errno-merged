@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -43,6 +44,10 @@ def client(monkeypatch):
         if token == "invalid-token":
             from fastapi import HTTPException
             raise HTTPException(status_code=401, detail="Invalid authentication token")
+        if token == "shop-owner-token":
+            return {"uid": "firebase-shop-owner", "name": "Shop Owner", "email": "owner@example.test"}
+        if token == "worker-token":
+            return {"uid": "firebase-worker", "name": "Worker", "email": "worker@example.test"}
         return {"uid": "verified-user-uid", "name": "Google User", "email": "google@example.test"}
 
     monkeypatch.setattr(firebase_auth, "verify_firebase_token", verify)
@@ -134,3 +139,57 @@ def test_worker_cannot_create_shopkeeper_job(client):
 def test_legacy_jobs_are_not_authorized_by_phone_or_mock_identity(client):
     response = client.post("/jobs", params={"owner_phone": "9971439107"}, json={"title": "Restricted job"})
     assert response.status_code == 401
+
+
+def test_shopkeeper_and_shop_owner_remain_authorized_role_aliases():
+    from firebase_auth import require_role
+
+    require_role(SimpleNamespace(role="shopkeeper"), "shop_owner", "shopkeeper")
+    require_role(SimpleNamespace(role="shop_owner"), "shop_owner", "shopkeeper")
+
+
+def test_firebase_onboarding_shop_job_and_application_relationships(client):
+    owner_headers = {"Authorization": "Bearer shop-owner-token"}
+    owner_login = client.post("/api/v1/auth/firebase", headers=owner_headers)
+    assert owner_login.status_code == 200
+    owner_profile = client.get("/api/v1/users/me", headers=owner_headers)
+    assert owner_profile.status_code == 200
+    assert owner_profile.json()["id"] == owner_login.json()["user"]["id"]
+    assert owner_profile.json()["onboarding_completed"] is False
+
+    onboarding = client.patch(
+        "/api/v1/users/me",
+        headers=owner_headers,
+        json={"role": "shop_owner"},
+    )
+    assert onboarding.status_code == 200
+    assert onboarding.json()["onboarding_completed"] is True
+
+    shop = client.get("/shops/me/unused-path-phone", headers=owner_headers)
+    assert shop.status_code == 200
+    job = client.post(
+        "/jobs",
+        headers=owner_headers,
+        json={"title": "Counter assistant"},
+    )
+    assert job.status_code == 200
+    assert job.json()["shop_id"] == shop.json()["id"]
+    assert client.get(f"/jobs/{job.json()['id']}").json()["id"] == job.json()["id"]
+
+    worker_headers = {"Authorization": "Bearer worker-token"}
+    worker_login = client.post("/api/v1/auth/firebase", headers=worker_headers)
+    assert worker_login.status_code == 200
+    worker_onboarding = client.patch(
+        "/api/v1/users/me",
+        headers=worker_headers,
+        json={"role": "worker"},
+    )
+    assert worker_onboarding.status_code == 200
+
+    applied = client.post(f"/jobs/{job.json()['id']}/apply", headers=worker_headers)
+    assert applied.status_code == 200
+    assert applied.json()["job_id"] == job.json()["id"]
+    assert applied.json()["worker_id"] == worker_login.json()["user"]["id"]
+    duplicate = client.post(f"/jobs/{job.json()['id']}/apply", headers=worker_headers)
+    assert duplicate.status_code == 200
+    assert duplicate.json()["id"] == applied.json()["id"]

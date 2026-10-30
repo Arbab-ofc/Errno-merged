@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
@@ -80,7 +81,18 @@ def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Ses
         status="pending"
     )
     db.add(app)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The unique job/worker key closes the concurrent duplicate-apply race.
+        db.rollback()
+        existing_app = db.query(Application).filter(
+            Application.job_id == job_id,
+            Application.worker_id == worker.id,
+        ).first()
+        if existing_app is None:
+            raise
+        return ApplicationResponse.from_orm(existing_app)
     db.refresh(app)
 
     return ApplicationResponse.from_orm(app)
