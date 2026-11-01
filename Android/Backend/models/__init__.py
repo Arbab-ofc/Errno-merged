@@ -416,6 +416,125 @@ class CompanyPaymentConfiguration(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
+class KYCVerificationProfile(Base):
+    """Current server-authoritative identity verification state for a worker or staff subject."""
+    __tablename__ = "kyc_verification_profiles"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, unique=True)
+    staff_firebase_uid = Column(String(160), nullable=True, unique=True)
+    subject_role = Column(String(24), nullable=False)
+    status = Column(String(32), nullable=False, default="NOT_STARTED", server_default=text("'NOT_STARTED'"), index=True)
+    verification_method = Column(String(40), nullable=True)
+    provider = Column(String(40), nullable=True)
+    document_types = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    verified_document_types = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    reverification_required_at = Column(DateTime(timezone=True), nullable=True)
+    consent_withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+    user_message_code = Column(String(80), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (
+        CheckConstraint("(user_id IS NOT NULL AND staff_firebase_uid IS NULL) OR (user_id IS NULL AND staff_firebase_uid IS NOT NULL)", name="ck_kyc_profile_subject"),
+        CheckConstraint("subject_role IN ('worker','staff')", name="ck_kyc_profile_role"),
+        CheckConstraint("status IN ('NOT_STARTED','CONSENT_PENDING','VERIFICATION_PENDING','VERIFIED','FAILED','EXPIRED','MANUAL_REVIEW','REJECTED','REVERIFICATION_REQUIRED')", name="ck_kyc_profile_status"),
+    )
+
+
+class KYCVerificationSession(Base):
+    __tablename__ = "kyc_verification_sessions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    profile_id = Column(String, ForeignKey("kyc_verification_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    staff_firebase_uid = Column(String(160), nullable=True, index=True)
+    provider = Column(String(40), nullable=False)
+    status = Column(String(32), nullable=False, default="CONSENT_PENDING", server_default=text("'CONSENT_PENDING'"))
+    state_hash = Column(String(64), nullable=False, unique=True)
+    nonce_hash = Column(String(64), nullable=False)
+    mock_callback_token_hash = Column(String(64), nullable=True)
+    requested_document_types = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    consent_version = Column(String(80), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    failure_code = Column(String(80), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (
+        CheckConstraint("status IN ('CONSENT_PENDING','VERIFICATION_PENDING','VERIFIED','FAILED','EXPIRED','CANCELLED')", name="ck_kyc_session_status"),
+        Index("ix_kyc_sessions_user_status", "user_id", "status"),
+    )
+
+
+class KYCConsentRecord(Base):
+    __tablename__ = "kyc_consent_records"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    profile_id = Column(String, ForeignKey("kyc_verification_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(String, ForeignKey("kyc_verification_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    subject_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    subject_staff_uid = Column(String(160), nullable=True)
+    purpose = Column(String(240), nullable=False)
+    document_types = Column(JSON, nullable=False)
+    consent_version = Column(String(80), nullable=False)
+    granted_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class KYCVerifiedDocument(Base):
+    __tablename__ = "kyc_verified_documents"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    profile_id = Column(String, ForeignKey("kyc_verification_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(String, ForeignKey("kyc_verification_sessions.id", ondelete="SET NULL"), nullable=True)
+    document_type = Column(String(60), nullable=False)
+    issuer_id = Column(String(160), nullable=True)
+    proof_status = Column(String(32), nullable=False)
+    provider_document_ref_hash = Column(String(64), nullable=True)
+    masked_identifier = Column(String(40), nullable=True)
+    metadata_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    verified_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    retain_until = Column(DateTime(timezone=True), nullable=True)
+
+
+class KYCManualReview(Base):
+    __tablename__ = "kyc_manual_reviews"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    profile_id = Column(String, ForeignKey("kyc_verification_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    document_type = Column(String(60), nullable=False)
+    encrypted_storage_key = Column(String(240), nullable=False, unique=True)
+    content_type = Column(String(80), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    scan_status = Column(String(24), nullable=False, default="QUARANTINED", server_default=text("'QUARANTINED'"))
+    status = Column(String(32), nullable=False, default="PENDING_SCAN", server_default=text("'PENDING_SCAN'"))
+    review_reason_code = Column(String(80), nullable=True)
+    reviewer_uid = Column(String(160), nullable=True)
+    reviewer_note = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    resubmission_requested = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    retain_until = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0", name="ck_kyc_manual_size_positive"),
+        CheckConstraint("scan_status IN ('QUARANTINED','CLEAN','INFECTED','ERROR')", name="ck_kyc_manual_scan_status"),
+        CheckConstraint("status IN ('PENDING_SCAN','PENDING_REVIEW','APPROVED','REJECTED','RESUBMISSION_REQUESTED','DELETED')", name="ck_kyc_manual_status"),
+    )
+
+
+class KYCAuditEvent(Base):
+    __tablename__ = "kyc_audit_events"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    profile_id = Column(String, ForeignKey("kyc_verification_profiles.id", ondelete="CASCADE"), nullable=True, index=True)
+    actor_type = Column(String(24), nullable=False)
+    actor_id = Column(String(160), nullable=True)
+    event_type = Column(String(80), nullable=False)
+    from_status = Column(String(32), nullable=True)
+    to_status = Column(String(32), nullable=True)
+    details = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
 class PricingAudit(Base):
     __tablename__ = "pricing_audit_logs"
     id = Column(String, primary_key=True, default=generate_uuid)

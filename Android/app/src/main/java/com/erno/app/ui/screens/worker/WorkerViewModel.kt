@@ -20,7 +20,7 @@ data class WorkerState(
     val jobApprovalsCount: Int = 0, // Starts at 00
     val workerRating: Float = 0.0f, // Starts at 0.0 rating for everyone initially
     val isDigiLockerVerified: Boolean = false,
-    val aadhaarMasked: String = "",
+    val verificationStatus: String = "NOT_STARTED",
     val availableJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
     val selectedJob: WorkerJob? = null,
     val myJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
@@ -157,13 +157,10 @@ class WorkerViewModel : ViewModel() {
         }
     }
 
-    fun verifyDigiLockerAadhaar(aadhaarNumber: String) {
-        val last4 = if (aadhaarNumber.length >= 4) aadhaarNumber.takeLast(4) else "1234"
-        _uiState.update {
-            it.copy(
-                isDigiLockerVerified = true,
-                aadhaarMasked = "XXXX-XXXX-$last4"
-            )
+    suspend fun refreshKycStatus() {
+        runCatching { ErrnoMobileApi.kycStatus() }.onSuccess { response ->
+            val verified = response.optString("status") == "VERIFIED" && response.optString("verificationMethod") in setOf("DIGILOCKER_VERIFIED", "MANUAL_DOCUMENT_REVIEW")
+            _uiState.update { it.copy(isDigiLockerVerified = verified, verificationStatus = response.optString("status", "NOT_STARTED")) }
         }
     }
 

@@ -45,6 +45,39 @@ object ErrnoMobileApi {
         } finally { connection.disconnect() }
     }
 
+    private suspend fun uploadKycDocument(documentType: String, consentVersion: String, bytes: ByteArray, mimeType: String): JSONObject = withContext(Dispatchers.IO) {
+        require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 * 1024) { "Choose a document smaller than 8 MB." }
+        val sessionToken = ErrnoSessionStore.read()
+        val user = FirebaseAuth.getInstance().currentUser
+        val token = sessionToken ?: (user?.getIdToken(false)?.await()?.token) ?: error("Sign in to continue.")
+        val boundary = "errno-${java.util.UUID.randomUUID()}"
+        val base = BuildConfig.ERRNO_API_BASE_URL.trimEnd('/')
+        check(base.startsWith("https://") || (BuildConfig.DEBUG && (base.startsWith("http://10.0.2.2") || base.startsWith("http://localhost")))) { "Backend URL is not configured securely." }
+        val connection = (URL("$base/api/v1/worker/verification/manual-reviews").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"; connectTimeout = 15000; readTimeout = 30000; doOutput = true
+            setRequestProperty("Authorization", "Bearer $token"); setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            connection.outputStream.use { out ->
+                fun field(name: String, value: String) { out.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray()) }
+                field("document_type", documentType); field("consent_version", consentVersion); field("consent_given", "true")
+                out.write("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"identity-document\"\r\nContent-Type: $mimeType\r\n\r\n".toByteArray())
+                out.write(bytes); out.write("\r\n--$boundary--\r\n".toByteArray())
+            }
+            val code = connection.responseCode; val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            check(code in 200..299) { if (code == 503) "Manual verification is unavailable." else "Document upload failed ($code)." }
+            JSONObject(response)
+        } finally { connection.disconnect() }
+    }
+
+    suspend fun kycStatus(): JSONObject = JSONObject(request("GET", "/api/v1/worker/verification-status"))
+    suspend fun startKyc(documentTypes: List<String>, version: String): JSONObject = JSONObject(request("POST", "/api/v1/worker/verification-sessions",
+        JSONObject().put("requestedDocumentTypes", JSONArray(documentTypes)).put("consentVersion", version).put("consentGiven", true)))
+    suspend fun withdrawKycConsent(): JSONObject = JSONObject(request("POST", "/api/v1/worker/verification/withdraw-consent", JSONObject()))
+    suspend fun uploadKyc(documentType: String, version: String, bytes: ByteArray, mime: String): JSONObject = uploadKycDocument(documentType, version, bytes, mime)
+
     suspend fun availableJobs(): List<WorkerJob> {
         val array = JSONArray(request("GET", "/jobs?status_filter=open"))
         return (0 until array.length()).map { array.getJSONObject(it).toWorkerJob() }

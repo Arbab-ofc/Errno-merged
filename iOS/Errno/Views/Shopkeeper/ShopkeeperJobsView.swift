@@ -72,7 +72,7 @@ struct ShopkeeperJobDetailView: View {
                             Text(worker.name).font(.system(size: 18, weight: .bold))
                             Text("Rating: \(worker.rating ?? 0, specifier: "%.1f") ★ • \(worker.totalJobsCompleted ?? 0) Shifts")
                                 .font(.system(size: 12))
-                            Text(id == store.worker.id && store.isVerified ? "Demo Aadhaar Verified • \(store.maskedAadhaar)" : "Identity verification is not confirmed")
+                            Text("Identity verification is not confirmed")
                                 .font(.system(size: 11)).foregroundStyle(Color.errnoTextSecondary)
                             ContactActions(phone: worker.phone)
                         }.marketplaceCard()

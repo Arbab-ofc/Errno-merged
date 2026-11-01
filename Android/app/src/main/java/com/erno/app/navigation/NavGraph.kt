@@ -544,6 +544,7 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.WorkerProfile.route) {
+            LaunchedEffect(Unit) { workerViewModel.refreshKycStatus() }
             WorkerProfileScreen(
                 state = workerState,
                 onBackClick = {
@@ -575,13 +576,10 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.DigiLockerVerification.route) {
             DigiLockerVerificationScreen(
                 isAlreadyVerified = workerState.isDigiLockerVerified,
-                aadhaarMasked = workerState.aadhaarMasked,
                 onBackClick = {
                     navController.popBackStack()
                 },
-                onVerificationSuccess = { aadhaarNum ->
-                    workerViewModel.verifyDigiLockerAadhaar(aadhaarNum)
-                }
+                onStatusRefreshed = { scope.launch { workerViewModel.refreshKycStatus() } }
             )
         }
 

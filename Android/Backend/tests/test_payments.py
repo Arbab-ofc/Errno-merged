@@ -20,6 +20,7 @@ import routers.payments as payments
 from database import Base, get_db
 from models import (AdminPermission, Job, PaymentTransaction, PricingQuote, Shop, User,
                     CashCollection, PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal)
+from models import KYCVerificationProfile
 
 PAYMENT_TEST_SECRET = secrets.token_urlsafe(32)
 WEBHOOK_TEST_SECRET = secrets.token_urlsafe(32)
@@ -174,6 +175,8 @@ def test_withdrawal_requires_three_paid_jobs_verified_method_and_reserves_ledger
                 amount_paise=9200, idempotency_key=f"earning:{tx.id}"))
         db.add(WorkerPayoutMethod(id="verified-method", worker_id="worker", provider_reference="provider-reference-1",
             status="VERIFIED", kyc_verified=True, verified_by="finance-admin", verified_at=now))
+        db.add(KYCVerificationProfile(user_id="worker", subject_role="worker", status="VERIFIED",
+            verification_method="MANUAL_DOCUMENT_REVIEW", document_types=["PAN"], verified_document_types=["PAN"], verified_at=now))
         db.commit()
     result = client.post("/api/v1/worker/withdrawals", headers={"Authorization": "Bearer worker-token"},
         json={"amountPaise": 5000, "payoutMethodId": "verified-method", "idempotencyKey": "withdrawal-test-key-0001"})
@@ -194,6 +197,14 @@ def test_wallet_surfaces_refund_shortfall_as_withdrawal_hold(payment_client):
     wallet = client.get("/api/v1/worker/wallet", headers={"Authorization": "Bearer worker-token"}).json()
     assert wallet["availableBalancePaise"] == 0
     assert wallet["unresolvedSettlementAdjustmentsPaise"] == 2500
+
+
+def test_wallet_requires_identity_verification_when_policy_enabled(payment_client):
+    client, _ = payment_client
+    wallet = client.get("/api/v1/worker/wallet", headers={"Authorization": "Bearer worker-token"}).json()
+    assert wallet["kycVerified"] is False
+    assert "KYC_REQUIRED" in wallet["eligibilityReasons"]
+    assert wallet["withdrawalEligible"] is False
 
 
 def test_partial_refund_requires_provider_webhook_and_reverses_worker_ledger(payment_client, monkeypatch):

@@ -34,7 +34,7 @@ async function send(path, { user, method = 'GET', body, signal, publicRequest = 
     let message = `Request failed (${response.status})`;
     try {
       const payload = await response.json();
-      message = payload.detail || payload.message || message;
+      message = (typeof payload.detail === 'string' ? payload.detail : payload.detail?.message || payload.detail?.code) || payload.message || message;
     } catch { /* keep the status-based message */ }
     throw new ApiError(response.status, message);
   }
@@ -97,4 +97,17 @@ export const api = {
   resolveCash: (user, id, body) => send(`/api/v1/admin/cash-collections/${encodeURIComponent(id)}/resolve`, { user, method: 'POST', body }),
   companyPaymentQr: (user) => send('/api/v1/admin/finance/company-upi-qr', { user }),
   updateCompanyPaymentQr: (user, body) => send('/api/v1/admin/finance/company-upi-qr', { user, method: 'PUT', body }),
+  kycOverview: (user) => send('/api/v1/admin/kyc/overview', { user }),
+  kycVerifications: (user, params = {}) => send(`/api/v1/admin/kyc/verifications?${new URLSearchParams(params)}`, { user }),
+  kycVerification: (user, id) => send(`/api/v1/admin/kyc/verifications/${encodeURIComponent(id)}`, { user }),
+  reviewKyc: (user, id, body) => send(`/api/v1/admin/kyc/verifications/${encodeURIComponent(id)}/review`, { user, method: 'POST', body }),
+  kycAudit: (user, params = {}) => send(`/api/v1/admin/kyc/audit?${new URLSearchParams(params)}`, { user }),
+  kycDocument: async (user, id) => {
+    const token = await user.getIdToken();
+    const response = await fetch(`${baseUrl}/api/v1/admin/kyc/manual-reviews/${encodeURIComponent(id)}/document`, {
+      headers: { Authorization: `Bearer ${token}` }, credentials: 'omit', redirect: 'error', cache: 'no-store',
+    });
+    if (!response.ok) throw new ApiError(response.status, 'Document access is unavailable or not authorized.');
+    return response.blob();
+  },
 };

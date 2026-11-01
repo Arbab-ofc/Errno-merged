@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, BriefcaseBusiness, ChartNoAxesCombined, ChevronLeft, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Shield, Store, Users, Wrench, DollarSign, MessageCircle } from "lucide-react";
+import { Activity, BriefcaseBusiness, ChartNoAxesCombined, ChevronLeft, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Shield, Store, Users, Wrench, DollarSign, MessageCircle, Fingerprint } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 const links = [
@@ -10,6 +10,7 @@ const links = [
   { to: "/admin/jobs", label: "Jobs", icon: BriefcaseBusiness, permission: "jobs.read" },
   { to: "/admin/pricing", label: "Pricing Management", icon: DollarSign, permission: "pricing.read" },
   { to: "/admin/finance", label: "Finance & Payments", icon: DollarSign, permission: "payments.read" },
+  { to: "/admin/kyc", label: "KYC Verification", icon: Fingerprint, permission: "kyc.read" },
   { to: "/admin/whatsapp", label: "WhatsApp Gateway", icon: MessageCircle, permission: "whatsapp.read" },
   { to: "/admin/bookings", label: "Bookings", icon: ClipboardList },
   { to: "/admin/categories", label: "Categories", icon: Wrench },

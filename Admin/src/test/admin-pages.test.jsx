@@ -14,6 +14,7 @@ const { useAuth, api } = vi.hoisted(() => ({
     whatsappStatus: vi.fn(), whatsappQr: vi.fn(), whatsappConnect: vi.fn(), whatsappDisconnect: vi.fn(), whatsappLogout: vi.fn(), whatsappMonitoring: vi.fn(),
     financeOverview: vi.fn(), financePayments: vi.fn(), financeRefunds: vi.fn(), financeAudit: vi.fn(), financeWallets: vi.fn(),
     financeWithdrawals: vi.fn(), financePayoutMethods: vi.fn(), reconciliation: vi.fn(), companyPaymentQr: vi.fn(),
+    kycOverview: vi.fn(), kycVerifications: vi.fn(), kycVerification: vi.fn(), reviewKyc: vi.fn(), kycAudit: vi.fn(), kycDocument: vi.fn(),
   },
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => useAuth(), AuthProvider: ({ children }) => children }));
@@ -26,6 +27,7 @@ import { JobsPage } from "../pages/JobsPage";
 import { PricingPage } from "../pages/PricingPage";
 import { WhatsAppGatewayPage } from "../pages/WhatsAppGatewayPage";
 import { FinancePage } from "../pages/FinancePage";
+import { KycPage } from "../pages/KycPage";
 import { RequireAdmin } from "../auth/RequireAdmin";
 
 const user = { email: "admin@example.test", getIdToken: vi.fn() };
@@ -61,6 +63,16 @@ describe("admin authentication gates and live pages", () => {
     expect(await screen.findByText("Finance & Payments")).toBeInTheDocument();
     expect(screen.getByText("Completed-job amount outstanding")).toBeInTheDocument();
     expect(api.financeOverview).toHaveBeenCalledWith(user);
+  });
+
+  it("shows server-backed KYC and labels manual review distinctly", async () => {
+    useAuth.mockReturnValue({ ...useAuth(), admin: { ...admin, permissions: [...admin.permissions, "kyc.read", "kyc.review"] } });
+    api.kycOverview.mockResolvedValue({ TOTAL_WORKERS: 4, VERIFIED_WORKERS: 1, MANUAL_REVIEW_QUEUE: 1 });
+    api.kycVerifications.mockResolvedValue({ items: [{ id: "profile-1", identity: "Worker A", role: "worker", status: "MANUAL_REVIEW", verificationMethod: "MANUAL_DOCUMENT_REVIEW", documentTypes: ["PAN"], lastActionAt: "2026-10-31T10:00:00Z" }], total: 1 });
+    render(<MemoryRouter><KycPage /></MemoryRouter>);
+    expect(await screen.findByText("Worker A")).toBeInTheDocument();
+    expect(screen.getByText("MANUAL_DOCUMENT_REVIEW")).toBeInTheDocument();
+    expect(api.kycOverview).toHaveBeenCalledWith(user);
   });
 
   it("starts Google sign-in from the login screen", async () => {

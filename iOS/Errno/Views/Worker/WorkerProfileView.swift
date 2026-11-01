@@ -5,6 +5,7 @@ struct WorkerProfileView: View {
     @Environment(AppRouter.self) private var router
     @State private var panel: ProfilePanel?
     @State private var logout = false
+    @State private var verificationLabel = "Identity verification status unavailable"
     var body: some View {
         VStack(spacing: 0) {
             MarketplaceHeader(title: "Worker Profile Settings", dark: true)
@@ -15,7 +16,7 @@ struct WorkerProfileView: View {
                             .frame(width: 72, height: 72).background(Color.errnoGreenLight, in: Circle())
                         Text(store.worker.name).font(.system(size: 20, weight: .bold))
                         Text("Experienced Delivery Partner & Helper").font(.system(size: 13)).foregroundStyle(Color.errnoTextSecondary)
-                        StatusBadge(text: "DigiLocker verification unavailable")
+                        StatusBadge(text: verificationLabel)
                     }.frame(maxWidth: .infinity).marketplaceCard(padding: 20, radius: 20)
                     HStack(spacing: 12) {
                         stat("Jobs Completed", "\(store.workerJobs.filter { $0.status == .completed }.count)")
@@ -23,7 +24,7 @@ struct WorkerProfileView: View {
                         stat("Rating", "\(store.worker.rating ?? 0) ★")
                     }
                     VStack(spacing: 0) {
-                        NavigationLink(value: WorkerRoute.verification) { menuLabel("DigiLocker Aadhaar Verification", "checkmark.shield") }.buttonStyle(.plain)
+                        NavigationLink(value: WorkerRoute.verification) { menuLabel("Identity verification", "checkmark.shield") }.buttonStyle(.plain)
                         Divider()
                         menu("Edit Personal Details", "person", .edit)
                         menu("My Skills & Preferred Work", "wrench.and.screwdriver", .skills)
@@ -37,6 +38,10 @@ struct WorkerProfileView: View {
                     .padding(.bottom, 80)
             }
         }.marketplacePage(dark: true)
+            .task {
+                do { let repo = try AppDependencies.backendRepository(); let result = try await repo.kycStatus(); verificationLabel = result.status == "VERIFIED" ? "Identity verified · \(result.verificationMethod ?? "reviewed")" : "Identity · \(result.status.replacingOccurrences(of: "_", with: " ").lowercased())" }
+                catch { verificationLabel = "Identity verification status unavailable" }
+            }
             .sheet(item: $panel) { ProfilePanelView(panel: $0, role: .worker) }
             .confirmationDialog("Logout Account", isPresented: $logout, titleVisibility: .visible) {
                 Button("Yes, Logout", role: .destructive) { router.signOut() }

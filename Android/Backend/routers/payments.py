@@ -21,7 +21,8 @@ from database import get_db
 from firebase_auth import authenticated_user, require_admin, require_role
 from models import (AdminAuditLog, CashCollection, FinancialAuditEvent, FinancialRefund, Job,
                     CompanyPaymentConfiguration, PaymentTransaction, PaymentWebhookEvent, PricingQuote, Shop, User,
-                    PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal)
+                    PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal,
+                    KYCVerificationProfile)
 
 router = APIRouter(prefix="/api/v1", tags=["Payments and wallet"])
 admin_router = APIRouter(prefix="/api/v1/admin", tags=["Admin finance"])
@@ -407,13 +408,26 @@ def _wallet_summary(db: Session, worker_id: str):
         WalletLedgerEntry.worker_id == worker_id, WalletLedgerEntry.category == "REFUND_REVERSAL").scalar() or 0
     recent = [{"id": x.id, "bookingId": x.booking_id, "category": x.category, "amountPaise": x.amount_paise,
                "currency": x.currency, "createdAt": x.created_at} for x in entries[:50]]
+    profile = db.query(KYCVerificationProfile).filter_by(user_id=worker_id, subject_role="worker").first()
+    kyc_required = os.getenv("KYC_REQUIRED_FOR_WITHDRAWAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    reverification_at = profile.reverification_required_at if profile else None
+    if reverification_at is not None and reverification_at.tzinfo is None:
+        reverification_at = reverification_at.replace(tzinfo=timezone.utc)
+    kyc_verified = bool(profile and profile.status == "VERIFIED" and
+        profile.verification_method in {"DIGILOCKER_VERIFIED", "MANUAL_DOCUMENT_REVIEW"} and
+        (reverification_at is None or reverification_at > datetime.now(timezone.utc)))
+    if profile and profile.verification_method == "MOCK_PROVIDER_TEST" and os.getenv("APP_ENV", "").lower() == "test":
+        kyc_verified = profile.status == "VERIFIED"
+    kyc_ok = kyc_verified or not kyc_required
     return {"totalEarningsPaise": max(0, int(total_earned) - int(total_refunded)),
             "pendingEarningsPaise": pending, "availableBalancePaise": available, "withdrawalPendingPaise": reserved,
             "totalWithdrawnPaise": withdrawn, "cashCollectedPaise": cash_collected,
             "unresolvedSettlementAdjustmentsPaise": cash_unresolved + refund_shortfall,
-            "eligibleCompletedOrders": paid_jobs, "withdrawalEligible": paid_jobs >= 3 and available > 0,
+            "eligibleCompletedOrders": paid_jobs, "kycVerified": kyc_verified,
+            "withdrawalEligible": paid_jobs >= 3 and available > 0 and kyc_ok,
             "eligibilityReasons": ([] if paid_jobs >= 3 else [f"Complete {3-paid_jobs} more eligible paid orders"])
-            + ([] if available > 0 else ["No available balance"]), "recentTransactions": recent}
+            + ([] if available > 0 else ["No available balance"])
+            + (["KYC_REQUIRED"] if not kyc_ok else []), "recentTransactions": recent}
 
 
 @router.get("/worker/wallet")
@@ -432,6 +446,8 @@ def request_withdrawal(body: WithdrawalRequest, user: User = Depends(authenticat
             return {"withdrawalId": existing.id, "status": existing.status, "amountPaise": existing.amount_paise}
         raise HTTPException(409, detail="Idempotency key already used")
     summary = _wallet_summary(db, user.id)
+    if "KYC_REQUIRED" in summary["eligibilityReasons"]:
+        raise HTTPException(409, detail={"code": "KYC_REQUIRED", "eligible": False, "reasons": ["KYC_REQUIRED"]})
     if summary["eligibleCompletedOrders"] < 3:
         raise HTTPException(409, detail={"code": "WITHDRAWAL_NOT_ELIGIBLE", "reasons": summary["eligibilityReasons"]})
     if summary["unresolvedSettlementAdjustmentsPaise"] > 0:

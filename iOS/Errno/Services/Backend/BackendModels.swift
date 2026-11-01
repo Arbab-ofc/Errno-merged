@@ -217,6 +217,20 @@ nonisolated struct PresencePayload: Encodable, Sendable {
 }
 nonisolated struct AvailabilityPayload: Encodable, Sendable { let available: Bool }
 nonisolated struct PresenceResponse: Decodable, Sendable { let online: Bool?; let available: Bool?; let heartbeat_interval_seconds: Int? }
+nonisolated struct KYCStatusResponse: Decodable, Sendable {
+    let status: String
+    let verificationMethod: String?
+    let requiredDocumentTypes: [String]
+    let verifiedDocumentTypes: [String]
+    let manualReviewEnabled: Bool
+    let digilockerEnabled: Bool
+    let availableDocumentTypes: [String]
+    let failureReasonCode: String?
+    let consentVersion: String
+}
+nonisolated struct KYCStartRequest: Encodable, Sendable { let requestedDocumentTypes: [String]; let consentVersion: String; let consentGiven: Bool }
+nonisolated struct KYCStartResponse: Decodable, Sendable { let sessionId: String; let status: String; let authorizationUrl: String?; let expiresInSeconds: Int; let providerReady: Bool }
+nonisolated struct KYCManualUploadResponse: Decodable, Sendable { let manualReviewId: String; let status: String; let scanStatus: String; let verificationMethod: String; let message: String }
 nonisolated struct PricingDurationResponse: Decodable, Sendable {
     let duration_hours: Int
     let maximum_price: Decimal?
@@ -294,6 +308,19 @@ nonisolated struct ProfileNameUpdate: Encodable, Sendable { let name: String }
 
 /// Mirrors existing routes. Definitions do not imply that a route is secure or operational.
 nonisolated enum BackendEndpoints {
+    static func kycStatus(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api","v1","worker","verification-status"], bearerToken: token) }
+    static func startKYC(_ body: KYCStartRequest, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api","v1","worker","verification-sessions"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func withdrawKYCConsent(token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["api","v1","worker","verification","withdraw-consent"], body: Data("{}".utf8), bearerToken: token) }
+    static func uploadKYC(documentType: String, version: String, bytes: Data, mime: String, token: String) -> APIEndpoint {
+        let boundary = "errno-\(UUID().uuidString)"
+        var body = Data()
+        func field(_ name: String, _ value: String) { body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8)) }
+        field("document_type", documentType); field("consent_version", version); field("consent_given", "true")
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"identity-document\"\r\nContent-Type: \(mime)\r\n\r\n".utf8)); body.append(bytes); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        return APIEndpoint(method: "POST", path: ["api","v1","worker","verification","manual-reviews"], body: body, bearerToken: token, contentType: "multipart/form-data; boundary=\(boundary)")
+    }
     static func firebaseLogin(token: String) -> APIEndpoint {
         APIEndpoint(method: "POST", path: ["api", "v1", "auth", "firebase"], bearerToken: token)
     }
@@ -470,6 +497,15 @@ nonisolated struct BackendRepository: JobCatalogRepository {
         try await client.send(BackendEndpoints.setAvailability(AvailabilityPayload(available:available), token: try await token()))
     }
     func workerAvailability() async throws -> PresenceResponse { try await client.send(BackendEndpoints.workerAvailability(token: try await token())) }
+    func kycStatus() async throws -> KYCStatusResponse { try await client.send(BackendEndpoints.kycStatus(token: try await token())) }
+    func startKYC(documentTypes: [String], version: String) async throws -> KYCStartResponse {
+        try await client.send(BackendEndpoints.startKYC(KYCStartRequest(requestedDocumentTypes: documentTypes, consentVersion: version, consentGiven: true), token: try await token()))
+    }
+    func withdrawKYCConsent() async throws -> KYCStatusResponse { try await client.send(BackendEndpoints.withdrawKYCConsent(token: try await token())) }
+    func uploadKYC(documentType: String, version: String, bytes: Data, mime: String) async throws -> KYCManualUploadResponse {
+        guard !bytes.isEmpty, bytes.count <= 8 * 1024 * 1024 else { throw APIError.invalidInput }
+        return try await client.send(BackendEndpoints.uploadKYC(documentType: documentType, version: version, bytes: bytes, mime: mime, token: try await token()))
+    }
     func updateStatus(jobID: String, status: String) async throws -> BackendJob {
         var endpoint = BackendEndpoints.status(jobID: jobID, status: status); endpoint.bearerToken = try await token()
         return try await client.send(endpoint)
