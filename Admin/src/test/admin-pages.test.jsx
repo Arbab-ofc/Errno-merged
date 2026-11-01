@@ -5,8 +5,12 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 const { useAuth, api } = vi.hoisted(() => ({
   useAuth: vi.fn(),
   api: {
-    dashboard: vi.fn(), workers: vi.fn(), shopOwners: vi.fn(), worker: vi.fn(), shopOwner: vi.fn(),
+    dashboard: vi.fn(), presenceSummary: vi.fn(), workers: vi.fn(), shopOwners: vi.fn(), worker: vi.fn(), shopOwner: vi.fn(),
     jobs: vi.fn(), updateJobStatus: vi.fn(), updateWorker: vi.fn(), updateShopOwner: vi.fn(),
+    pricingDurations: vi.fn(), pricingSettings: vi.fn(), pricingAudit: vi.fn(), pricingTimeRules: vi.fn(),
+    pricingDemandRules: vi.fn(), pricingBookings: vi.fn(), pricingAreas: vi.fn(),
+    updatePricingDuration: vi.fn(), activatePricingDuration: vi.fn(), updatePricingSettings: vi.fn(),
+    activatePricingSettings: vi.fn(), previewPricing: vi.fn(),
   },
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => useAuth(), AuthProvider: ({ children }) => children }));
@@ -16,13 +20,15 @@ import { LoginPage } from "../pages/LoginPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { PersonDetailPage, PeopleListPage } from "../pages/PeoplePages";
 import { JobsPage } from "../pages/JobsPage";
+import { PricingPage } from "../pages/PricingPage";
 import { RequireAdmin } from "../auth/RequireAdmin";
 
 const user = { email: "admin@example.test", getIdToken: vi.fn() };
-const admin = { email: "admin@example.test", active: true, permissions: ["dashboard.read", "users.read", "users.manage", "jobs.read", "jobs.manage"] };
+const admin = { email: "admin@example.test", active: true, permissions: ["dashboard.read", "users.read", "users.manage", "jobs.read", "jobs.manage", "presence.read"] };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.presenceSummary.mockResolvedValue({ online_workers: 2, online_recruiters: 1, available_workers: 1, registered_workers: 5, registered_recruiters: 3, last_updated_at: new Date().toISOString() });
   useAuth.mockReturnValue({ user, admin, authLoading: false, adminLoading: false, adminError: null, authError: "", signIn: vi.fn(), logout: vi.fn(), retryAdminCheck: vi.fn() });
 });
 
@@ -75,6 +81,23 @@ describe("admin authentication gates and live pages", () => {
     expect(await screen.findByText("No user records yet.")).toBeInTheDocument();
     expect(screen.getByText("No job records yet.")).toBeInTheDocument();
     rerender(<MemoryRouter><DashboardPage /></MemoryRouter>);
+  });
+
+  it("loads editable prices and live presence from the pricing API", async () => {
+    useAuth.mockReturnValue({ ...useAuth(), admin: { ...admin, permissions: [...admin.permissions, "pricing.read", "pricing.write", "pricing.activate"] } });
+    api.pricingDurations.mockResolvedValue([{ duration_hours: 1, base_price: 120, maximum_price: 160, enabled: false, approval_status: "draft", effective_from: null }]);
+    api.pricingSettings.mockResolvedValue({ commission_rate: null, draft: { values: { commission_rate: "0.08", quote_ttl_seconds: 300, rounding_policy: "half_up", default_timezone: "Asia/Kolkata" }, version: 2 } });
+    api.presenceSummary.mockResolvedValue({ online_workers: 3, online_recruiters: 2, available_workers: 1, registered_workers: 7, registered_recruiters: 5, last_updated_at: new Date().toISOString() });
+    api.pricingAudit.mockResolvedValue({ items: [] });
+    api.pricingTimeRules.mockResolvedValue([]); api.pricingDemandRules.mockResolvedValue([]);
+    api.pricingBookings.mockResolvedValue({ items: [], total: 0 }); api.pricingAreas.mockResolvedValue([]);
+    render(<MemoryRouter><PricingPage /></MemoryRouter>);
+    expect(await screen.findByDisplayValue("120")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("160")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save draft" })).toBeInTheDocument();
+    expect(api.pricingDurations).toHaveBeenCalledWith(user);
   });
 
   it("loads shop owners with server-side search and pagination", async () => {

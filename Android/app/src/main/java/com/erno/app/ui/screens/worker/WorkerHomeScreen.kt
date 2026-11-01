@@ -38,7 +38,8 @@ fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
     onRefresh: () -> Unit,
-    onNavigateTab: (WorkerTab) -> Unit
+    onNavigateTab: (WorkerTab) -> Unit,
+    onAvailabilityChange: (Boolean) -> Unit = {}
 ) {
     Scaffold(
         bottomBar = {
@@ -132,6 +133,19 @@ fun WorkerHomeScreen(
                                 contentDescription = null,
                                 tint = Color.White
                             )
+                        }
+                    }
+                }
+
+                // Section Header
+                item {
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF182436), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Available for work", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                Text(if (state.isAvailableForWork) "Recruiters can see you as available" else "You are not marked available", color = Color.White.copy(alpha=.7f), fontSize = 11.sp)
+                            }
+                            Switch(checked = state.isAvailableForWork, onCheckedChange = onAvailabilityChange)
                         }
                     }
                 }

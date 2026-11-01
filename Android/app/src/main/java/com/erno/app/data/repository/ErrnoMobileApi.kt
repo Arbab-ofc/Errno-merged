@@ -13,6 +13,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** Firebase-token authenticated mobile workflow client. Never persists ID tokens. */
 object ErrnoMobileApi {
@@ -58,19 +62,58 @@ object ErrnoMobileApi {
     suspend fun workerApplications(limit: Int = 20, offset: Int = 0): JSONObject =
         JSONObject(request("GET", "/jobs/applications/me?limit=$limit&offset=$offset"))
 
+    private val presenceSessionId: String by lazy {
+        val preferences = com.google.firebase.FirebaseApp.getInstance().applicationContext.getSharedPreferences("errno_presence", 0)
+        preferences.getString("session_id", null) ?: java.util.UUID.randomUUID().toString().also { preferences.edit().putString("session_id", it).apply() }
+    }
+    suspend fun presenceHeartbeat(foreground: Boolean = true): Int {
+        return JSONObject(request("POST", "/api/v1/presence/heartbeat", JSONObject().put("session_identifier", presenceSessionId)
+            .put("device_platform", "android").put("is_foreground", foreground))).getInt("heartbeat_interval_seconds")
+    }
+    suspend fun presenceOffline() {
+        request("POST", "/api/v1/presence/offline", JSONObject().put("session_identifier", presenceSessionId)
+            .put("device_platform", "android").put("is_foreground", false))
+    }
+    suspend fun setWorkerAvailable(available: Boolean) {
+        request("PATCH", "/api/v1/workers/me/availability", JSONObject().put("available", available))
+    }
+    suspend fun workerAvailability(): Boolean = JSONObject(request("GET", "/api/v1/workers/me/availability")).optBoolean("available")
+    suspend fun workerPayout(jobId: String): JSONObject = JSONObject(request("GET", "/api/v1/jobs/$jobId/worker-payout"))
+
     suspend fun cancelApplication(jobId: String) { request("DELETE", "/jobs/$jobId/applications/me") }
     suspend fun startJob(jobId: String) { request("POST", "/jobs/$jobId/start") }
     suspend fun completeJob(jobId: String) { request("POST", "/jobs/$jobId/complete") }
     suspend fun cancelJob(jobId: String) { request("PATCH", "/jobs/$jobId/status?new_status=cancelled") }
 
-    suspend fun postJob(job: JobPost): JobPost {
-        val pay = job.payStructure.firstOrNull() ?: error("Select a pay option.")
+    suspend fun requestPricingQuote(hours: Int, scheduledDate: String, areaKey: String?): JSONObject {
+        val parsed = runCatching {
+            LocalDateTime.parse(scheduledDate, DateTimeFormatter.ofPattern("dd MMM yyyy 'at' hh:mm a", Locale.ENGLISH))
+        }.getOrElse { error("Select a service date and time before requesting a price quote.") }
+        val start = parsed.atZone(ZoneId.systemDefault()).toOffsetDateTime().toString()
+        return JSONObject(request("POST", "/api/v1/pricing/quotes", JSONObject()
+            .put("duration_hours", hours).put("service_start_at", start).put("area_id", areaKey ?: JSONObject.NULL)))
+    }
+
+    suspend fun postJob(job: JobPost, quoteId: String, serviceStartAt: String): JobPost {
+        val pay = job.payStructure.firstOrNull() ?: error("Pricing is not configured for a duration. Contact support.")
         val body = JSONObject().put("title", job.title).put("category", job.category)
             .put("description", job.description).put("pay_amount", pay.price)
             .put("duration_type", "${pay.hours} hours").put("scheduled_date", job.scheduledDate)
             .put("location", job.location).put("pickup_location", job.pickupLocation)
             .put("drop_location", job.dropLocation).put("is_delivery", job.isDeliveryJob)
+            .put("quote_id", quoteId).put("service_start_at", serviceStartAt)
         return JSONObject(request("POST", "/jobs", body)).toShopkeeperJob()
+    }
+
+    suspend fun pricingDurations(): List<DurationPay> {
+        val rows = JSONArray(request("GET", "/api/v1/pricing/durations"))
+        return (0 until rows.length()).mapNotNull { index ->
+            val row = rows.getJSONObject(index)
+            if (!row.optBoolean("enabled") || row.optString("approval_status") != "approved") return@mapNotNull null
+            val maximum = row.optDouble("maximum_price", Double.NaN)
+            if (!maximum.isFinite()) return@mapNotNull null
+            DurationPay(row.getInt("duration_hours"), maximum.toInt())
+        }
     }
 
     suspend fun apply(jobId: String) { request("POST", "/jobs/$jobId/apply") }

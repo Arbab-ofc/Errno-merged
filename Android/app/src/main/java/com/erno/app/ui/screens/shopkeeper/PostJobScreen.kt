@@ -63,25 +63,14 @@ fun PostJobScreen(
     var currentStep by remember { mutableIntStateOf(1) } // Step 1: Details, Step 2: Time & Hours, Step 3: Location & Map
     var categoryExpanded by remember { mutableStateOf(false) }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
-    var customHoursInput by remember { mutableStateOf("5") }
-    var customPayInput by remember { mutableStateOf("550") }
+    var customHoursInput by remember { mutableStateOf("") }
+    var customPayInput by remember { mutableStateOf("") }
 
     val categories = listOf("Delivery Partner", "Shop Helper", "Counter Staff", "Store Assistant", "Packing Staff", "Delivery Boy", "Cashier")
 
     // Combined duration list containing standard options + any custom user-added duration option
-    val allDurationOptions = remember(state.draftPayStructure) {
-        val standard = listOf(
-            DurationPay(1, 149),
-            DurationPay(2, 249),
-            DurationPay(3, 349),
-            DurationPay(4, 449),
-            DurationPay(6, 649),
-            DurationPay(8, 849)
-        )
-        val customItems = state.draftPayStructure.filter { customItem ->
-            standard.none { it.hours == customItem.hours }
-        }
-        (standard + customItems).sortedBy { it.hours }
+    val allDurationOptions = remember(state.pricingOptions) {
+        state.pricingOptions.sortedBy { it.hours }
     }
 
     Scaffold(
@@ -312,8 +301,11 @@ fun PostJobScreen(
                         item {
                             var showDatePicker by remember { mutableStateOf(false) }
                             var selectedTime by remember { mutableStateOf("01:00 PM") }
-                            var selectedDateFormatted by remember { mutableStateOf("12 Sep 2026") }
+                            var selectedDateFormatted by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH).format(Date())) }
                             var timeExpanded by remember { mutableStateOf(false) }
+                            LaunchedEffect(selectedDateFormatted, selectedTime) {
+                                onScheduledDateChange("$selectedDateFormatted at $selectedTime")
+                            }
 
                             val timeOptions = listOf(
                                 "09:00 AM",
@@ -348,7 +340,7 @@ fun PostJobScreen(
                                     confirmButton = {
                                         TextButton(onClick = {
                                             datePickerState.selectedDateMillis?.let { millis ->
-                                                val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                                                val sdf = SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH)
                                                 selectedDateFormatted = sdf.format(Date(millis))
                                                 onScheduledDateChange("$selectedDateFormatted at $selectedTime")
                                             }

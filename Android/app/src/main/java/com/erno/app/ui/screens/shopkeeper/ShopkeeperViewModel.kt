@@ -26,7 +26,9 @@ data class ShopkeeperState(
     val draftIsDelivery: Boolean = true,
     val draftScheduledDate: String = "Today",
     val draftDescription: String = "Deliver parcel/products safely from shop to target location.",
-    val draftPayStructure: List<DurationPay> = listOf(DurationPay(2, 249)), // Single duration selection
+    val draftPayStructure: List<DurationPay> = emptyList(), // Loaded from the backend pricing configuration
+    val pricingOptions: List<DurationPay> = emptyList(),
+    val pricingQuote: Map<String, String> = emptyMap(),
     val lastPostedJob: JobPost? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
@@ -35,6 +37,8 @@ data class ShopkeeperState(
 class ShopkeeperViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ShopkeeperState())
     val uiState: StateFlow<ShopkeeperState> = _uiState.asStateFlow()
+
+    fun setError(message: String) { _uiState.update { it.copy(errorMessage = message, pricingQuote = emptyMap()) } }
 
     fun updateTitle(title: String) {
         _uiState.update { it.copy(draftTitle = title) }
@@ -128,14 +132,15 @@ class ShopkeeperViewModel : ViewModel() {
                 draftIsDelivery = true,
                 draftScheduledDate = "Today",
                 draftDescription = "Deliver parcel/products safely from shop to target location.",
-                draftPayStructure = listOf(DurationPay(2, 249))
+                draftPayStructure = emptyList()
             )
         }
     }
 
     fun toggleDurationPay(hours: Int, defaultPrice: Int) {
         _uiState.update { state ->
-            state.copy(draftPayStructure = listOf(DurationPay(hours, defaultPrice)))
+            val configured = state.pricingOptions.firstOrNull { it.hours == hours } ?: return@update state
+            state.copy(draftPayStructure = listOf(configured))
         }
     }
 
@@ -146,17 +151,13 @@ class ShopkeeperViewModel : ViewModel() {
     }
 
     fun updatePrice(hours: Int, newPrice: Int) {
-        _uiState.update { state ->
-            val updated = state.draftPayStructure.map {
-                if (it.hours == hours) it.copy(price = newPrice) else it
-            }
-            itCopy(state, draftPayStructure = updated)
-        }
+        // Customer prices are read-only values supplied by the backend.
     }
 
     fun addDurationPay(hours: Int, price: Int) {
         _uiState.update { state ->
-            itCopy(state, draftPayStructure = listOf(DurationPay(hours, price)))
+            val configured = state.pricingOptions.firstOrNull { it.hours == hours } ?: return@update state
+            itCopy(state, draftPayStructure = listOf(configured))
         }
     }
 
@@ -192,6 +193,15 @@ class ShopkeeperViewModel : ViewModel() {
         }.onFailure { error -> _uiState.update { it.copy(errorMessage = error.localizedMessage ?: "Unable to load profile.") } }
     }
 
+    suspend fun refreshPricing() {
+        runCatching { ErrnoMobileApi.pricingDurations() }.onSuccess { configured ->
+            _uiState.update { state ->
+                val selected = configured.firstOrNull { it.hours == state.draftPayStructure.firstOrNull()?.hours } ?: configured.firstOrNull()
+                state.copy(pricingOptions = configured, draftPayStructure = listOfNotNull(selected))
+            }
+        }.onFailure { error -> _uiState.update { it.copy(errorMessage = error.localizedMessage ?: "Pricing configuration is unavailable.") } }
+    }
+
     suspend fun saveProfile(name: String, storeName: String) {
         val updatedProfile = ErrnoMobileApi.updateProfile(name.trim())
         val updatedShop = ErrnoMobileApi.saveShop(storeName.trim(), _uiState.value.shopAddress, "General Store")
@@ -200,6 +210,8 @@ class ShopkeeperViewModel : ViewModel() {
 
     suspend fun postJob(): JobPost {
         val state = _uiState.value
+        val quoteId = state.pricingQuote["quote_id"] ?: error("Request a current price quote before confirming the job.")
+        val quoteServiceStart = state.pricingQuote["service_start_at"] ?: error("The pricing quote has no service time.")
         val computedLocation = if (state.draftIsDelivery) {
             "${state.draftPickupLocation.ifBlank { "Pickup Store" }} -> ${state.draftDropLocation.ifBlank { "Drop Address" }}"
         } else {
@@ -212,7 +224,7 @@ class ShopkeeperViewModel : ViewModel() {
             category = state.draftCategory.ifBlank { "Delivery Partner" },
             location = computedLocation,
             description = state.draftDescription.ifBlank { "Deliver parcel/products safely." },
-            payStructure = if (state.draftPayStructure.isNotEmpty()) state.draftPayStructure else listOf(DurationPay(2, 249)),
+            payStructure = state.draftPayStructure,
             status = "Active",
             postedTime = "Posted just now",
             applicantsCount = 0,
@@ -222,7 +234,7 @@ class ShopkeeperViewModel : ViewModel() {
             packageType = state.draftPackageType,
             scheduledDate = state.draftScheduledDate
         )
-        val persisted = ErrnoMobileApi.postJob(newJob)
+        val persisted = ErrnoMobileApi.postJob(newJob, quoteId, quoteServiceStart)
         _uiState.update {
             it.copy(
                 recentJobs = listOf(persisted) + it.recentJobs,
@@ -232,6 +244,15 @@ class ShopkeeperViewModel : ViewModel() {
             )
         }
         return persisted
+    }
+
+    suspend fun refreshQuote() {
+        val state = _uiState.value
+        val hours = state.draftPayStructure.firstOrNull()?.hours ?: error("Select a configured duration first.")
+        val areaKey = if (state.draftIsDelivery) state.draftPickupLocation.ifBlank { "Pickup Store" } else state.draftLocation.ifBlank { "Okhla Market Area" }
+        val quote = ErrnoMobileApi.requestPricingQuote(hours, state.draftScheduledDate, areaKey)
+        val fields = listOf("quote_id", "service_start_at", "final_service_charge", "base_price", "time_multiplier", "demand_multiplier", "commission_amount", "worker_payout_amount", "expires_at")
+        _uiState.update { it.copy(pricingQuote = fields.associateWith { key -> quote.optString(key) }, errorMessage = null) }
     }
 
     private fun itCopy(state: ShopkeeperState, draftPayStructure: List<DurationPay>): ShopkeeperState {

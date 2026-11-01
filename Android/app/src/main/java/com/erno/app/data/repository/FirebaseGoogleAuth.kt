@@ -54,6 +54,7 @@ object FirebaseGoogleAuth {
     }
 
     suspend fun logout() {
+        runCatching { ErrnoMobileApi.presenceOffline() }
         val user = FirebaseAuth.getInstance().currentUser
         if (user != null && BuildConfig.ERRNO_API_BASE_URL.isNotBlank()) {
             runCatching {

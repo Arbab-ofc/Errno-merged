@@ -3,10 +3,20 @@ import SwiftUI
 /// Public catalog uses the server's IDs and strings verbatim. Missing data is not replaced by demo locations or GPS.
 struct BackendJobsView: View {
     @State private var model = BackendJobsViewModel()
+    @State private var available = false
+    @State private var availabilityError: String?
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 Text("Available Jobs & Deliveries").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                Toggle("Available for work", isOn: $available).tint(.errnoGreen)
+                    .onChange(of: available) { _, value in
+                        Task {
+                            do { _ = try await AppDependencies.backendRepository().setWorkerAvailability(value); availabilityError = nil }
+                            catch { availabilityError = error.localizedDescription; available = !value }
+                        }
+                    }
+                if let availabilityError { Text(availabilityError).font(.system(size: 12)).foregroundStyle(Color.errnoError) }
                 if model.isLoading { ProgressView("Loading jobs…").tint(.white).foregroundStyle(.white) }
                 else if let error = model.errorMessage {
                     MarketplaceEmptyState(title: "Unable to load jobs", message: error, dark: true)
@@ -35,7 +45,10 @@ struct BackendJobsView: View {
         }.marketplacePage(dark: true)
             .navigationTitle("Available Jobs").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
-            .task { await model.load() }
+            .task {
+                await model.load()
+                if let current = try? await AppDependencies.backendRepository().workerAvailability() { available = current.available ?? false }
+            }
             .refreshable { await model.load() }
     }
 }
@@ -48,6 +61,8 @@ struct BackendJobDetailsView: View {
     @State private var error: String?
     @State private var isApplying = false
     @State private var applicationMessage: String?
+    @State private var payout: WorkerPayoutResponse?
+    @State private var payoutError: String?
     var body: some View {
         VStack(spacing: 0) {
             MarketplaceHeader(title: "Job Details", dark: true, back: { dismiss() })
@@ -65,6 +80,13 @@ struct BackendJobDetailsView: View {
                         if let pickup = job.pickup_location { Text("Pickup: \(pickup)") }
                         if let drop = job.drop_location { Text("Drop: \(drop)") }
                         Text("Choose Duration & Pay").font(.system(size: 16, weight: .bold))
+                        Text("Duration: \(job.duration_type)").font(.system(size: 13)).foregroundStyle(.gray)
+                        Text("Customer service charge: \(job.pay_amount, format: .currency(code: "INR"))").font(.system(size: 13))
+                        if let payout {
+                            Text("Expected worker payout: \(NSDecimalNumber(decimal: payout.worker_payout_amount).doubleValue, format: .currency(code: payout.currency))")
+                                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.errnoGreen)
+                            Text("Payment/settlement status is not available yet.").font(.system(size: 11)).foregroundStyle(.gray)
+                        } else { Text(payoutError ?? "Loading expected payout…").font(.system(size: 12)).foregroundStyle(payoutError == nil ? .gray : Color.errnoError) }
                         if let date = job.scheduled_date { Text("Scheduled: \(date)").font(.system(size: 12)).foregroundStyle(.gray) }
                         StatusBadge(text: job.status)
                         if let applicationMessage { Text(applicationMessage).font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary) }
@@ -87,7 +109,7 @@ struct BackendJobDetailsView: View {
                     }.padding(16).background(Color.errnoNavy)
                 }
             }
-            .task { await load() }
+            .task { await load(); await loadPayout() }
     }
     private func load() async {
         guard !isLoading else { return }
@@ -108,5 +130,9 @@ struct BackendJobDetailsView: View {
             _ = try await AppDependencies.catalog().apply(jobID: jobID)
             applicationMessage = "Application submitted. The shop owner will review it."
         } catch { applicationMessage = error.localizedDescription }
+    }
+    private func loadPayout() async {
+        do { payout = try await AppDependencies.backendRepository().workerPayout(jobID: jobID) }
+        catch { payoutError = error.localizedDescription }
     }
 }

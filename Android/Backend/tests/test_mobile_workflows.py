@@ -9,11 +9,13 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import firebase_auth
 from database import Base, get_db
 from models import AdminPermission, Application, Job, Shop, User
 from routers import admin, auth, firebase, jobs, shops
+from pricing_test_utils import insert_job_quote
 
 
 @pytest.fixture
@@ -47,6 +49,7 @@ def mobile_client(monkeypatch):
     app.include_router(shops.router)
     app.include_router(jobs.router)
     app.include_router(admin.router)
+    app.state.session_factory = factory
     app.dependency_overrides[get_db] = get_test_db
     with TestClient(app) as client:
         yield client, factory
@@ -75,10 +78,12 @@ def test_mobile_shop_job_application_persists_and_enforces_owner_scope(mobile_cl
         "shop_name": "Corner Shop", "address": "Market Road", "category": "Grocery"
     })
     assert shop_response.status_code == 200
+    quote_id, service_start_at = insert_job_quote(factory, owner_id, duration_hours=2)
     job_response = client.post("/jobs", headers=owner_headers, json={
         "title": "Delivery Partner", "category": "Delivery Partner", "description": "Deliver orders",
         "pay_amount": 249, "duration_type": "2 hours", "scheduled_date": "Tomorrow",
         "location": "Market Road", "is_delivery": True,
+        "quote_id": quote_id, "service_start_at": service_start_at,
     })
     assert job_response.status_code == 200
     job_id = job_response.json()["id"]
@@ -115,11 +120,14 @@ def test_mobile_shop_job_application_persists_and_enforces_owner_scope(mobile_cl
 
 def test_job_lifecycle_authorization_timestamps_and_idempotency(mobile_client):
     client, factory = mobile_client
-    owner_headers, _ = onboard(client, "owner", "shop_owner")
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
     worker_headers, worker_id = onboard(client, "worker", "worker")
     outsider_headers, _ = onboard(client, "outsider", "worker")
     client.put("/shops/me", headers=owner_headers, json={"shop_name": "Lifecycle Shop"})
-    job = client.post("/jobs", headers=owner_headers, json={"title": "Lifecycle Shift"}).json()
+    quote_id, service_start_at = insert_job_quote(factory, owner_id)
+    job = client.post("/jobs", headers=owner_headers, json={
+        "title": "Lifecycle Shift", "quote_id": quote_id, "service_start_at": service_start_at,
+    }).json()
     application = client.post(f"/jobs/{job['id']}/apply", headers=worker_headers).json()
     accepted = client.patch(f"/jobs/{job['id']}/applications/{application['id']}",
                             headers=owner_headers, json={"decision": "accepted"})
@@ -154,13 +162,16 @@ def test_job_lifecycle_authorization_timestamps_and_idempotency(mobile_client):
 
 
 def test_worker_application_history_pagination_and_pending_cancellation(mobile_client):
-    client, _ = mobile_client
-    owner_headers, _ = onboard(client, "owner", "shop_owner")
+    client, factory = mobile_client
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
     worker_headers, _ = onboard(client, "worker", "worker")
     client.put("/shops/me", headers=owner_headers, json={"shop_name": "History Shop"})
     ids = []
     for title in ("History One", "History Two", "History Three"):
-        job = client.post("/jobs", headers=owner_headers, json={"title": title}).json()
+        quote_id, service_start_at = insert_job_quote(factory, owner_id)
+        job = client.post("/jobs", headers=owner_headers, json={
+            "title": title, "quote_id": quote_id, "service_start_at": service_start_at,
+        }).json()
         ids.append(job["id"])
         assert client.post(f"/jobs/{job['id']}/apply", headers=worker_headers).status_code == 200
 

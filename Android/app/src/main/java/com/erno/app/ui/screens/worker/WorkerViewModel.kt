@@ -32,7 +32,8 @@ data class WorkerState(
     val lifecycleActionLoading: Boolean = false,
     val earningsHistory: List<EarningRecord> = emptyList(), // Starts empty for new logins
     val isLoadingJobs: Boolean = false,
-    val jobLoadError: String? = null
+    val jobLoadError: String? = null,
+    val isAvailableForWork: Boolean = false
 )
 
 class WorkerViewModel : ViewModel() {
@@ -48,6 +49,14 @@ class WorkerViewModel : ViewModel() {
             val currentJob = state.selectedJob ?: return@update state
             state.copy(selectedJob = currentJob.copy(selectedHours = hours, selectedPay = pay))
         }
+    }
+
+    suspend fun setAvailableForWork(available: Boolean) {
+        ErrnoMobileApi.setWorkerAvailable(available)
+        _uiState.update { it.copy(isAvailableForWork = available, jobLoadError = null) }
+    }
+    suspend fun refreshAvailability() {
+        runCatching { ErrnoMobileApi.workerAvailability() }.onSuccess { value -> _uiState.update { it.copy(isAvailableForWork=value) } }
     }
 
     suspend fun refreshBackendJobs() {

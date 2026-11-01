@@ -8,19 +8,6 @@ import SwiftUI
 struct PayStructureView: View {
     var viewModel: PostJobViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var custom = false
-    @State private var hours = "5"
-    @State private var amount = "550"
-    
-    // Mock static options based on design
-    let durationOptions = [
-        (hours: 1, label: "1 Hour", rate: 149),
-        (hours: 2, label: "2 Hours", rate: 249),
-        (hours: 3, label: "3 Hours", rate: 349),
-        (hours: 4, label: "4 Hours", rate: 449),
-        (hours: 6, label: "6 Hours", rate: 649),
-        (hours: 8, label: "8 Hours (Full Shift)", rate: 849)
-    ]
     
     var body: some View {
         ZStack {
@@ -66,44 +53,22 @@ struct PayStructureView: View {
                             .foregroundStyle(Color.errnoTextPrimary)
                             .padding(.top, Spacing.md)
                         
-                        Text("Select ONLY 1 duration option or set a custom time & price below:")
+                        Text("Select a configured duration. The final customer price is quoted for the scheduled service time.")
                             .errnoBodyMedium(color: .errnoTextSecondary)
                         
-                        if !durationOptions.contains(where: { Double($0.hours) == viewModel.estimatedDurationHours }) {
-                            Text("Selected: \(Int(viewModel.estimatedDurationHours)) Hours • ₹\(viewModel.payAmountString)")
-                                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.errnoGreen)
-                        }
+                        if viewModel.pricingOptions.isEmpty { Text("Loading approved prices…").errnoBodyMedium(color: .errnoTextSecondary) }
                         VStack(spacing: Spacing.md) {
-                            ForEach(durationOptions, id: \.hours) { option in
+                            ForEach(viewModel.pricingOptions.sorted(by: { $0.hours < $1.hours }), id: \.hours) { option in
                                 DurationOptionCard(
-                                    label: option.label,
-                                    rate: viewModel.estimatedDurationHours == Double(option.hours) ? (Int(viewModel.payAmountString) ?? option.rate) : option.rate,
+                                    label: "\(option.hours) Hour\(option.hours == 1 ? "" : "s")",
+                                    rate: NSDecimalNumber(decimal: option.maximum).intValue,
                                     isSelected: viewModel.estimatedDurationHours == Double(option.hours)
                                 ) {
                                     viewModel.estimatedDurationHours = Double(option.hours)
-                                    viewModel.payAmountString = String(option.rate)
                                     viewModel.payType = .fixed
                                 }
                             }
                             
-                            // Custom Time Button
-                            Button(action: { custom = true }) {
-                                HStack {
-                                    Text("+")
-                                        .font(.system(size: 18, weight: .medium))
-                                    Text("+ Add Custom Time Duration & Pay")
-                                        .font(.system(size: 16, weight: .bold))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .foregroundStyle(Color.errnoGreen)
-                                .background(Color.errnoSurface)
-                                .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Radius.md)
-                                        .strokeBorder(Color.errnoGreen, lineWidth: 1)
-                                )
-                            }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -147,25 +112,7 @@ struct PayStructureView: View {
             }
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $custom) {
-            NavigationStack {
-                Form {
-                    TextField("Duration Hours", text: $hours).keyboardType(.numberPad)
-                    TextField("Total Pay (₹)", text: $amount).keyboardType(.numberPad)
-                    Text("Total pay for the selected shift duration.")
-                    Button("Set Duration Option") {
-                        if let h = Int(hours), let pay = Int(amount), h > 0, pay > 0,
-                           let exactHours = Double(exactly: h), Double(exactly: pay) != nil {
-                            viewModel.estimatedDurationHours = exactHours
-                            viewModel.payAmountString = String(pay)
-                            viewModel.payType = .fixed
-                            custom = false
-                        }
-                    }.disabled((Int(hours) ?? 0) <= 0 || (Int(amount) ?? 0) <= 0)
-                }.navigationTitle("Set Custom Duration & Pay")
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { custom = false } } }
-            }.presentationDetents([.medium, .large])
-        }
+        .task { await viewModel.loadPricingOptions() }
     }
 }
 

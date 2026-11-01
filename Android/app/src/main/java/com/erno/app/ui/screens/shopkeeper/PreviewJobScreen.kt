@@ -82,6 +82,7 @@ fun PreviewJobScreen(
 
                     Button(
                         onClick = onPostJobClick,
+                        enabled = state.pricingQuote["quote_id"] != null,
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp),
@@ -89,7 +90,7 @@ fun PreviewJobScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = "Post Job",
+                            text = if (state.pricingQuote["quote_id"] != null) "Confirm Job" else "Price unavailable",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -107,6 +108,19 @@ fun PreviewJobScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Color.White,
+                    border = BorderStroke(1.dp, Color(0xFFE0E0E0))) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Backend price quote", fontWeight = FontWeight.Bold, color = Color.Black)
+                        Text("Customer charge: ₹${state.pricingQuote["final_service_charge"] ?: "Unavailable"}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ErnoGreen)
+                        Text("Base ₹${state.pricingQuote["base_price"] ?: "—"} · time ${state.pricingQuote["time_multiplier"] ?: "—"}× · demand ${state.pricingQuote["demand_multiplier"] ?: "—"}×", fontSize = 12.sp, color = ErnoTextSecondary)
+                        Text("ERRNO commission ₹${state.pricingQuote["commission_amount"] ?: "—"} · worker payout ₹${state.pricingQuote["worker_payout_amount"] ?: "—"}", fontSize = 12.sp, color = ErnoTextSecondary)
+                        Text("Quote expires: ${state.pricingQuote["expires_at"] ?: "—"}", fontSize = 11.sp, color = ErnoTextSecondary)
+                        if (state.errorMessage != null) Text(state.errorMessage, color = Color(0xFFB3261E), fontSize = 12.sp)
+                    }
+                }
+            }
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),

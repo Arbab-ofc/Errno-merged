@@ -14,6 +14,7 @@ const JobDetailPage = lazy(() => import("./pages/JobsPage").then((module) => ({ 
 const SettingsPage = lazy(() => import("./pages/SecondaryPages").then((module) => ({ default: module.SettingsPage })));
 const SystemHealthPage = lazy(() => import("./pages/SecondaryPages").then((module) => ({ default: module.SystemHealthPage })));
 const UnavailablePage = lazy(() => import("./pages/SecondaryPages").then((module) => ({ default: module.UnavailablePage })));
+const PricingPage = lazy(() => import("./pages/PricingPage").then((module) => ({ default: module.PricingPage })));
 
 function UnauthorizedPage() {
   const { logout, user } = useAuth();
@@ -28,6 +29,7 @@ function RouteTree() {
     <Route path="/admin" element={<RequireAdmin><AppShell /></RequireAdmin>}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<DashboardPage />} />
+      <Route path="pricing" element={<PricingPage />} />
       <Route path="shop-owners" element={<PeopleListPage kind="shop-owners" />} />
       <Route path="shop-owners/:userId" element={<PersonDetailPage kind="shop-owners" />} />
       <Route path="workers" element={<PeopleListPage kind="workers" />} />

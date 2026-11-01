@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Index, func, text, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Index, func, text, JSON, Integer, Numeric, Time, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship
 from db_base import Base
 
@@ -138,3 +138,156 @@ class AdminAuditLog(Base):
     outcome = Column(String(20), nullable=False, default="success", server_default=text("'success'"))
     change_metadata = Column("metadata", JSON, nullable=False, default=dict, server_default=text("'{}'"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
+class DurationPricing(Base):
+    __tablename__ = "duration_pricing"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    duration_hours = Column(Integer, nullable=False, unique=True)
+    base_price = Column(Numeric(12, 2), nullable=True)
+    maximum_price = Column(Numeric(12, 2), nullable=True)
+    currency = Column(String(3), nullable=False, default="INR", server_default=text("'INR'"))
+    enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    approval_status = Column(String(20), nullable=False, default="draft", server_default=text("'draft'"))
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    effective_until = Column(DateTime(timezone=True), nullable=True)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    created_by = Column(String, nullable=True)
+    updated_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (CheckConstraint("duration_hours BETWEEN 1 AND 12", name="ck_duration_pricing_hours"),)
+
+
+class PricingSettings(Base):
+    __tablename__ = "pricing_settings"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    surge_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    time_pricing_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    demand_pricing_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    combined_multiplier_cap = Column(Numeric(8, 4), nullable=True)
+    commission_rate = Column(Numeric(8, 6), nullable=True)
+    quote_ttl_seconds = Column(Integer, nullable=True)
+    rounding_policy = Column(String(30), nullable=True)
+    default_timezone = Column(String(80), nullable=True)
+    heartbeat_interval_seconds = Column(Integer, nullable=False, default=60, server_default=text("60"))
+    presence_ttl_seconds = Column(Integer, nullable=False, default=180, server_default=text("180"))
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class PricingSettingsDraft(Base):
+    __tablename__ = "pricing_settings_drafts"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    values = Column(JSON, nullable=False)
+    version = Column(Integer, nullable=False)
+    updated_by = Column(String, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TimePricingRule(Base):
+    __tablename__ = "time_pricing_rules"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String(120), nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    timezone = Column(String(80), nullable=False)
+    multiplier = Column(Numeric(8, 4), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    effective_until = Column(DateTime(timezone=True), nullable=True)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class DemandPricingRule(Base):
+    __tablename__ = "demand_pricing_rules"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String(120), nullable=False)
+    demand_level = Column(String(40), nullable=False)
+    minimum_demand_ratio = Column(Numeric(12, 4), nullable=True)
+    maximum_demand_ratio = Column(Numeric(12, 4), nullable=True)
+    availability_thresholds = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    multiplier = Column(Numeric(8, 4), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    effective_until = Column(DateTime(timezone=True), nullable=True)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+
+
+class AreaPricingRule(Base):
+    """Address-keyed override using the canonical shop/job address strings."""
+    __tablename__ = "area_pricing_rules"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    area_key = Column(String(500), nullable=False, index=True)
+    duration_hours = Column(Integer, nullable=False)
+    base_price = Column(Numeric(12, 2), nullable=True)
+    maximum_price = Column(Numeric(12, 2), nullable=True)
+    time_rule_id = Column(String, ForeignKey("time_pricing_rules.id"), nullable=True)
+    demand_rule_id = Column(String, ForeignKey("demand_pricing_rules.id"), nullable=True)
+    enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    approval_status = Column(String(20), nullable=False, default="draft", server_default=text("'draft'"))
+    effective_from = Column(DateTime(timezone=True), nullable=True)
+    effective_until = Column(DateTime(timezone=True), nullable=True)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    updated_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (CheckConstraint("duration_hours BETWEEN 1 AND 12", name="ck_area_pricing_duration"),)
+
+
+class PricingQuote(Base):
+    __tablename__ = "pricing_quotes"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    duration_hours = Column(Integer, nullable=False)
+    service_start_at = Column(DateTime(timezone=True), nullable=False)
+    area_id = Column(String, nullable=True)
+    base_price = Column(Numeric(12, 2), nullable=False)
+    maximum_price = Column(Numeric(12, 2), nullable=False)
+    time_band = Column(String(120), nullable=True)
+    time_multiplier = Column(Numeric(8, 4), nullable=False)
+    demand_level = Column(String(40), nullable=True)
+    demand_multiplier = Column(Numeric(8, 4), nullable=False)
+    raw_price = Column(Numeric(16, 6), nullable=False)
+    final_service_charge = Column(Numeric(12, 2), nullable=False)
+    commission_rate = Column(Numeric(8, 6), nullable=False)
+    commission_amount = Column(Numeric(12, 2), nullable=False)
+    worker_payout_amount = Column(Numeric(12, 2), nullable=False)
+    pricing_rule_version = Column(Integer, nullable=False)
+    pricing_rule_snapshot = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    job_id = Column(String, ForeignKey("jobs.id"), nullable=True, unique=True)
+    status = Column(String(20), nullable=False, default="active", server_default=text("'active'"))
+
+
+class PricingAudit(Base):
+    __tablename__ = "pricing_audit_logs"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    admin_user_id = Column(String, nullable=False, index=True)
+    entity_type = Column(String(80), nullable=False)
+    entity_id = Column(String(120), nullable=True)
+    action = Column(String(80), nullable=False)
+    previous_value = Column(JSON, nullable=True)
+    new_value = Column(JSON, nullable=True)
+    pricing_version = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
+class PresenceSession(Base):
+    __tablename__ = "user_presence_sessions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_identifier = Column(String(160), nullable=False)
+    device_platform = Column(String(30), nullable=True)
+    last_heartbeat_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    is_foreground = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    availability_status = Column(String(20), nullable=False, default="unavailable", server_default=text("'unavailable'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (UniqueConstraint("user_id", "session_identifier", name="uq_presence_user_session"),)

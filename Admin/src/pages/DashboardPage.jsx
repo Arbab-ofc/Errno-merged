@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Activity, BriefcaseBusiness, CheckCheck, Store, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAuth } from "../auth/AuthContext";
@@ -13,6 +13,9 @@ export function DashboardPage() {
   const { user } = useAuth();
   const loader = useCallback((signal) => api.dashboard(user, signal), [user]);
   const { data, loading, error, retry } = useResource(loader);
+  const presenceLoader = useCallback((signal) => api.presenceSummary(user, signal), [user]);
+  const { data: presence, error: presenceError, retry: retryPresence } = useResource(presenceLoader);
+  useEffect(() => { const timer = setInterval(retryPresence, 30000); return () => clearInterval(timer); }, [retryPresence]);
   if (loading && !data) return <><PageHeader title="Overview" description="Live totals from ERRNO users, shops, jobs and applications." onRefresh={retry} refreshing /><LoadingRows rows={4} /></>;
   if (error) return <><PageHeader title="Overview" description="Live totals from ERRNO users, shops, jobs and applications." onRefresh={retry} /><StatePanel title="Dashboard data is unavailable" detail={error.message} actionLabel="Retry" onAction={retry} /></>;
 
@@ -22,11 +25,16 @@ export function DashboardPage() {
     { label: "Shop locations", value: metrics.total_shops, icon: Store, detail: "Canonical shops table" },
     { label: "Total jobs", value: metrics.total_jobs, icon: BriefcaseBusiness, detail: `${number(metrics.active_jobs)} active · ${number(metrics.completed_jobs)} completed` },
     { label: "Applications", value: metrics.total_applications, icon: Activity, detail: "Recorded worker applications" },
+    { label: "Online workers", value: presence?.online_workers, icon: Users, detail: presenceError ? "Presence unavailable" : `Updated ${presence?.last_updated_at ? new Date(presence.last_updated_at).toLocaleTimeString() : "Loading live count"}` },
+    { label: "Online recruiters", value: presence?.online_recruiters, icon: Activity, detail: presenceError ? "Presence unavailable" : `Updated ${presence?.last_updated_at ? new Date(presence.last_updated_at).toLocaleTimeString() : "Loading live count"}` },
+    { label: "Available workers", value: presence?.available_workers, icon: Users, detail: "Online and explicitly available" },
+    { label: "Registered workers", value: presence?.registered_workers, icon: Users, detail: "Unique worker accounts" },
+    { label: "Registered recruiters", value: presence?.registered_recruiters, icon: Store, detail: "Unique recruiter accounts" },
   ];
 
   return <>
     <PageHeader title="Overview" description="Live totals from ERRNO users, shops, jobs and applications." onRefresh={retry} refreshing={loading} />
-    <section className="metric-grid live-metrics" aria-label="Live platform totals">{cards.map(({ label, value, icon: Icon, detail }) => <article className="metric-panel" key={label}><div className="metric-panel-top"><span>{label}</span><i><Icon size={17} /></i></div><strong>{number(value)}</strong><small>{detail}</small></article>)}</section>
+    <section className="metric-grid live-metrics" aria-label="Live platform totals">{cards.map(({ label, value, icon: Icon, detail }) => <article className="metric-panel" key={label}><div className="metric-panel-top"><span>{label}</span><i><Icon size={17} /></i></div><strong>{value == null ? "—" : number(value)}</strong><small>{detail}</small></article>)}</section>
     <section className="dashboard-grid">
       <article className="chart-panel"><div className="panel-heading"><div><h2>Registrations</h2><p>New user records · last 7 days</p></div><span className="live-indicator"><i /> LIVE</span></div><div className="chart-area"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data.registrations_by_day} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}><defs><linearGradient id="registrationsFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#a7d84e" stopOpacity={0.26} /><stop offset="95%" stopColor="#a7d84e" stopOpacity={0.01} /></linearGradient></defs><CartesianGrid stroke="#edf0eb" vertical={false} /><XAxis dataKey="date" tickFormatter={(value) => new Date(value + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short" })} axisLine={false} tickLine={false} tick={{ fill: "#89938a", fontSize: 11 }} /><YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#89938a", fontSize: 11 }} /><Tooltip labelFormatter={(value) => new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })} /><Area type="monotone" dataKey="total" stroke="#698b3e" strokeWidth={2.4} fill="url(#registrationsFill)" /></AreaChart></ResponsiveContainer></div></article>
       <article className="chart-panel"><div className="panel-heading"><div><h2>Job activity</h2><p>New job records · last 7 days</p></div><span className="live-indicator"><i /> LIVE</span></div><div className="chart-area"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data.jobs_by_day} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}><defs><linearGradient id="jobsFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2c5140" stopOpacity={0.2} /><stop offset="95%" stopColor="#2c5140" stopOpacity={0.01} /></linearGradient></defs><CartesianGrid stroke="#edf0eb" vertical={false} /><XAxis dataKey="date" tickFormatter={(value) => new Date(value + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short" })} axisLine={false} tickLine={false} tick={{ fill: "#89938a", fontSize: 11 }} /><YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#89938a", fontSize: 11 }} /><Tooltip labelFormatter={(value) => new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })} /><Area type="monotone" dataKey="total" stroke="#2c5140" strokeWidth={2.4} fill="url(#jobsFill)" /></AreaChart></ResponsiveContainer></div></article>

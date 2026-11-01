@@ -5,6 +5,14 @@ import UIKit
 
 @MainActor
 enum FirebaseGoogleAuth {
+    static var currentUserIsAuthenticated: Bool { Auth.auth().currentUser != nil }
+    static var presenceSessionIdentifier: String {
+        let key = "errno.presence.session"
+        if let value = UserDefaults.standard.string(forKey: key) { return value }
+        let value = UUID().uuidString
+        UserDefaults.standard.set(value, forKey: key)
+        return value
+    }
     static func currentIDToken(forceRefresh: Bool = false) async throws -> String {
         guard let user = Auth.auth().currentUser else { throw APIError.unauthorized }
         return try await firebaseIDToken(for: user, forceRefresh: forceRefresh)
@@ -54,6 +62,9 @@ enum FirebaseGoogleAuth {
     }
 
     static func logout() async throws {
+        if Auth.auth().currentUser != nil, let repository = try? AppDependencies.backendRepository() {
+            _ = try? await repository.presenceOffline(sessionID: presenceSessionIdentifier)
+        }
         if let user = Auth.auth().currentUser, let token = try? await user.getIDToken() {
             if let configuration = try? BackendConfiguration.bundled() {
                 let client = APIClient(configuration: configuration)

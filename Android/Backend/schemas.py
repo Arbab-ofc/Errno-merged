@@ -68,6 +68,8 @@ class JobCreateRequest(BaseModel):
     pickup_location: Optional[str] = None
     drop_location: Optional[str] = None
     is_delivery: bool = False
+    quote_id: str = Field(..., min_length=1, max_length=64)
+    service_start_at: datetime
 
 class JobResponse(BaseModel):
     id: str

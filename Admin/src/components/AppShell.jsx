@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, BriefcaseBusiness, ChartNoAxesCombined, ChevronLeft, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Shield, Store, Users, Wrench } from "lucide-react";
+import { Activity, BriefcaseBusiness, ChartNoAxesCombined, ChevronLeft, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Shield, Store, Users, Wrench, DollarSign } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 const links = [
@@ -8,6 +8,7 @@ const links = [
   { to: "/admin/shop-owners", label: "Shop Owners", icon: Store, permission: "users.read" },
   { to: "/admin/workers", label: "Workers", icon: Users, permission: "users.read" },
   { to: "/admin/jobs", label: "Jobs", icon: BriefcaseBusiness, permission: "jobs.read" },
+  { to: "/admin/pricing", label: "Pricing Management", icon: DollarSign, permission: "pricing.read" },
   { to: "/admin/bookings", label: "Bookings", icon: ClipboardList },
   { to: "/admin/categories", label: "Categories", icon: Wrench },
   { to: "/admin/attendance", label: "Attendance", icon: Activity },

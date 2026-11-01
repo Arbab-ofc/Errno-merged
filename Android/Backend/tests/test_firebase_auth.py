@@ -10,12 +10,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import firebase_auth
 from database import Base, get_db
 from routers.firebase import router
 from routers.jobs import router as jobs_router
 from routers.shops import router as shops_router
+from pricing_test_utils import insert_job_quote
 
 
 @pytest.fixture
@@ -39,6 +41,7 @@ def client(monkeypatch):
     app.include_router(router)
     app.include_router(jobs_router)
     app.include_router(shops_router)
+    app.state.session_factory = session_factory
     app.dependency_overrides[get_db] = get_test_db
     def verify(token):
         if token == "invalid-token":
@@ -132,7 +135,10 @@ def test_worker_cannot_create_shopkeeper_job(client):
     headers = {"Authorization": "Bearer signed-token"}
     client.post("/api/v1/auth/firebase", headers=headers)
     client.patch("/api/v1/users/me", headers=headers, json={"role": "worker"})
-    response = client.post("/jobs", headers=headers, json={"title": "Restricted job"})
+    response = client.post("/jobs", headers=headers, json={
+        "title": "Restricted job", "quote_id": "role-check-quote",
+        "service_start_at": "2030-01-01T10:00:00+05:30",
+    })
     assert response.status_code == 403
 
 
@@ -169,10 +175,15 @@ def test_firebase_onboarding_shop_job_and_application_relationships(client):
     assert client.get("/shops/me/unused-path-phone", headers=owner_headers).status_code == 404
     shop = client.put("/shops/me", headers=owner_headers, json={"shop_name": "Owner Shop"})
     assert shop.status_code == 200
+    quote_id, service_start_at = insert_job_quote(
+        client.app.state.session_factory,
+        owner_login.json()["user"]["id"],
+    )
     job = client.post(
         "/jobs",
         headers=owner_headers,
-        json={"title": "Counter assistant"},
+        json={"title": "Counter assistant", "quote_id": quote_id,
+              "service_start_at": service_start_at, "duration_type": "8 hours"},
     )
     assert job.status_code == 200
     assert job.json()["shop_id"] == shop.json()["id"]

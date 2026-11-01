@@ -252,6 +252,7 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.PostJob.route) {
+            LaunchedEffect(Unit) { shopkeeperViewModel.refreshPricing() }
             PostJobScreen(
                 state = shopkeeperState,
                 onBackClick = {
@@ -291,6 +292,12 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.PreviewJob.route) {
+            LaunchedEffect(shopkeeperState.draftPayStructure.firstOrNull()?.hours, shopkeeperState.draftScheduledDate) {
+                runCatching { shopkeeperViewModel.refreshQuote() }.onFailure { error ->
+                    // Leave the quote absent so confirmation stays disabled and show the API error below.
+                    shopkeeperViewModel.setError(error.localizedMessage ?: "Unable to quote this job.")
+                }
+            }
             PreviewJobScreen(
                 state = shopkeeperState,
                 onBackClick = {
@@ -400,7 +407,7 @@ fun NavGraph(navController: NavHostController) {
 
         // Worker Flow Routes
         composable(Screen.WorkerHome.route) {
-            LaunchedEffect(Unit) { workerViewModel.refreshBackendJobs() }
+            LaunchedEffect(Unit) { workerViewModel.refreshBackendJobs(); workerViewModel.refreshAvailability() }
             WorkerHomeScreen(
                 state = workerState,
                 onJobSelect = { job ->
@@ -408,6 +415,9 @@ fun NavGraph(navController: NavHostController) {
                     navController.navigate(Screen.WorkerJobDetails.route)
                 },
                 onRefresh = { scope.launch { workerViewModel.refreshBackendJobs() } },
+                onAvailabilityChange = { available -> scope.launch {
+                    runCatching { workerViewModel.setAvailableForWork(available) }.onFailure { Toast.makeText(context, it.localizedMessage ?: "Availability update failed", Toast.LENGTH_LONG).show() }
+                } },
                 onNavigateTab = { tab ->
                     when (tab) {
                         WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)

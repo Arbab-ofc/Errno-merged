@@ -67,6 +67,45 @@ nonisolated struct CreateJobRequest: Codable, Sendable {
     let pickup_location: String?
     let drop_location: String?
     let is_delivery: Bool
+    let quote_id: String
+    let service_start_at: String
+}
+nonisolated struct PricingQuoteRequest: Codable, Sendable {
+    let duration_hours: Int
+    let service_start_at: String
+    let area_id: String?
+}
+nonisolated struct PricingQuoteResponse: Decodable, Sendable {
+    let quote_id: String
+    let service_start_at: String
+    let base_price: Decimal
+    let maximum_price: Decimal
+    let time_multiplier: Decimal
+    let demand_multiplier: Decimal
+    let raw_price: Decimal
+    let final_service_charge: Decimal
+    let worker_payout_amount: Decimal
+    let expires_at: String
+}
+nonisolated struct WorkerPayoutResponse: Decodable, Sendable {
+    let job_id: String
+    let duration_hours: Int
+    let worker_payout_amount: Decimal
+    let currency: String
+    let pricing_version: Int
+}
+nonisolated struct PresencePayload: Encodable, Sendable {
+    let session_identifier: String
+    let device_platform: String
+    let is_foreground: Bool
+}
+nonisolated struct AvailabilityPayload: Encodable, Sendable { let available: Bool }
+nonisolated struct PresenceResponse: Decodable, Sendable { let online: Bool?; let available: Bool?; let heartbeat_interval_seconds: Int? }
+nonisolated struct PricingDurationResponse: Decodable, Sendable {
+    let duration_hours: Int
+    let maximum_price: Decimal?
+    let enabled: Bool
+    let approval_status: String
 }
 nonisolated struct BackendJob: Codable, Sendable, Identifiable {
     let id: String
@@ -185,6 +224,29 @@ nonisolated enum BackendEndpoints {
     static func createJob(_ body: CreateJobRequest, token: String) throws -> APIEndpoint {
         var endpoint = try APIEndpoint.json("POST", ["jobs"], body: body); endpoint.bearerToken = token; return endpoint
     }
+    static func pricingQuote(_ body: PricingQuoteRequest, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "pricing", "quotes"], body: body)
+        endpoint.bearerToken = token
+        return endpoint
+    }
+    static func pricingDurations(token: String) -> APIEndpoint {
+        APIEndpoint(method: "GET", path: ["api", "v1", "pricing", "durations"], bearerToken: token)
+    }
+    static func workerPayout(jobID: String, token: String) -> APIEndpoint {
+        APIEndpoint(method: "GET", path: ["api", "v1", "jobs", jobID, "worker-payout"], bearerToken: token)
+    }
+    static func presenceHeartbeat(_ body: PresencePayload, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "presence", "heartbeat"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func presenceOffline(_ body: PresencePayload, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "presence", "offline"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func setAvailability(_ body: AvailabilityPayload, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("PATCH", ["api", "v1", "workers", "me", "availability"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func workerAvailability(token: String) -> APIEndpoint {
+        APIEndpoint(method: "GET", path: ["api", "v1", "workers", "me", "availability"], bearerToken: token)
+    }
     static func currentShop(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["shops", "me"], bearerToken: token) }
     static func saveShop(_ body: UpdateShopRequest, token: String) throws -> APIEndpoint {
         var endpoint = try APIEndpoint.json("PUT", ["shops", "me"], body: body); endpoint.bearerToken = token; return endpoint
@@ -240,6 +302,19 @@ nonisolated struct BackendRepository: JobCatalogRepository {
         try await client.send(BackendEndpoints.decideApplication(jobID: jobID, applicationID: applicationID, decision: decision, token: try await token()))
     }
     func createJob(_ body: CreateJobRequest) async throws -> BackendJob { try await client.send(BackendEndpoints.createJob(body, token: try await token())) }
+    func pricingQuote(_ body: PricingQuoteRequest) async throws -> PricingQuoteResponse { try await client.send(BackendEndpoints.pricingQuote(body, token: try await token())) }
+    func pricingDurations() async throws -> [PricingDurationResponse] { try await client.send(BackendEndpoints.pricingDurations(token: try await token())) }
+    func workerPayout(jobID: String) async throws -> WorkerPayoutResponse { try await client.send(BackendEndpoints.workerPayout(jobID: jobID, token: try await token())) }
+    func presenceHeartbeat(sessionID: String, foreground: Bool = true) async throws -> PresenceResponse {
+        try await client.send(BackendEndpoints.presenceHeartbeat(PresencePayload(session_identifier:sessionID,device_platform:"ios",is_foreground:foreground), token: try await token()))
+    }
+    func presenceOffline(sessionID: String) async throws -> PresenceResponse {
+        try await client.send(BackendEndpoints.presenceOffline(PresencePayload(session_identifier:sessionID,device_platform:"ios",is_foreground:false), token: try await token()))
+    }
+    func setWorkerAvailability(_ available: Bool) async throws -> PresenceResponse {
+        try await client.send(BackendEndpoints.setAvailability(AvailabilityPayload(available:available), token: try await token()))
+    }
+    func workerAvailability() async throws -> PresenceResponse { try await client.send(BackendEndpoints.workerAvailability(token: try await token())) }
     func updateStatus(jobID: String, status: String) async throws -> BackendJob {
         var endpoint = BackendEndpoints.status(jobID: jobID, status: status); endpoint.bearerToken = try await token()
         return try await client.send(endpoint)

@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from database import get_db
-from models import Job, Application, User, Shop
+from models import Job, Application, User, Shop, PricingQuote
 from schemas import (JobCreateRequest, JobResponse, ApplicationResponse, ApplicationDecisionRequest,
                      OwnerApplicationResponse, WorkerApplicationResponse, WorkerApplicationsPage,
                      ApplicationJobSummary, ApplicationShopSummary)
@@ -16,6 +16,30 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 @router.post("", response_model=JobResponse)
 def create_job(request: JobCreateRequest, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
     require_role(user, "shop_owner", "shopkeeper")
+    quote = db.query(PricingQuote).filter(PricingQuote.id == request.quote_id).with_for_update().first()
+    now = datetime.now(timezone.utc)
+    if quote is None or quote.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Pricing quote not found")
+    if quote.status != "active" or quote.consumed_at is not None:
+        raise HTTPException(status_code=409, detail="Pricing quote has already been used")
+    expires = quote.expires_at if quote.expires_at.tzinfo else quote.expires_at.replace(tzinfo=timezone.utc)
+    if expires <= now:
+        quote.status = "expired"
+        db.commit()
+        raise HTTPException(status_code=409, detail="Pricing quote expired; request a new quote")
+    import re
+    match = re.search(r"\d+", request.duration_type or "")
+    if not match or int(match.group()) != quote.duration_hours:
+        raise HTTPException(status_code=409, detail="Job duration does not match the pricing quote")
+    if request.service_start_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="Service start time must include a timezone")
+    quoted_start = quote.service_start_at if quote.service_start_at.tzinfo else quote.service_start_at.replace(tzinfo=timezone.utc)
+    if request.service_start_at.astimezone(timezone.utc) != quoted_start.astimezone(timezone.utc):
+        raise HTTPException(status_code=409, detail="Job service time does not match the pricing quote")
+    service_area = request.pickup_location if request.is_delivery else request.location
+    normalized_area = " ".join((service_area or "").split()).casefold() or None
+    if normalized_area != quote.area_id:
+        raise HTTPException(status_code=409, detail="Job location does not match the pricing quote")
     shop_id = None
     if user:
         shop = db.query(Shop).filter(Shop.owner_id == user.id).first()
@@ -32,9 +56,9 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
         title=request.title,
         category=request.category,
         description=request.description,
-        pay_amount=request.pay_amount,
+        pay_amount=float(quote.final_service_charge),
         duration_type=request.duration_type,
-        scheduled_date=request.scheduled_date,
+        scheduled_date=quoted_start.isoformat(),
         location=request.location,
         pickup_location=request.pickup_location,
         drop_location=request.drop_location,
@@ -42,6 +66,10 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
         status="open"
     )
     db.add(job)
+    db.flush()
+    quote.status = "consumed"
+    quote.consumed_at = now
+    quote.job_id = job.id
     db.commit()
     db.refresh(job)
 

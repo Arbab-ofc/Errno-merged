@@ -28,8 +28,11 @@ final class PostJobViewModel {
     
     // Step 3: Pay Structure
     var payType: PayType = .fixed
-    var payAmountString: String = "249"
+    var payAmountString: String = ""
     var estimatedDurationHours: Double = 2.0
+    var pricingOptions: [(hours: Int, maximum: Decimal)] = []
+    var pricingQuote: PricingQuoteResponse?
+    var isLoadingQuote = false
     var isScheduled: Bool = false
     var scheduledStartTime: Date = Date()
     
@@ -51,50 +54,66 @@ final class PostJobViewModel {
     }
     
     var isStep3Valid: Bool {
-        if let amount = Double(payAmountString), amount > 0 {
-            return true
+        estimatedDurationHours >= 1 && estimatedDurationHours <= 12 && estimatedDurationHours.rounded() == estimatedDurationHours
+    }
+
+    func loadPricingOptions() async {
+        do {
+            let repository = try AppDependencies.backendRepository()
+            pricingOptions = try await repository.pricingDurations().filter { $0.enabled && $0.approval_status == "approved" }
+                .compactMap { row in row.maximum_price.map { (hours: row.duration_hours, maximum: $0) } }
+            if let first = pricingOptions.first, !pricingOptions.contains(where: { Double($0.hours) == estimatedDurationHours }) {
+                estimatedDurationHours = Double(first.hours)
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    var hasValidQuote: Bool {
+        guard let pricingQuote, let expires = Self.parseISODate(pricingQuote.expires_at) else { return !jobService.requiresAuthoritativeQuote }
+        return expires > Date()
+    }
+    var requiresPricingQuote: Bool { jobService.requiresAuthoritativeQuote }
+
+    func refreshPricingQuote() async {
+        guard isStep3Valid else { errorMessage = "Choose a configured duration."; return }
+        isLoadingQuote = true; errorMessage = nil
+        defer { isLoadingQuote = false }
+        do {
+            pricingQuote = try await jobService.requestQuote(for: makeDraftJob())
+            if jobService.requiresAuthoritativeQuote && pricingQuote == nil {
+                errorMessage = "The backend did not return a valid pricing quote."
+            }
+        } catch {
+            pricingQuote = nil
+            errorMessage = error.localizedDescription
         }
-        return false
     }
     
     func submitJob(onSuccess: @escaping () -> Void) {
         guard !isSubmitting else { return }
         if postedJob != nil { onSuccess(); return }
-        guard let amount = Double(payAmountString), amount.isFinite, amount > 0, amount < Double(Int.max),
-              estimatedDurationHours.isFinite, estimatedDurationHours > 0, estimatedDurationHours < Double(Int.max) else {
-            errorMessage = "Enter a positive duration and total pay."
+        guard isStep3Valid else {
+            errorMessage = "Choose a configured duration."
+            return
+        }
+        if jobService.requiresAuthoritativeQuote && !hasValidQuote {
+            errorMessage = "This quote has expired or is unavailable. Refresh the quote before confirming."
+            pricingQuote = nil
             return
         }
         
         isSubmitting = true
         errorMessage = nil
         
-        var newJob = Job(
-            id: draftId,
-            shopOwnerId: currentUser.id,
-            category: category,
-            title: category.rawValue,
-            description: description.isEmpty ? "Deliver parcel/products safely." : description,
-            payType: .fixed,
-            payAmount: amount,
-            estimatedDurationHours: estimatedDurationHours,
-            latitude: latitude,
-            longitude: longitude,
-            scheduledStartTime: Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
-        )
-        newJob.location = location.isEmpty ? "Okhla Market Area" : location
-        newJob.pickupLocation = pickupLocation.isEmpty ? "Pickup Store" : pickupLocation
-        newJob.dropLocation = dropLocation.isEmpty ? "Drop Address" : dropLocation
-        newJob.packageType = packageType
-        let submittedJob = newJob
-        
+        let submittedJob = makeDraftJob()
         Task {
             do {
-                let created = try await jobService.createJob(submittedJob)
+                let created = try await jobService.createJob(submittedJob, quote: pricingQuote)
                 await MainActor.run {
                     self.isSubmitting = false
                     self.isSuccess = true
                     self.postedJob = created
+                    self.payAmountString = String(format: "%.2f", created.payAmount)
                     onSuccess()
                 }
             } catch {
@@ -104,5 +123,31 @@ final class PostJobViewModel {
                 }
             }
         }
+    }
+
+    private func makeDraftJob() -> Job {
+        var newJob = Job(
+            id: draftId,
+            shopOwnerId: currentUser.id,
+            category: category,
+            title: category.rawValue,
+            description: description.isEmpty ? "Deliver parcel/products safely." : description,
+            payType: .fixed,
+            payAmount: 0,
+            estimatedDurationHours: estimatedDurationHours,
+            latitude: latitude,
+            longitude: longitude,
+            scheduledStartTime: Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
+        )
+        newJob.location = location.isEmpty ? "Okhla Market Area" : location
+        newJob.pickupLocation = pickupLocation.isEmpty ? "Pickup Store" : pickupLocation
+        newJob.dropLocation = dropLocation.isEmpty ? "Drop Address" : dropLocation
+        newJob.packageType = packageType
+        return newJob
+    }
+
+    private static func parseISODate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 }
