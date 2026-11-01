@@ -264,20 +264,15 @@ fun NavGraph(navController: NavHostController) {
                 onBackClick = {
                     navController.popBackStack()
                 },
-                onTitleChange = shopkeeperViewModel::updateTitle,
                 onCategoryChange = shopkeeperViewModel::updateCategory,
                 onLocationChange = shopkeeperViewModel::updateLocation,
                 onScheduledDateChange = shopkeeperViewModel::updateScheduledDate,
                 onScheduledTimeChange = shopkeeperViewModel::updateScheduledTime,
                 onWorkingRequirementTypeChange = shopkeeperViewModel::updateWorkingRequirementType,
                 onBookingTypeChange = shopkeeperViewModel::updateBookingType,
-                onWorkerCountChange = shopkeeperViewModel::updateWorkerCount,
                 onPickupLocationChange = shopkeeperViewModel::updatePickupLocation,
                 onDropLocationChange = shopkeeperViewModel::updateDropLocation,
-                onPackageTypeChange = shopkeeperViewModel::updatePackageType,
                 onDescriptionChange = shopkeeperViewModel::updateDescription,
-                onRequirementsChange = shopkeeperViewModel::updateRequirements,
-                onApplyCategorySuggestions = shopkeeperViewModel::applyCategorySuggestions,
                 onRemoveDuration = shopkeeperViewModel::removeDurationPay,
                 onToggleDuration = shopkeeperViewModel::toggleDurationPay,
                 onAddMoreDurationClick = {
@@ -407,6 +402,7 @@ fun NavGraph(navController: NavHostController) {
                     workerViewModel.selectJob(job)
                     navController.navigate(Screen.WorkerJobDetails.route)
                 },
+                onToggleOnlineStatus = workerViewModel::toggleOnlineStatus,
                 onNavigateTab = { tab ->
                     when (tab) {
                         WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)

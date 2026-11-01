@@ -1,26 +1,19 @@
 package com.erno.app.ui.screens.shopkeeper
 
 import android.app.TimePickerDialog
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -29,8 +22,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,26 +45,21 @@ import java.util.Locale
 fun PostJobScreen(
     state: ShopkeeperState,
     onBackClick: () -> Unit,
-    onTitleChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onLocationChange: (String) -> Unit,
     onScheduledDateChange: (String) -> Unit = {},
     onScheduledTimeChange: (String) -> Unit = {},
     onWorkingRequirementTypeChange: (String) -> Unit = {},
     onBookingTypeChange: (String) -> Unit = {},
-    onWorkerCountChange: (Int) -> Unit = {},
     onPickupLocationChange: (String) -> Unit = {},
     onDropLocationChange: (String) -> Unit = {},
-    onPackageTypeChange: (String) -> Unit = {},
     onDescriptionChange: (String) -> Unit,
-    onRequirementsChange: (String) -> Unit = {},
-    onApplyCategorySuggestions: () -> Unit = {},
     onRemoveDuration: (DurationPay) -> Unit,
     onToggleDuration: (hours: Int, price: Int) -> Unit = { _, _ -> },
     onAddMoreDurationClick: () -> Unit,
     onPreviewJobClick: () -> Unit
 ) {
-    var currentStep by remember { mutableIntStateOf(1) } // Step 1: Details & Requirement, Step 2: Duration, Step 3: Location
+    var currentStep by remember { mutableIntStateOf(1) } // Step 1: Details, Step 2: Duration, Step 3: Location
     var categoryExpanded by remember { mutableStateOf(false) }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
     var customHoursInput by remember { mutableStateOf("5") }
@@ -137,9 +123,7 @@ fun PostJobScreen(
     val isStep1Valid = if (state.draftBookingType == "CURRENT") {
         state.draftWorkingRequirementType == "IMMEDIATE" || (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate")
     } else {
-        state.draftScheduledDate.isNotBlank() && (
-            state.draftWorkingRequirementType == "IMMEDIATE" || (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate")
-        )
+        state.draftScheduledDate.isNotBlank() && state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate"
     }
 
     Scaffold(
@@ -155,8 +139,8 @@ fun PostJobScreen(
                         )
                         Text(
                             text = "Step $currentStep of 3 • " + when (currentStep) {
-                                1 -> "Details & Working Requirement"
-                                2 -> "Select Duration Needed"
+                                1 -> "Job Type & Details"
+                                2 -> "Select Duration"
                                 else -> "Location & Map"
                             },
                             fontSize = 12.sp,
@@ -261,7 +245,7 @@ fun PostJobScreen(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val steps = listOf("1. Type & Details", "2. Duration", "3. Location")
+                val steps = listOf("1. Details", "2. Duration", "3. Location")
                 steps.forEachIndexed { index, title ->
                     val stepNum = index + 1
                     val isActive = currentStep >= stepNum
@@ -300,14 +284,13 @@ fun PostJobScreen(
                         .widthIn(max = 800.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // STEP 1: FORM FIELDS ACCORDING TO SECTION 5 SPECIFICATION
                     if (currentStep == 1) {
-                        // 1. CURRENT JOB / PRE-BOOKING SELECTION CARDS
+                        // 1. BOOKING FLOW (Current Job vs Pre-Booking)
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    text = "1. Booking Flow",
-                                    fontSize = 15.sp,
+                                    text = "Booking Type",
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
@@ -316,7 +299,7 @@ fun PostJobScreen(
                                 val isPreBookingSelected = state.draftBookingType == "PRE_BOOKING"
 
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    // OPTION A CARD: Current Job
+                                    // Current Job Card
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
@@ -369,7 +352,7 @@ fun PostJobScreen(
                                         }
                                     }
 
-                                    // OPTION B CARD: Pre-Booking
+                                    // Pre-Booking Card
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
@@ -521,7 +504,7 @@ fun PostJobScreen(
                         item {
                             Column {
                                 Text(
-                                    text = "2. Job Category",
+                                    text = "Job Category",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
@@ -599,135 +582,112 @@ fun PostJobScreen(
                             }
                         }
 
-                        // 3. NUMBER OF WORKERS REQUIRED
+                        // 3. WORKING REQUIREMENT (Start Time) - RESTRICTED FOR PRE-BOOKING
                         item {
-                            Column {
-                                Text(
-                                    text = "3. Number of Workers Required",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Black
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(listOf(1, 2, 3, 4, 5)) { count ->
-                                        val isSelected = state.draftWorkerCount == count
-                                        Surface(
-                                            onClick = { onWorkerCountChange(count) },
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = if (isSelected) ErnoGreen else Color.White,
-                                            border = BorderStroke(1.dp, if (isSelected) ErnoGreen else Color(0xFFD0D0D0))
-                                        ) {
-                                            Text(
-                                                text = "$count Worker${if (count > 1) "s" else ""}",
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                color = if (isSelected) Color.White else Color.Black,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
+                            val isPreBooking = state.draftBookingType == "PRE_BOOKING"
+                            LaunchedEffect(isPreBooking) {
+                                if (isPreBooking && state.draftWorkingRequirementType == "IMMEDIATE") {
+                                    onWorkingRequirementTypeChange("DYNAMIC_TIME")
                                 }
                             }
-                        }
 
-                        // 4. WORKING REQUIREMENT: Option A (Immediate) vs Option B (Dynamic Time Picker)
-                        item {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    text = "4. Working Requirement (Start Time)",
+                                    text = if (isPreBooking) "Working Start Time (Required for Pre-Booking)" else "Working Requirement (Start Time)",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
 
-                                val isImmediate = state.draftWorkingRequirementType == "IMMEDIATE"
-                                val isDynamic = state.draftWorkingRequirementType == "DYNAMIC_TIME"
+                                val isImmediate = state.draftWorkingRequirementType == "IMMEDIATE" && !isPreBooking
+                                val isDynamic = state.draftWorkingRequirementType == "DYNAMIC_TIME" || isPreBooking
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    // Option A: Immediate
-                                    Surface(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { onWorkingRequirementTypeChange("IMMEDIATE") },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isImmediate) Color(0xFFEAF5D8) else Color.White,
-                                        border = BorderStroke(
-                                            width = if (isImmediate) 2.dp else 1.dp,
-                                            color = if (isImmediate) ErnoGreen else Color(0xFFD0D0D0)
-                                        )
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
+                                if (!isPreBooking) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        // Immediate Card
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { onWorkingRequirementTypeChange("IMMEDIATE") },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isImmediate) Color(0xFFEAF5D8) else Color.White,
+                                            border = BorderStroke(
+                                                width = if (isImmediate) 2.dp else 1.dp,
+                                                color = if (isImmediate) ErnoGreen else Color(0xFFD0D0D0)
+                                            )
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        text = "Immediate",
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.Black
+                                                    )
+                                                    RadioButton(
+                                                        selected = isImmediate,
+                                                        onClick = { onWorkingRequirementTypeChange("IMMEDIATE") },
+                                                        colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
                                                 Text(
-                                                    text = "Immediate",
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.Black
-                                                )
-                                                RadioButton(
-                                                    selected = isImmediate,
-                                                    onClick = { onWorkingRequirementTypeChange("IMMEDIATE") },
-                                                    colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
-                                                    modifier = Modifier.size(20.dp)
+                                                    text = "Need worker as soon as possible.",
+                                                    fontSize = 11.sp,
+                                                    color = Color.Gray
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Need worker as soon as possible.",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray
-                                            )
                                         }
-                                    }
 
-                                    // Option B: Select Working Time (Dynamic Time)
-                                    Surface(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { onWorkingRequirementTypeChange("DYNAMIC_TIME") },
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isDynamic) Color(0xFFEAF5D8) else Color.White,
-                                        border = BorderStroke(
-                                            width = if (isDynamic) 2.dp else 1.dp,
-                                            color = if (isDynamic) ErnoGreen else Color(0xFFD0D0D0)
-                                        )
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
+                                        // Select Time Card
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { onWorkingRequirementTypeChange("DYNAMIC_TIME") },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isDynamic) Color(0xFFEAF5D8) else Color.White,
+                                            border = BorderStroke(
+                                                width = if (isDynamic) 2.dp else 1.dp,
+                                                color = if (isDynamic) ErnoGreen else Color(0xFFD0D0D0)
+                                            )
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(
+                                                        text = "Select Time",
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.Black
+                                                    )
+                                                    RadioButton(
+                                                        selected = isDynamic,
+                                                        onClick = { onWorkingRequirementTypeChange("DYNAMIC_TIME") },
+                                                        colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(2.dp))
                                                 Text(
-                                                    text = "Select Time",
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.Black
-                                                )
-                                                RadioButton(
-                                                    selected = isDynamic,
-                                                    onClick = { onWorkingRequirementTypeChange("DYNAMIC_TIME") },
-                                                    colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
-                                                    modifier = Modifier.size(20.dp)
+                                                    text = "Choose exact start time.",
+                                                    fontSize = 11.sp,
+                                                    color = Color.Gray
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Choose exact start time.",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray
-                                            )
                                         }
                                     }
                                 }
 
                                 // Time Picker Display & Trigger
-                                if (isDynamic) {
+                                if (isDynamic || isPreBooking) {
                                     Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -778,7 +738,7 @@ fun PostJobScreen(
 
                                     if (state.draftScheduledTime.isBlank() || state.draftScheduledTime == "Immediate") {
                                         Text(
-                                            text = "Please select a start time using the time picker.",
+                                            text = if (isPreBooking) "Pre-Bookings require selecting a specific start time using the time picker." else "Please select a start time using the time picker.",
                                             color = Color(0xFFD32F2F),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium
@@ -788,47 +748,15 @@ fun PostJobScreen(
                             }
                         }
 
-                        // 5. JOB DESCRIPTION & AUTO-SUGGESTIONS
+                        // 4. JOB DESCRIPTION
                         item {
                             Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "5. Job Description",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.Black
-                                    )
-
-                                    Surface(
-                                        onClick = onApplyCategorySuggestions,
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFFEAF5D8),
-                                        border = BorderStroke(1.dp, ErnoGreen.copy(alpha = 0.5f))
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.AutoAwesome,
-                                                contentDescription = null,
-                                                tint = ErnoGreen,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Use Suggested Details",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ErnoGreen
-                                            )
-                                        }
-                                    }
-                                }
+                                Text(
+                                    text = "Job Description",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 OutlinedTextField(
                                     value = state.draftDescription,
@@ -837,7 +765,7 @@ fun PostJobScreen(
                                     textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 13.sp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(95.dp),
+                                        .height(110.dp),
                                     shape = RoundedCornerShape(10.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = Color.Black,
@@ -851,76 +779,6 @@ fun PostJobScreen(
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "${state.draftDescription.length}/250",
-                                    fontSize = 10.sp,
-                                    color = Color.Gray,
-                                    modifier = Modifier.align(Alignment.End)
-                                )
-                            }
-                        }
-
-                        // 7. JOB REQUIREMENTS & AUTO-SUGGESTIONS
-                        item {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "7. Job Requirements",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.Black
-                                    )
-
-                                    Surface(
-                                        onClick = onApplyCategorySuggestions,
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFFEAF5D8),
-                                        border = BorderStroke(1.dp, ErnoGreen.copy(alpha = 0.5f))
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.AutoAwesome,
-                                                contentDescription = null,
-                                                tint = ErnoGreen,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Use Suggested Details",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ErnoGreen
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                OutlinedTextField(
-                                    value = state.draftRequirements,
-                                    onValueChange = { if (it.length <= 250) onRequirementsChange(it) },
-                                    placeholder = { Text("e.g. Physical fitness, safety adherence...", color = Color.Gray) },
-                                    textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 13.sp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(95.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = Color.Black,
-                                        unfocusedTextColor = Color.Black,
-                                        focusedBorderColor = ErnoGreen,
-                                        unfocusedBorderColor = Color(0xFFE0E0E0),
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    )
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "${state.draftRequirements.length}/250",
                                     fontSize = 10.sp,
                                     color = Color.Gray,
                                     modifier = Modifier.align(Alignment.End)

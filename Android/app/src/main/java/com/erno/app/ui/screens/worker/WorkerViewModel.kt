@@ -17,6 +17,7 @@ data class WorkerState(
     val jobsCompletedCount: Int = 0, // Starts at 00
     val jobApprovalsCount: Int = 0, // Starts at 00
     val workerRating: Float = 0.0f, // Starts at 0.0 rating for everyone initially
+    val isOnline: Boolean = true, // Active (online) vs Inactive (offline) toggle
     val isDigiLockerVerified: Boolean = false,
     val aadhaarMasked: String = "",
     val availableJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
@@ -28,6 +29,10 @@ data class WorkerState(
 class WorkerViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(WorkerState())
     val uiState: StateFlow<WorkerState> = _uiState.asStateFlow()
+
+    fun toggleOnlineStatus(online: Boolean) {
+        _uiState.update { it.copy(isOnline = online) }
+    }
 
     fun selectJob(job: WorkerJob) {
         _uiState.update { it.copy(selectedJob = job) }

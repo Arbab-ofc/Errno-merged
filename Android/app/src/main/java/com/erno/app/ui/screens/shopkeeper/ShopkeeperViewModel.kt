@@ -168,7 +168,8 @@ class ShopkeeperViewModel : ViewModel() {
             currentState.copy(
                 draftBookingType = if (isCurrent) "CURRENT" else "PRE_BOOKING",
                 draftScheduledDate = if (isCurrent) todayIsoDate() else "",
-                draftScheduledTime = if (currentState.draftWorkingRequirementType == "IMMEDIATE") "Immediate" else currentState.draftScheduledTime
+                draftWorkingRequirementType = if (isCurrent) "IMMEDIATE" else "DYNAMIC_TIME",
+                draftScheduledTime = if (isCurrent) "Immediate" else ""
             )
         }
     }

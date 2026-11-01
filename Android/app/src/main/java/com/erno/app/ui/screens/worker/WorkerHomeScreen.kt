@@ -37,6 +37,7 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
+    onToggleOnlineStatus: (Boolean) -> Unit,
     onNavigateTab: (WorkerTab) -> Unit
 ) {
     Scaffold(
@@ -99,6 +100,55 @@ fun WorkerHomeScreen(
                     }
                 }
 
+                // Active / Inactive (Online / Offline) Status Toggle Card
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF131D2A),
+                        border = BorderStroke(1.dp, if (state.isOnline) ErnoGreen.copy(alpha = 0.5f) else Color(0xFF2E3D52)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(if (state.isOnline) ErnoGreen else Color.Gray, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = if (state.isOnline) "Active (Online)" else "Inactive (Offline)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = if (state.isOnline) "Receiving job requests nearby" else "Not receiving shift requests",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = state.isOnline,
+                                onCheckedChange = { onToggleOnlineStatus(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = ErnoGreen,
+                                    uncheckedThumbColor = Color.Gray,
+                                    uncheckedTrackColor = Color(0xFF202D3D)
+                                )
+                            )
+                        }
+                    }
+                }
+
                 // Location Picker Pill
                 item {
                     Surface(
@@ -142,7 +192,7 @@ fun WorkerHomeScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
 
