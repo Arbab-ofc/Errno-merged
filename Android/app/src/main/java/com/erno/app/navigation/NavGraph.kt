@@ -26,6 +26,7 @@ import com.erno.app.ui.screens.auth.DigiLockerVerificationScreen
 import com.erno.app.ui.screens.legal.PrivacyPolicyScreen
 import com.erno.app.ui.screens.legal.TermsConditionsScreen
 import com.erno.app.ui.screens.legal.TermsConsentScreen
+import com.erno.app.ui.screens.payment.RazorpayPaymentScreen
 import com.erno.app.data.repository.FirebaseGoogleAuth
 import com.erno.app.data.repository.WhatsAppAuthApi
 import com.erno.app.data.repository.ErrnoMobileApi
@@ -376,6 +377,7 @@ fun NavGraph(navController: NavHostController) {
                     try { shopkeeperViewModel.updateJobLifecycle(jobId, action) }
                     catch (error: Exception) { Toast.makeText(context, error.localizedMessage ?: "Unable to update job", Toast.LENGTH_LONG).show() }
                 } },
+                onPayJob = { bookingId -> navController.navigate(Screen.PaymentCheckout.createRoute(bookingId)) },
                 onNavigateTab = { tab ->
                     when (tab) {
                         ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
@@ -385,6 +387,10 @@ fun NavGraph(navController: NavHostController) {
                     }
                 }
             )
+        }
+
+        composable(Screen.PaymentCheckout.route, arguments = listOf(navArgument("bookingId") { type = NavType.StringType })) { entry ->
+            RazorpayPaymentScreen(bookingId = entry.arguments?.getString("bookingId").orEmpty(), onBack = { navController.popBackStack() })
         }
 
         composable(Screen.ShopkeeperApplications.route) {

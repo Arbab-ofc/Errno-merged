@@ -51,6 +51,9 @@ android {
 
 dependencies {
 
+    implementation("com.razorpay:checkout:1.6.40")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

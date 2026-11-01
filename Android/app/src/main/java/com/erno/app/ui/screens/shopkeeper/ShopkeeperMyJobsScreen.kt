@@ -41,7 +41,8 @@ fun ShopkeeperMyJobsScreen(
     onBackClick: () -> Unit,
     onNavigateTab: (ShopkeeperTab) -> Unit,
     onRateWorkerClick: (jobId: String, rating: Float, comment: String) -> Unit = { _, _, _ -> },
-    onJobLifecycleAction: (jobId: String, action: String) -> Unit = { _, _ -> }
+    onJobLifecycleAction: (jobId: String, action: String) -> Unit = { _, _ -> },
+    onPayJob: (jobId: String) -> Unit = {}
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(1) } // 0: All, 1: Active, 2: Completed
     var ratingJob by remember { mutableStateOf<JobPost?>(null) }
@@ -175,7 +176,8 @@ fun ShopkeeperMyJobsScreen(
                             job = job,
                             onViewWorkerProfile = { selectedAssignedWorkerJob = job },
                             onRateWorkerClick = { ratingJob = job },
-                            onLifecycleAction = { action -> pendingAction = job to action }
+                            onLifecycleAction = { action -> pendingAction = job to action },
+                            onPayJob = { onPayJob(job.id) }
                         )
                     }
                     item {
@@ -369,7 +371,8 @@ fun ShopkeeperJobManageCard(
     job: JobPost,
     onViewWorkerProfile: () -> Unit = {},
     onRateWorkerClick: () -> Unit = {},
-    onLifecycleAction: (String) -> Unit = {}
+    onLifecycleAction: (String) -> Unit = {},
+    onPayJob: () -> Unit = {}
 ) {
     val maxPrice = job.payStructure.maxOfOrNull { it.price } ?: 349
     val isWorkerAssigned = job.isWorkerAssigned || job.assignedWorkerName.isNotBlank() || job.status in setOf("Worker Assigned", "In Progress")
@@ -588,6 +591,13 @@ fun ShopkeeperJobManageCard(
                     "In Progress" -> Button(onClick = { onLifecycleAction("complete") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)) { Text("Confirm work completed") }
                     else -> OutlinedButton(onClick = { onLifecycleAction("cancel") }, modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, Color(0xFFB3261E))) { Text("Cancel job", color = Color(0xFFB3261E)) }
                 }
+            }
+            if (job.status == "Completed") {
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(onClick = onPayJob, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)) {
+                    Text("View payment status / Pay with Razorpay")
+                }
+                Text("Payment is collected after completion is confirmed.", fontSize = 11.sp, color = Color.Gray)
             }
         }
     }

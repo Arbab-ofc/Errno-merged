@@ -12,6 +12,8 @@ const { useAuth, api } = vi.hoisted(() => ({
     updatePricingDuration: vi.fn(), activatePricingDuration: vi.fn(), updatePricingSettings: vi.fn(),
     activatePricingSettings: vi.fn(), previewPricing: vi.fn(),
     whatsappStatus: vi.fn(), whatsappQr: vi.fn(), whatsappConnect: vi.fn(), whatsappDisconnect: vi.fn(), whatsappLogout: vi.fn(), whatsappMonitoring: vi.fn(),
+    financeOverview: vi.fn(), financePayments: vi.fn(), financeRefunds: vi.fn(), financeAudit: vi.fn(), financeWallets: vi.fn(),
+    financeWithdrawals: vi.fn(), financePayoutMethods: vi.fn(), reconciliation: vi.fn(), companyPaymentQr: vi.fn(),
   },
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => useAuth(), AuthProvider: ({ children }) => children }));
@@ -23,6 +25,7 @@ import { PersonDetailPage, PeopleListPage } from "../pages/PeoplePages";
 import { JobsPage } from "../pages/JobsPage";
 import { PricingPage } from "../pages/PricingPage";
 import { WhatsAppGatewayPage } from "../pages/WhatsAppGatewayPage";
+import { FinancePage } from "../pages/FinancePage";
 import { RequireAdmin } from "../auth/RequireAdmin";
 
 const user = { email: "admin@example.test", getIdToken: vi.fn() };
@@ -45,6 +48,19 @@ describe("admin authentication gates and live pages", () => {
     expect(screen.getByText("•••• 3210")).toBeInTheDocument();
     expect(screen.queryByText(/otp value/i)).not.toBeInTheDocument();
     expect(api.whatsappStatus).toHaveBeenCalledWith(user);
+  });
+
+  it("loads finance totals and refund audit from backend data", async () => {
+    useAuth.mockReturnValue({ ...useAuth(), admin: { ...admin, permissions: [...admin.permissions, "payments.read", "wallet.read", "withdrawals.read", "reconciliation.read"] } });
+    api.financeOverview.mockResolvedValue({ verifiedCollectionsPaise: 16000, outstandingCompletedPaymentsPaise: 8000, workerPayablePaise: 14720, withdrawalsPendingPaise: 0, refundTotalPaise: 0, cashCollectionsPending: 0, unreconciledWebhookEvents: 0, paymentFailedCount: 0 });
+    api.financePayments.mockResolvedValue({ items: [], limit: 50, offset: 0 }); api.financeRefunds.mockResolvedValue({ items: [], limit: 50, offset: 0 });
+    api.financeAudit.mockResolvedValue({ items: [], limit: 50, offset: 0 }); api.financeWallets.mockResolvedValue({ items: [] });
+    api.financeWithdrawals.mockResolvedValue([]); api.financePayoutMethods.mockResolvedValue([]);
+    api.reconciliation.mockResolvedValue({ cashCollections: [], unmatchedEvents: 0 }); api.companyPaymentQr.mockResolvedValue({ status: "UNCONFIGURED", qrAssetUrl: null });
+    render(<MemoryRouter><FinancePage /></MemoryRouter>);
+    expect(await screen.findByText("Finance & Payments")).toBeInTheDocument();
+    expect(screen.getByText("Completed-job amount outstanding")).toBeInTheDocument();
+    expect(api.financeOverview).toHaveBeenCalledWith(user);
   });
 
   it("starts Google sign-in from the login screen", async () => {

@@ -265,6 +265,157 @@ class PricingQuote(Base):
     status = Column(String(20), nullable=False, default="active", server_default=text("'active'"))
 
 
+class PaymentTransaction(Base):
+    """One provider order per booking; amounts mirror the immutable quote snapshot."""
+    __tablename__ = "payment_transactions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    booking_id = Column(String, ForeignKey("jobs.id"), nullable=False, unique=True, index=True)
+    shopkeeper_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    worker_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    order_id = Column(String(100), nullable=True, unique=True)
+    payment_id = Column(String(100), nullable=True, unique=True)
+    amount_paise = Column(Integer, nullable=False)
+    commission_paise = Column(Integer, nullable=False)
+    worker_earning_paise = Column(Integer, nullable=False)
+    currency = Column(String(3), nullable=False, default="INR", server_default=text("'INR'"))
+    status = Column(String(32), nullable=False, default="PAYMENT_PENDING", server_default=text("'PAYMENT_PENDING'"))
+    idempotency_key = Column(String(160), nullable=False, unique=True)
+    provider_payload = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    refunded_paise = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (
+        CheckConstraint("amount_paise > 0", name="ck_payment_amount_positive"),
+        CheckConstraint("commission_paise >= 0 AND worker_earning_paise >= 0", name="ck_payment_split_nonnegative"),
+        CheckConstraint("commission_paise + worker_earning_paise = amount_paise", name="ck_payment_split_balances"),
+        CheckConstraint("refunded_paise >= 0 AND refunded_paise <= amount_paise", name="ck_payment_refund_range"),
+    )
+
+
+class PaymentWebhookEvent(Base):
+    __tablename__ = "payment_webhook_events"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    provider_event_id = Column(String(160), nullable=False, unique=True)
+    event_type = Column(String(100), nullable=False)
+    payload_digest = Column(String(64), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    outcome = Column(String(32), nullable=False, default="received", server_default=text("'received'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
+class WalletLedgerEntry(Base):
+    """Append-only worker balance movement in integer paise."""
+    __tablename__ = "worker_wallet_ledger"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    worker_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    booking_id = Column(String, ForeignKey("jobs.id"), nullable=True, index=True)
+    payment_id = Column(String, ForeignKey("payment_transactions.id"), nullable=True, index=True)
+    withdrawal_id = Column(String, nullable=True, index=True)
+    category = Column(String(40), nullable=False)
+    amount_paise = Column(Integer, nullable=False)
+    currency = Column(String(3), nullable=False, default="INR", server_default=text("'INR'"))
+    idempotency_key = Column(String(180), nullable=False, unique=True)
+    metadata_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    __table_args__ = (CheckConstraint("amount_paise > 0", name="ck_wallet_entry_positive"),)
+
+
+class WorkerWithdrawal(Base):
+    __tablename__ = "worker_withdrawals"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    worker_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    amount_paise = Column(Integer, nullable=False)
+    payout_method_id = Column(String(160), nullable=False)
+    status = Column(String(40), nullable=False, default="PENDING_EXTERNAL_PAYOUT", server_default=text("'PENDING_EXTERNAL_PAYOUT'"))
+    idempotency_key = Column(String(160), nullable=False, unique=True)
+    reviewed_by = Column(String, nullable=True)
+    review_reason = Column(Text, nullable=True)
+    provider_payout_id = Column(String(120), nullable=True, unique=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (CheckConstraint("amount_paise > 0", name="ck_withdrawal_amount_positive"),)
+
+
+class WorkerPayoutMethod(Base):
+    __tablename__ = "worker_payout_methods"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    worker_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    provider_reference = Column(String(160), nullable=False)
+    status = Column(String(24), nullable=False, default="PENDING_VERIFICATION", server_default=text("'PENDING_VERIFICATION'"))
+    kyc_verified = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    verified_by = Column(String, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (UniqueConstraint("worker_id", "provider_reference", name="uq_worker_payout_provider_reference"),)
+
+
+class CashCollection(Base):
+    __tablename__ = "cash_collections"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    booking_id = Column(String, ForeignKey("jobs.id"), nullable=False, unique=True, index=True)
+    payment_id = Column(String, ForeignKey("payment_transactions.id"), nullable=False, index=True)
+    shopkeeper_id = Column(String, ForeignKey("users.id"), nullable=False)
+    worker_id = Column(String, ForeignKey("users.id"), nullable=False)
+    amount_paise = Column(Integer, nullable=False)
+    shopkeeper_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    worker_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    reconciliation_status = Column(String(40), nullable=False, default="PENDING_RECONCILIATION", server_default=text("'PENDING_RECONCILIATION'"))
+    evidence_reference = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (CheckConstraint("amount_paise > 0", name="ck_cash_amount_positive"),)
+
+
+class FinancialRefund(Base):
+    __tablename__ = "financial_refunds"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    payment_id = Column(String, ForeignKey("payment_transactions.id"), nullable=False, index=True)
+    amount_paise = Column(Integer, nullable=False)
+    reason = Column(Text, nullable=False)
+    provider_refund_id = Column(String(120), nullable=True, unique=True)
+    status = Column(String(32), nullable=False, default="REQUESTED", server_default=text("'REQUESTED'"))
+    created_by = Column(String, nullable=False)
+    idempotency_key = Column(String(160), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (CheckConstraint("amount_paise > 0", name="ck_refund_amount_positive"),)
+
+
+class PlatformFinanceLedgerEntry(Base):
+    """Append-only ERRNO commission collection and reversal movements."""
+    __tablename__ = "platform_finance_ledger"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    payment_id = Column(String, ForeignKey("payment_transactions.id"), nullable=False, index=True)
+    refund_id = Column(String, ForeignKey("financial_refunds.id"), nullable=True, index=True)
+    cash_collection_id = Column(String, ForeignKey("cash_collections.id"), nullable=True, index=True)
+    entry_type = Column(String(40), nullable=False)
+    amount_paise = Column(Integer, nullable=False)
+    currency = Column(String(3), nullable=False, default="INR", server_default=text("'INR'"))
+    idempotency_key = Column(String(200), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (CheckConstraint("amount_paise > 0", name="ck_platform_finance_amount_positive"),)
+
+
+class FinancialAuditEvent(Base):
+    __tablename__ = "financial_audit_events"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    actor_id = Column(String, nullable=True, index=True)
+    event_type = Column(String(80), nullable=False)
+    resource_type = Column(String(60), nullable=False)
+    resource_id = Column(String(160), nullable=True, index=True)
+    details = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
+class CompanyPaymentConfiguration(Base):
+    __tablename__ = "company_payment_configuration"
+    id = Column(String(40), primary_key=True, default="company")
+    qr_asset_url = Column(String(2048), nullable=True)
+    status = Column(String(24), nullable=False, default="UNCONFIGURED", server_default=text("'UNCONFIGURED'"))
+    verified_by = Column(String, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 class PricingAudit(Base):
     __tablename__ = "pricing_audit_logs"
     id = Column(String, primary_key=True, default=generate_uuid)

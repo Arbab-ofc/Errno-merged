@@ -119,6 +119,97 @@ nonisolated struct WorkerPayoutResponse: Decodable, Sendable {
     let currency: String
     let pricing_version: Int
 }
+nonisolated struct PaymentOrderResponse: Decodable, Sendable {
+    let bookingId: String
+    let razorpayOrderId: String
+    let amountPaise: Int
+    let currency: String
+    let keyId: String
+    let paymentStatus: String
+}
+nonisolated struct PaymentVerificationRequest: Encodable, Sendable {
+    let bookingId: String
+    let razorpayOrderId: String
+    let razorpayPaymentId: String
+    let razorpaySignature: String
+}
+nonisolated struct PaymentVerificationResponse: Decodable, Sendable {
+    let paymentId: String
+    let bookingId: String
+    let status: String
+}
+nonisolated struct BookingPaymentStatus: Decodable, Sendable {
+    let bookingId: String
+    let paymentId: String?
+    let providerPaymentId: String?
+    let status: String
+    let amountPaise: Int?
+    let cashCollectionId: String?
+    let cashShopkeeperConfirmed: Bool?
+    let cashWorkerConfirmed: Bool?
+    let cashReconciliationStatus: String?
+}
+nonisolated struct CashCollectionRow: Decodable, Sendable, Identifiable {
+    let id: String
+    let bookingId: String
+    let amountPaise: Int
+    let shopkeeperConfirmed: Bool
+    let workerConfirmed: Bool
+    let status: String
+}
+nonisolated struct CashCollectionStartResponse: Decodable, Sendable {
+    let cashCollectionId: String
+    let status: String
+    let amountPaise: Int
+    let message: String
+}
+nonisolated struct CashConfirmResponse: Decodable, Sendable {
+    let cashCollectionId: String
+    let status: String
+    let shopkeeperConfirmed: Bool
+    let workerConfirmed: Bool
+}
+nonisolated struct CompanyPaymentQRResponse: Decodable, Sendable {
+    let configured: Bool
+    let label: String
+    let qrAssetUrl: String?
+}
+nonisolated struct WalletLedgerTransaction: Decodable, Sendable, Identifiable {
+    let id: String
+    let bookingId: String?
+    let category: String
+    let amountPaise: Int
+    let currency: String
+    let createdAt: String
+}
+nonisolated struct WorkerWalletResponse: Decodable, Sendable {
+    let totalEarningsPaise: Int
+    let pendingEarningsPaise: Int
+    let availableBalancePaise: Int
+    let withdrawalPendingPaise: Int
+    let totalWithdrawnPaise: Int
+    let cashCollectedPaise: Int
+    let unresolvedSettlementAdjustmentsPaise: Int
+    let eligibleCompletedOrders: Int
+    let withdrawalEligible: Bool
+    let eligibilityReasons: [String]
+    let recentTransactions: [WalletLedgerTransaction]
+}
+nonisolated struct PayoutMethodResponse: Decodable, Sendable, Identifiable {
+    let id: String
+    let status: String
+    let kycVerified: Bool
+}
+nonisolated struct WithdrawalRequestBody: Encodable, Sendable {
+    let amountPaise: Int
+    let payoutMethodId: String
+    let idempotencyKey: String
+}
+nonisolated struct WithdrawalResponse: Decodable, Sendable {
+    let withdrawalId: String
+    let status: String
+    let amountPaise: Int
+}
 nonisolated struct PresencePayload: Encodable, Sendable {
     let session_identifier: String
     let device_platform: String
@@ -260,6 +351,26 @@ nonisolated enum BackendEndpoints {
     static func workerPayout(jobID: String, token: String) -> APIEndpoint {
         APIEndpoint(method: "GET", path: ["api", "v1", "jobs", jobID, "worker-payout"], bearerToken: token)
     }
+    static func createPaymentOrder(bookingID: String, token: String) -> APIEndpoint {
+        APIEndpoint(method: "POST", path: ["api", "v1", "bookings", bookingID, "payment-order"], bearerToken: token)
+    }
+    static func verifyPayment(_ body: PaymentVerificationRequest, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "payments", "verify"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func bookingPaymentStatus(bookingID: String, token: String) -> APIEndpoint {
+        APIEndpoint(method: "GET", path: ["api", "v1", "bookings", bookingID, "payment-status"], bearerToken: token)
+    }
+    static func workerWallet(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "wallet"], bearerToken: token) }
+    static func workerPayoutMethods(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "payout-methods"], bearerToken: token) }
+    static func startCashCollection(bookingID: String, token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["api", "v1", "bookings", bookingID, "cash-collection"], bearerToken: token) }
+    static func workerCashCollections(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "cash-collections"], bearerToken: token) }
+    static func companyPaymentQR(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "company-upi-qr"], bearerToken: token) }
+    static func confirmCashCollection(id: String, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "cash-collections", id, "confirm"], body: [String: String]()); endpoint.bearerToken = token; return endpoint
+    }
+    static func requestWithdrawal(_ body: WithdrawalRequestBody, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "worker", "withdrawals"], body: body); endpoint.bearerToken = token; return endpoint
+    }
     static func presenceHeartbeat(_ body: PresencePayload, token: String) throws -> APIEndpoint {
         var endpoint = try APIEndpoint.json("POST", ["api", "v1", "presence", "heartbeat"], body: body); endpoint.bearerToken = token; return endpoint
     }
@@ -337,6 +448,18 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func pricingQuote(_ body: PricingQuoteRequest) async throws -> PricingQuoteResponse { try await client.send(BackendEndpoints.pricingQuote(body, token: try await token())) }
     func pricingDurations() async throws -> [PricingDurationResponse] { try await client.send(BackendEndpoints.pricingDurations(token: try await token())) }
     func workerPayout(jobID: String) async throws -> WorkerPayoutResponse { try await client.send(BackendEndpoints.workerPayout(jobID: jobID, token: try await token())) }
+    func createPaymentOrder(bookingID: String) async throws -> PaymentOrderResponse { try await client.send(BackendEndpoints.createPaymentOrder(bookingID: bookingID, token: try await token())) }
+    func verifyPayment(_ body: PaymentVerificationRequest) async throws -> PaymentVerificationResponse { try await client.send(BackendEndpoints.verifyPayment(body, token: try await token())) }
+    func bookingPaymentStatus(bookingID: String) async throws -> BookingPaymentStatus { try await client.send(BackendEndpoints.bookingPaymentStatus(bookingID: bookingID, token: try await token())) }
+    func workerWallet() async throws -> WorkerWalletResponse { try await client.send(BackendEndpoints.workerWallet(token: try await token())) }
+    func workerPayoutMethods() async throws -> [PayoutMethodResponse] { try await client.send(BackendEndpoints.workerPayoutMethods(token: try await token())) }
+    func startCashCollection(bookingID: String) async throws -> CashCollectionStartResponse { try await client.send(BackendEndpoints.startCashCollection(bookingID: bookingID, token: try await token())) }
+    func workerCashCollections() async throws -> [CashCollectionRow] { try await client.send(BackendEndpoints.workerCashCollections(token: try await token())) }
+    func companyPaymentQR() async throws -> CompanyPaymentQRResponse { try await client.send(BackendEndpoints.companyPaymentQR(token: try await token())) }
+    func confirmCashCollection(id: String) async throws -> CashConfirmResponse { try await client.send(BackendEndpoints.confirmCashCollection(id: id, token: try await token())) }
+    func requestWithdrawal(amountPaise: Int, methodID: String) async throws -> WithdrawalResponse {
+        try await client.send(BackendEndpoints.requestWithdrawal(WithdrawalRequestBody(amountPaise: amountPaise, payoutMethodId: methodID, idempotencyKey: UUID().uuidString), token: try await token()))
+    }
     func presenceHeartbeat(sessionID: String, foreground: Bool = true) async throws -> PresenceResponse {
         try await client.send(BackendEndpoints.presenceHeartbeat(PresencePayload(session_identifier:sessionID,device_platform:"ios",is_foreground:foreground), token: try await token()))
     }

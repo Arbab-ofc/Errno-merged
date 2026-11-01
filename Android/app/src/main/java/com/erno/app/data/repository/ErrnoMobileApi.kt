@@ -80,6 +80,23 @@ object ErrnoMobileApi {
     }
     suspend fun workerAvailability(): Boolean = JSONObject(request("GET", "/api/v1/workers/me/availability")).optBoolean("available")
     suspend fun workerPayout(jobId: String): JSONObject = JSONObject(request("GET", "/api/v1/jobs/$jobId/worker-payout"))
+    suspend fun workerWallet(): JSONObject = JSONObject(request("GET", "/api/v1/worker/wallet"))
+    suspend fun payoutMethods(): JSONArray = JSONArray(request("GET", "/api/v1/worker/payout-methods"))
+    suspend fun requestWithdrawal(amountPaise: Int, methodId: String): JSONObject = JSONObject(request(
+        "POST", "/api/v1/worker/withdrawals", JSONObject().put("amountPaise", amountPaise)
+            .put("payoutMethodId", methodId).put("idempotencyKey", java.util.UUID.randomUUID().toString())
+    ))
+    suspend fun createPaymentOrder(bookingId: String): JSONObject = JSONObject(request("POST", "/api/v1/bookings/$bookingId/payment-order"))
+    suspend fun verifyPayment(bookingId: String, orderId: String, paymentId: String, signature: String): JSONObject = JSONObject(request(
+        "POST", "/api/v1/payments/verify", JSONObject().put("bookingId", bookingId).put("razorpayOrderId", orderId)
+            .put("razorpayPaymentId", paymentId).put("razorpaySignature", signature)
+    ))
+    suspend fun paymentStatus(paymentId: String): JSONObject = JSONObject(request("GET", "/api/v1/payments/$paymentId"))
+    suspend fun bookingPaymentStatus(bookingId: String): JSONObject = JSONObject(request("GET", "/api/v1/bookings/$bookingId/payment-status"))
+    suspend fun startCashCollection(bookingId: String): JSONObject = JSONObject(request("POST", "/api/v1/bookings/$bookingId/cash-collection"))
+    suspend fun cashCollections(): JSONArray = JSONArray(request("GET", "/api/v1/worker/cash-collections"))
+    suspend fun companyPaymentQr(): JSONObject = JSONObject(request("GET", "/api/v1/worker/company-upi-qr"))
+    suspend fun confirmCashCollection(collectionId: String): JSONObject = JSONObject(request("POST", "/api/v1/cash-collections/$collectionId/confirm", JSONObject()))
 
     suspend fun cancelApplication(jobId: String) { request("DELETE", "/jobs/$jobId/applications/me") }
     suspend fun startJob(jobId: String) { request("POST", "/jobs/$jobId/start") }

@@ -86,6 +86,11 @@ struct ShopkeeperJobDetailView: View {
                     }
                     if job.status == .completed {
                         PrimaryButton(title: "Rate Hired Worker", style: .secondary) { rating = true }
+                        NavigationLink(destination: RazorpayPaymentView(bookingID: jobId.uuidString)) {
+                            Text("View payment status / Pay with Razorpay")
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                                .frame(maxWidth: .infinity).padding(14).background(Color.errnoGreen, in: RoundedRectangle(cornerRadius: 12))
+                        }
                     }
                     if let error { Text(error).foregroundStyle(Color.errnoError) }
                 }.padding(20).frame(maxWidth: 800).frame(maxWidth: .infinity)
