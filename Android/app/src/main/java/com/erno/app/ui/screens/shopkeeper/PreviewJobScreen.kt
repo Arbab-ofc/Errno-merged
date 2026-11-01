@@ -4,11 +4,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -104,8 +102,8 @@ fun PreviewJobScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
                 Surface(
@@ -114,14 +112,14 @@ fun PreviewJobScreen(
                     color = Color.White,
                     shadowElevation = 1.dp
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = state.draftTitle.ifBlank { "Shop Helper" },
+                                text = state.draftTitle.ifBlank { "Loading & Unloading" },
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
@@ -143,6 +141,38 @@ fun PreviewJobScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        val isPreBooking = state.draftBookingType == "PRE_BOOKING"
+                        val timeLabel = if (state.draftWorkingRequirementType == "IMMEDIATE") {
+                            if (isPreBooking) "Immediate Start on ${state.draftScheduledDate}" else "Immediate Requirement (Today)"
+                        } else {
+                            if (isPreBooking) "${state.draftScheduledDate} at ${state.draftScheduledTime}" else "Today at ${state.draftScheduledTime}"
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isPreBooking) Color(0xFFE3F2FD) else Color(0xFFEAF5D8),
+                            border = BorderStroke(1.dp, if (isPreBooking) Color(0xFF1565C0) else ErnoGreen)
+                        ) {
+                            Text(
+                                text = if (isPreBooking) "Pre-Booking • $timeLabel" else "Current Job • $timeLabel",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isPreBooking) Color(0xFF1565C0) else ErnoGreen,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "Workers Required: ${state.draftWorkerCount} Worker${if (state.draftWorkerCount > 1) "s" else ""}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Black
+                        )
+
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -155,30 +185,30 @@ fun PreviewJobScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = state.draftLocation.ifBlank { "Okhla Market Area" },
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 color = Color.Gray
                             )
                         }
 
                         // Delivery Pickup & Drop-off Route (ONLY FOR DELIVERY JOBS)
                         if (state.draftIsDelivery) {
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFF8F9FA),
                                 border = BorderStroke(1.dp, Color(0xFFE0E0E0))
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(modifier = Modifier.padding(10.dp)) {
                                     Text(
-                                        text = "📦 Pickup: ${state.draftPickupLocation.ifBlank { "Okhla Market Store #12" }}",
-                                        fontSize = 13.sp,
+                                        text = "Pickup: ${state.draftPickupLocation.ifBlank { "Okhla Market Store #12" }}",
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.Black
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Spacer(modifier = Modifier.height(3.dp))
                                     Text(
-                                        text = "📍 Drop: ${state.draftDropLocation.ifBlank { "Sector 18 Noida Address" }}",
-                                        fontSize = 13.sp,
+                                        text = "Drop: ${state.draftDropLocation.ifBlank { "Sector 18 Noida Address" }}",
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.Black
                                     )
@@ -195,45 +225,69 @@ fun PreviewJobScreen(
                             isDarkTheme = false
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = state.draftDescription.ifBlank { "Need a shop helper for assisting in customer handling and store work." },
-                            fontSize = 14.sp,
+                            text = "Job Description:",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = state.draftDescription.ifBlank { "Workers are required for loading and unloading goods." },
+                            fontSize = 13.sp,
                             color = ErnoTextSecondary,
-                            lineHeight = 20.sp
+                            lineHeight = 18.sp
                         )
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (state.draftRequirements.isNotBlank()) {
+                            Text(
+                                text = "Job Requirements:",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = state.draftRequirements,
+                                fontSize = 13.sp,
+                                color = ErnoTextSecondary,
+                                lineHeight = 18.sp
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Fixed Time Options & Pay Structure ",
-                                fontSize = 15.sp,
+                                text = "Pay Structure & Duration",
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         state.draftPayStructure.forEach { item ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "${item.hours} Hour${if (item.hours > 1) "s" else ""} Limit",
-                                    fontSize = 14.sp,
+                                    text = "${item.hours} Hour${if (item.hours > 1) "s" else ""} Shift",
+                                    fontSize = 13.sp,
                                     color = Color.Black
                                 )
                                 Text(
                                     text = "₹${item.price}",
-                                    fontSize = 14.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )

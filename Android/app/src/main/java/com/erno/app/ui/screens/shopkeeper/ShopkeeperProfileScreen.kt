@@ -314,8 +314,8 @@ fun ShopkeeperProfileScreen(
             title = { Text("Store Location & Working Hours", fontWeight = FontWeight.Bold, color = Color.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("📍 Address: Okhla Market Area, Block B, New Delhi", fontSize = 13.sp, color = Color.Black)
-                    Text("🕒 Working Hours: 08:00 AM - 09:00 PM (Mon - Sat)", fontSize = 13.sp, color = Color.Black)
+                    Text("Address: Okhla Market Area, Block B, New Delhi", fontSize = 13.sp, color = Color.Black)
+                    Text("Working Hours: 08:00 AM - 09:00 PM (Mon - Sat)", fontSize = 13.sp, color = Color.Black)
                     WorkerLocationMapView(
                         locationName = "Store Location Map Pin",
                         distanceText = "Block B Okhla",

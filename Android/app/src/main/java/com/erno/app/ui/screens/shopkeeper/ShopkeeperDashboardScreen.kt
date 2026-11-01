@@ -84,7 +84,7 @@ fun ShopkeeperDashboardScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column {
                         Text(
-                            text = "Hello, ${state.ownerName} 👋",
+                            text = "Hello, ${state.ownerName}",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
@@ -383,7 +383,7 @@ fun JobCardItem(job: JobPost) {
             ) {
                 if (job.status == "Active" && job.applicantsCount > 0) {
                     Text(
-                        text = "👥 ${job.applicantsCount} Applied",
+                        text = "${job.applicantsCount} Applied",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.Black

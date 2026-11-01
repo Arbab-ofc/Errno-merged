@@ -1,5 +1,7 @@
 package com.erno.app.ui.screens.shopkeeper
 
+import android.app.TimePickerDialog
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -16,20 +18,26 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -38,8 +46,7 @@ import com.erno.app.data.model.DurationPay
 import com.erno.app.ui.components.WorkerLocationMapView
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,22 +58,65 @@ fun PostJobScreen(
     onCategoryChange: (String) -> Unit,
     onLocationChange: (String) -> Unit,
     onScheduledDateChange: (String) -> Unit = {},
+    onScheduledTimeChange: (String) -> Unit = {},
+    onWorkingRequirementTypeChange: (String) -> Unit = {},
+    onBookingTypeChange: (String) -> Unit = {},
+    onWorkerCountChange: (Int) -> Unit = {},
     onPickupLocationChange: (String) -> Unit = {},
     onDropLocationChange: (String) -> Unit = {},
     onPackageTypeChange: (String) -> Unit = {},
     onDescriptionChange: (String) -> Unit,
+    onRequirementsChange: (String) -> Unit = {},
+    onApplyCategorySuggestions: () -> Unit = {},
     onRemoveDuration: (DurationPay) -> Unit,
     onToggleDuration: (hours: Int, price: Int) -> Unit = { _, _ -> },
     onAddMoreDurationClick: () -> Unit,
     onPreviewJobClick: () -> Unit
 ) {
-    var currentStep by remember { mutableIntStateOf(1) } // Step 1: Details, Step 2: Time & Hours, Step 3: Location & Map
+    var currentStep by remember { mutableIntStateOf(1) } // Step 1: Details & Requirement, Step 2: Duration, Step 3: Location
     var categoryExpanded by remember { mutableStateOf(false) }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
     var customHoursInput by remember { mutableStateOf("5") }
     var customPayInput by remember { mutableStateOf("550") }
 
-    val categories = listOf("Delivery Partner", "Shop Helper", "Counter Staff", "Store Assistant", "Packing Staff", "Delivery Boy", "Cashier")
+    val context = LocalContext.current
+
+    val categories = listOf(
+        "Loading & Unloading",
+        "Delivery Partner",
+        "Shop Helper",
+        "Counter Staff",
+        "Store Assistant",
+        "Packing Staff",
+        "Delivery Boy",
+        "Cashier"
+    )
+
+    val preBookingAvailableDates = remember { getAvailablePreBookingDates() }
+
+    // Native Android TimePickerDialog launch helper
+    val timePickerDialog = remember(context) {
+        val calendar = Calendar.getInstance()
+        val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+        val currentMinute = calendar.get(Calendar.MINUTE)
+
+        TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                val isPm = hourOfDay >= 12
+                val hour12 = when {
+                    hourOfDay == 0 -> 12
+                    hourOfDay > 12 -> hourOfDay - 12
+                    else -> hourOfDay
+                }
+                val formattedTime = String.format(Locale.US, "%02d:%02d %s", hour12, minute, if (isPm) "PM" else "AM")
+                onScheduledTimeChange(formattedTime)
+            },
+            currentHour,
+            currentMinute,
+            false // 12-hour AM/PM mode
+        )
+    }
 
     // Combined duration list containing standard options + any custom user-added duration option
     val allDurationOptions = remember(state.draftPayStructure) {
@@ -84,6 +134,14 @@ fun PostJobScreen(
         (standard + customItems).sortedBy { it.hours }
     }
 
+    val isStep1Valid = if (state.draftBookingType == "CURRENT") {
+        state.draftWorkingRequirementType == "IMMEDIATE" || (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate")
+    } else {
+        state.draftScheduledDate.isNotBlank() && (
+            state.draftWorkingRequirementType == "IMMEDIATE" || (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate")
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -97,7 +155,7 @@ fun PostJobScreen(
                         )
                         Text(
                             text = "Step $currentStep of 3 • " + when (currentStep) {
-                                1 -> "Basic Details & Calendar Schedule"
+                                1 -> "Details & Working Requirement"
                                 2 -> "Select Duration Needed"
                                 else -> "Location & Map"
                             },
@@ -134,7 +192,7 @@ fun PostJobScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(14.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -143,12 +201,12 @@ fun PostJobScreen(
                             onClick = { currentStep-- },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(52.dp),
+                                .height(50.dp),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, Color(0xFFD0D0D0))
                         ) {
                             Text(
-                                text = "← Back",
+                                text = "Back",
                                 fontSize = 15.sp,
                                 color = Color.Black,
                                 fontWeight = FontWeight.SemiBold
@@ -157,6 +215,7 @@ fun PostJobScreen(
                     }
 
                     Button(
+                        enabled = currentStep != 1 || isStep1Valid,
                         onClick = {
                             if (currentStep < 3) {
                                 currentStep++
@@ -166,15 +225,18 @@ fun PostJobScreen(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
+                            .height(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ErnoGreen,
+                            disabledContainerColor = Color(0xFFCCCCCC)
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
                             text = when (currentStep) {
-                                1 -> "Next: Select Duration →"
-                                2 -> "Next: Location →"
-                                else -> "Preview & Post →"
+                                1 -> "Next: Duration & Pay"
+                                2 -> "Next: Location"
+                                else -> "Preview & Post"
                             },
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
@@ -196,10 +258,10 @@ fun PostJobScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.White)
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val steps = listOf("1. Details", "2. Duration", "3. Location")
+                val steps = listOf("1. Type & Details", "2. Duration", "3. Location")
                 steps.forEachIndexed { index, title ->
                     val stepNum = index + 1
                     val isActive = currentStep >= stepNum
@@ -209,12 +271,12 @@ fun PostJobScreen(
                         color = if (isActive) Color(0xFFEAF5D8) else Color(0xFFF0F0F0)
                     ) {
                         Box(
-                            modifier = Modifier.padding(vertical = 8.dp),
+                            modifier = Modifier.padding(vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = title,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isActive) ErnoGreen else Color.Gray
                             )
@@ -229,36 +291,242 @@ fun PostJobScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 contentAlignment = Alignment.TopCenter
             ) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .widthIn(max = 800.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // STEP 1: JOB TITLE, CALENDAR DATE PRE-BOOKING & START TIME PICKER
+                    // STEP 1: FORM FIELDS ACCORDING TO SECTION 5 SPECIFICATION
                     if (currentStep == 1) {
+                        // 1. CURRENT JOB / PRE-BOOKING SELECTION CARDS
                         item {
-                            Text(
-                                text = "Basic Information & Calendar Booking",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "1. Booking Flow",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+
+                                val isCurrentSelected = state.draftBookingType == "CURRENT"
+                                val isPreBookingSelected = state.draftBookingType == "PRE_BOOKING"
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    // OPTION A CARD: Current Job
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { onBookingTypeChange("CURRENT") },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isCurrentSelected) Color(0xFFEAF5D8) else Color.White,
+                                        border = BorderStroke(
+                                            width = if (isCurrentSelected) 2.dp else 1.dp,
+                                            color = if (isCurrentSelected) ErnoGreen else Color(0xFFD0D0D0)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.FlashOn,
+                                                        contentDescription = null,
+                                                        tint = ErnoGreen,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "Current Job",
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.Black
+                                                    )
+                                                }
+                                                if (isCurrentSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = ErnoGreen,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "Hire a worker for today.",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+
+                                    // OPTION B CARD: Pre-Booking
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { onBookingTypeChange("PRE_BOOKING") },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isPreBookingSelected) Color(0xFFEAF5D8) else Color.White,
+                                        border = BorderStroke(
+                                            width = if (isPreBookingSelected) 2.dp else 1.dp,
+                                            color = if (isPreBookingSelected) ErnoGreen else Color(0xFFD0D0D0)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CalendarToday,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF1565C0),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "Pre-Booking",
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.Black
+                                                    )
+                                                }
+                                                if (isPreBookingSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = ErnoGreen,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "Book in advance for upcoming date.",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Date indicator / Date Selector
+                                if (state.draftBookingType == "CURRENT") {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFF1F8E9),
+                                        border = BorderStroke(1.dp, Color(0xFFA5D6A7)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CalendarToday,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF1B5E20),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Date: Today (${getFormattedTodayDate()})",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF1B5E20)
+                                                )
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Lock,
+                                                    contentDescription = null,
+                                                    tint = ErnoGreen,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Automatically Set",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = ErnoGreen
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = "Select Date (Next 7 Days):",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color.Black
+                                        )
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(preBookingAvailableDates) { (iso, label) ->
+                                                val isSelected = state.draftScheduledDate == iso
+                                                Surface(
+                                                    onClick = { onScheduledDateChange(iso) },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (isSelected) ErnoGreen else Color.White,
+                                                    border = BorderStroke(1.dp, if (isSelected) ErnoGreen else Color(0xFFD0D0D0))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally
+                                                    ) {
+                                                        Text(
+                                                            text = label.split(",").firstOrNull() ?: "",
+                                                            fontSize = 10.sp,
+                                                            color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color.Gray
+                                                        )
+                                                        Text(
+                                                            text = label.split(",").lastOrNull()?.trim() ?: label,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isSelected) Color.White else Color.Black
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (state.draftScheduledDate.isBlank()) {
+                                            Text(
+                                                text = "Select an available date above to proceed.",
+                                                color = Color(0xFFD32F2F),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        // Category Dropdown
+                        // 2. JOB CATEGORY (Including "Loading & Unloading")
                         item {
                             Column {
                                 Text(
-                                    text = "Job Category",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    text = "2. Job Category",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 ExposedDropdownMenuBox(
                                     expanded = categoryExpanded,
                                     onExpandedChange = { categoryExpanded = !categoryExpanded }
@@ -274,7 +542,7 @@ fun PostJobScreen(
                                                 tint = Color.Black
                                             )
                                         },
-                                        textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                                        textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .menuAnchor(),
@@ -295,7 +563,30 @@ fun PostJobScreen(
                                     ) {
                                         categories.forEach { category ->
                                             DropdownMenuItem(
-                                                text = { Text(category, color = Color.Black, fontWeight = FontWeight.Medium) },
+                                                text = {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = category,
+                                                            color = Color.Black,
+                                                            fontWeight = if (category == state.draftCategory) FontWeight.Bold else FontWeight.Medium
+                                                        )
+                                                        if (category == "Loading & Unloading") {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Surface(
+                                                                shape = RoundedCornerShape(4.dp),
+                                                                color = Color(0xFFFFF3E0)
+                                                            ) {
+                                                                Text(
+                                                                    text = "Popular",
+                                                                    fontSize = 9.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color(0xFFE65100),
+                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                },
                                                 onClick = {
                                                     onCategoryChange(category)
                                                     categoryExpanded = false
@@ -308,220 +599,245 @@ fun PostJobScreen(
                             }
                         }
 
-                        // Interactive Calendar Date & Time Pre-Booking Selection
+                        // 3. NUMBER OF WORKERS REQUIRED
                         item {
-                            var showDatePicker by remember { mutableStateOf(false) }
-                            var selectedTime by remember { mutableStateOf("01:00 PM") }
-                            var selectedDateFormatted by remember { mutableStateOf("12 Sep 2026") }
-                            var timeExpanded by remember { mutableStateOf(false) }
-
-                            val timeOptions = listOf(
-                                "09:00 AM",
-                                "10:00 AM",
-                                "11:00 AM",
-                                "12:00 PM",
-                                "01:00 PM",
-                                "02:00 PM",
-                                "03:00 PM",
-                                "04:00 PM",
-                                "05:00 PM",
-                                "06:00 PM",
-                                "07:00 PM",
-                                "08:00 PM"
-                            )
-
-                            // DatePicker State with 6-Day Future Limit Constraint
-                            val datePickerState = rememberDatePickerState(
-                                initialSelectedDateMillis = System.currentTimeMillis(),
-                                selectableDates = object : SelectableDates {
-                                    override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                                        val today = System.currentTimeMillis()
-                                        val maxMillis = today + (6 * 24 * 60 * 60 * 1000L) // 6 Days Max Limit
-                                        return utcTimeMillis >= (today - (24 * 60 * 60 * 1000L)) && utcTimeMillis <= maxMillis
-                                    }
-                                }
-                            )
-
-                            if (showDatePicker) {
-                                DatePickerDialog(
-                                    onDismissRequest = { showDatePicker = false },
-                                    confirmButton = {
-                                        TextButton(onClick = {
-                                            datePickerState.selectedDateMillis?.let { millis ->
-                                                val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-                                                selectedDateFormatted = sdf.format(Date(millis))
-                                                onScheduledDateChange("$selectedDateFormatted at $selectedTime")
-                                            }
-                                            showDatePicker = false
-                                        }) {
-                                            Text("Confirm Date", color = ErnoGreen, fontWeight = FontWeight.Bold)
-                                        }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showDatePicker = false }) {
-                                            Text("Cancel", color = Color.Gray)
-                                        }
-                                    }
-                                ) {
-                                    DatePicker(state = datePickerState)
-                                }
-                            }
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color.White, RoundedCornerShape(14.dp))
-                                    .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(14.dp))
-                                    .padding(16.dp)
-                            ) {
+                            Column {
                                 Text(
-                                    text = "Select Schedule Date & Time (Calendar)",
-                                    fontSize = 15.sp,
+                                    text = "3. Number of Workers Required",
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(listOf(1, 2, 3, 4, 5)) { count ->
+                                        val isSelected = state.draftWorkerCount == count
+                                        Surface(
+                                            onClick = { onWorkerCountChange(count) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) ErnoGreen else Color.White,
+                                            border = BorderStroke(1.dp, if (isSelected) ErnoGreen else Color(0xFFD0D0D0))
+                                        ) {
+                                            Text(
+                                                text = "$count Worker${if (count > 1) "s" else ""}",
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                color = if (isSelected) Color.White else Color.Black,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 4. WORKING REQUIREMENT: Option A (Immediate) vs Option B (Dynamic Time Picker)
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    text = "Current Month Calendar • Maximum 6-Day Pre-Booking Limit",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
+                                    text = "4. Working Requirement (Start Time)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
                                 )
 
-                                Spacer(modifier = Modifier.height(14.dp))
+                                val isImmediate = state.draftWorkingRequirementType == "IMMEDIATE"
+                                val isDynamic = state.draftWorkingRequirementType == "DYNAMIC_TIME"
 
-                                // Date Selection Input Field
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = selectedDateFormatted,
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        label = { Text("Work Date (Calendar)", fontSize = 12.sp, color = Color.Gray) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.CalendarToday,
-                                                contentDescription = null,
-                                                tint = ErnoGreen,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        },
-                                        trailingIcon = {
-                                            TextButton(onClick = { showDatePicker = true }) {
-                                                Text("Change", color = ErnoGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                            }
-                                        },
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    // Option A: Immediate
+                                    Surface(
                                         modifier = Modifier
-                                            .weight(1.2f)
-                                            .clickable { showDatePicker = true },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedTextColor = Color.Black,
-                                            unfocusedTextColor = Color.Black,
-                                            focusedBorderColor = ErnoGreen,
-                                            unfocusedBorderColor = Color(0xFFD0D0D0)
-                                        ),
-                                        singleLine = true
-                                    )
-
-                                    ExposedDropdownMenuBox(
-                                        expanded = timeExpanded,
-                                        onExpandedChange = { timeExpanded = !timeExpanded },
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        OutlinedTextField(
-                                            value = selectedTime,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text("Start Time", fontSize = 12.sp, color = Color.Gray) },
-                                            trailingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                                    contentDescription = null,
-                                                    tint = Color.Black
-                                                )
-                                            },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .menuAnchor(),
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.Black,
-                                                unfocusedTextColor = Color.Black,
-                                                focusedBorderColor = ErnoGreen,
-                                                unfocusedBorderColor = Color(0xFFD0D0D0)
-                                            ),
-                                            singleLine = true
+                                            .weight(1f)
+                                            .clickable { onWorkingRequirementTypeChange("IMMEDIATE") },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isImmediate) Color(0xFFEAF5D8) else Color.White,
+                                        border = BorderStroke(
+                                            width = if (isImmediate) 2.dp else 1.dp,
+                                            color = if (isImmediate) ErnoGreen else Color(0xFFD0D0D0)
                                         )
-
-                                        ExposedDropdownMenu(
-                                            expanded = timeExpanded,
-                                            onDismissRequest = { timeExpanded = false },
-                                            modifier = Modifier.background(Color.White)
-                                        ) {
-                                            timeOptions.forEach { timeSlot ->
-                                                DropdownMenuItem(
-                                                    text = { Text(timeSlot, color = Color.Black, fontWeight = FontWeight.Medium) },
-                                                    onClick = {
-                                                        selectedTime = timeSlot
-                                                        timeExpanded = false
-                                                        onScheduledDateChange("$selectedDateFormatted at $selectedTime")
-                                                    },
-                                                    modifier = Modifier.background(Color.White)
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text = "Immediate",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.Black
+                                                )
+                                                RadioButton(
+                                                    selected = isImmediate,
+                                                    onClick = { onWorkingRequirementTypeChange("IMMEDIATE") },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
+                                                    modifier = Modifier.size(20.dp)
                                                 )
                                             }
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Need worker as soon as possible.",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+
+                                    // Option B: Select Working Time (Dynamic Time)
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { onWorkingRequirementTypeChange("DYNAMIC_TIME") },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isDynamic) Color(0xFFEAF5D8) else Color.White,
+                                        border = BorderStroke(
+                                            width = if (isDynamic) 2.dp else 1.dp,
+                                            color = if (isDynamic) ErnoGreen else Color(0xFFD0D0D0)
+                                        )
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text = "Select Time",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.Black
+                                                )
+                                                RadioButton(
+                                                    selected = isDynamic,
+                                                    onClick = { onWorkingRequirementTypeChange("DYNAMIC_TIME") },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Choose exact start time.",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
                                         }
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFEAF5D8)
-                                ) {
-                                    Row(
+                                // Time Picker Display & Trigger
+                                if (isDynamic) {
+                                    Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .clickable { timePickerDialog.show() },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(1.dp, ErnoGreen)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Schedule,
-                                            contentDescription = null,
-                                            tint = ErnoGreen,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AccessTime,
+                                                    contentDescription = null,
+                                                    tint = ErnoGreen,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = if (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate") {
+                                                        "Start Time: ${state.draftScheduledTime}"
+                                                    } else {
+                                                        "Tap to Choose Start Time (e.g. 08:30 AM)"
+                                                    },
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate") Color.Black else Color.Gray
+                                                )
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFEAF5D8)
+                                            ) {
+                                                Text(
+                                                    text = "Time Picker",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ErnoGreen,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (state.draftScheduledTime.isBlank() || state.draftScheduledTime == "Immediate") {
                                         Text(
-                                            text = "Scheduled Work: $selectedDateFormatted at $selectedTime",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ErnoGreen
+                                            text = "Please select a start time using the time picker.",
+                                            color = Color(0xFFD32F2F),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
                                         )
                                     }
                                 }
                             }
                         }
 
-                        // Description Input
+                        // 5. JOB DESCRIPTION & AUTO-SUGGESTIONS
                         item {
                             Column {
-                                Text(
-                                    text = "Job Description & Requirements",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.Black
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "5. Job Description",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Black
+                                    )
+
+                                    Surface(
+                                        onClick = onApplyCategorySuggestions,
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFEAF5D8),
+                                        border = BorderStroke(1.dp, ErnoGreen.copy(alpha = 0.5f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = ErnoGreen,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Use Suggested Details",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ErnoGreen
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
                                 OutlinedTextField(
                                     value = state.draftDescription,
                                     onValueChange = { if (it.length <= 250) onDescriptionChange(it) },
-                                    placeholder = { Text("Enter work details, tasks, or requirements...", color = Color.Gray) },
-                                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                                    placeholder = { Text("Describe work tasks, requirements, or duties...", color = Color.Gray) },
+                                    textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 13.sp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(110.dp),
+                                        .height(95.dp),
                                     shape = RoundedCornerShape(10.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedTextColor = Color.Black,
@@ -532,10 +848,80 @@ fun PostJobScreen(
                                         unfocusedContainerColor = Color.White
                                     )
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "${state.draftDescription.length}/250",
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier.align(Alignment.End)
+                                )
+                            }
+                        }
+
+                        // 7. JOB REQUIREMENTS & AUTO-SUGGESTIONS
+                        item {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "7. Job Requirements",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Black
+                                    )
+
+                                    Surface(
+                                        onClick = onApplyCategorySuggestions,
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFEAF5D8),
+                                        border = BorderStroke(1.dp, ErnoGreen.copy(alpha = 0.5f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = ErnoGreen,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Use Suggested Details",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ErnoGreen
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = state.draftRequirements,
+                                    onValueChange = { if (it.length <= 250) onRequirementsChange(it) },
+                                    placeholder = { Text("e.g. Physical fitness, safety adherence...", color = Color.Gray) },
+                                    textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 13.sp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(95.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.Black,
+                                        unfocusedTextColor = Color.Black,
+                                        focusedBorderColor = ErnoGreen,
+                                        unfocusedBorderColor = Color(0xFFE0E0E0),
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "${state.draftRequirements.length}/250",
+                                    fontSize = 10.sp,
                                     color = Color.Gray,
                                     modifier = Modifier.align(Alignment.End)
                                 )
@@ -750,7 +1136,7 @@ fun PostJobScreen(
                                         color = Color.Black
                                     )
                                     Text(
-                                        text = "🎯 Tap map to preview",
+                                        text = "Tap map to preview",
                                         fontSize = 11.sp,
                                         color = ErnoGreen,
                                         fontWeight = FontWeight.SemiBold
@@ -764,10 +1150,10 @@ fun PostJobScreen(
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 ) {
                                     val mapPresets = listOf(
-                                        "🏬 Shop Main Gate, Okhla",
-                                        "📍 Store Delivery Bay, Block B",
-                                        "🚇 Okhla Metro Exit 2",
-                                        "🏢 Central Market Hub"
+                                        "Shop Main Gate, Okhla",
+                                        "Store Delivery Bay, Block B",
+                                        "Okhla Metro Exit 2",
+                                        "Central Market Hub"
                                     )
                                     items(mapPresets) { preset ->
                                         Surface(
@@ -935,7 +1321,7 @@ fun LocationAutocompleteTextField(
             fontWeight = FontWeight.Medium,
             color = Color.Black
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         ExposedDropdownMenuBox(
             expanded = showSuggestions,
@@ -1016,7 +1402,7 @@ fun LocationAutocompleteTextField(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 6.dp),
+                .padding(top = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1038,7 +1424,7 @@ fun LocationAutocompleteTextField(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "📍 Use Current GPS Location",
+                        text = "Use Current GPS Location",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = ErnoGreen
@@ -1057,7 +1443,7 @@ fun LocationAutocompleteTextField(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp),
+                .padding(top = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val quickChips = listOf(

@@ -291,7 +291,7 @@ fun WorkerMyJobCardItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "🕒 ${job.selectedHours} Hours • Scheduled: ${job.scheduledDate}",
+                    text = "${job.selectedHours} Hours • Scheduled: ${job.scheduledDate}",
                     fontSize = 13.sp,
                     color = Color.DarkGray
                 )
@@ -368,7 +368,7 @@ fun WorkerMyJobCardItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "🗓️ ${job.scheduledTime}",
+                        text = "Scheduled: ${job.scheduledTime}",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.Gray

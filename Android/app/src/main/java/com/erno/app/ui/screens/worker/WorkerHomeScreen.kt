@@ -72,7 +72,7 @@ fun WorkerHomeScreen(
                     ) {
                         Column {
                             Text(
-                                text = "Hello, ${state.workerName} 👋",
+                                text = "Hello, ${state.workerName}",
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -278,6 +278,19 @@ fun WorkerAvailableJobCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (job.bookingType == "PRE_BOOKING") Color(0xFFFFF3E0) else Color(0xFFEAF5D8)
+            ) {
+                Text(
+                    text = if (job.bookingType == "PRE_BOOKING") "Pre-Booking • ${job.scheduledDate}" else "Current Job • Today",
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (job.bookingType == "PRE_BOOKING") Color(0xFF9A5800) else ErnoGreen
+                )
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.LocationOn,
@@ -308,12 +321,12 @@ fun WorkerAvailableJobCard(
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
                         Text(
-                            text = "📦 Pickup: ${job.pickupLocation}",
+                            text = "Pickup: ${job.pickupLocation}",
                             fontSize = 11.sp,
                             color = Color.DarkGray
                         )
                         Text(
-                            text = "📍 Drop: ${job.dropLocation}",
+                            text = "Drop: ${job.dropLocation}",
                             fontSize = 11.sp,
                             color = Color.DarkGray
                         )
@@ -330,7 +343,7 @@ fun WorkerAvailableJobCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "🕒 $minHours - $maxHours Hours",
+                        text = "$minHours - $maxHours Hours",
                         fontSize = 13.sp,
                         color = Color.DarkGray
                     )

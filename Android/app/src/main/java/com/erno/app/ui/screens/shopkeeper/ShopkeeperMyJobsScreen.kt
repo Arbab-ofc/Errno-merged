@@ -425,7 +425,7 @@ fun ShopkeeperJobManageCard(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "${job.location} • Scheduled: ${job.scheduledDate}",
+                    text = "${if (job.bookingType == "PRE_BOOKING") "Pre-Booking" else "Current Job"} • ${job.location} • Scheduled: ${job.scheduledDate}",
                     fontSize = 13.sp,
                     color = Color.Gray
                 )
@@ -465,13 +465,13 @@ fun ShopkeeperJobManageCard(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "👤 Worker Accepted: $assignedName",
+                                    text = "Worker Accepted: $assignedName",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
                                 )
                                 Text(
-                                    text = "Rating: ${job.assignedWorkerRating} ★ • Aadhaar Verified ✓",
+                                    text = "Rating: ${job.assignedWorkerRating} / 5.0 • Aadhaar Verified",
                                     fontSize = 11.sp,
                                     color = ErnoGreen,
                                     fontWeight = FontWeight.Medium
@@ -480,7 +480,7 @@ fun ShopkeeperJobManageCard(
                         }
 
                         Text(
-                            text = "Profile →",
+                            text = "View Profile",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = ErnoGreen

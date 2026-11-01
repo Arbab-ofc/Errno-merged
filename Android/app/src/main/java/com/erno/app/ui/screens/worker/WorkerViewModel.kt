@@ -103,17 +103,21 @@ class WorkerViewModel : ViewModel() {
             location = job.location,
             distance = "1.2 km away",
             description = job.description,
+            requirements = job.requirements,
             isNew = true,
             payStructure = job.payStructure,
             selectedHours = job.payStructure.firstOrNull()?.hours ?: 1,
             selectedPay = job.payStructure.firstOrNull()?.price ?: 149,
             status = "Available",
-            scheduledTime = "${job.scheduledDate}, 10:00 AM",
             isDeliveryJob = job.isDeliveryJob,
             pickupLocation = job.pickupLocation,
             dropLocation = job.dropLocation,
             packageType = job.packageType,
-            scheduledDate = job.scheduledDate
+            workerCount = job.workerCount,
+            scheduledDate = job.scheduledDate,
+            bookingType = job.bookingType,
+            workingRequirementType = job.workingRequirementType,
+            scheduledTime = job.scheduledTime
         )
         _uiState.update {
             it.copy(
