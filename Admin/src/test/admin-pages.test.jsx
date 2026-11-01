@@ -11,6 +11,7 @@ const { useAuth, api } = vi.hoisted(() => ({
     pricingDemandRules: vi.fn(), pricingBookings: vi.fn(), pricingAreas: vi.fn(),
     updatePricingDuration: vi.fn(), activatePricingDuration: vi.fn(), updatePricingSettings: vi.fn(),
     activatePricingSettings: vi.fn(), previewPricing: vi.fn(),
+    whatsappStatus: vi.fn(), whatsappQr: vi.fn(), whatsappConnect: vi.fn(), whatsappDisconnect: vi.fn(), whatsappLogout: vi.fn(), whatsappMonitoring: vi.fn(),
   },
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => useAuth(), AuthProvider: ({ children }) => children }));
@@ -21,6 +22,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { PersonDetailPage, PeopleListPage } from "../pages/PeoplePages";
 import { JobsPage } from "../pages/JobsPage";
 import { PricingPage } from "../pages/PricingPage";
+import { WhatsAppGatewayPage } from "../pages/WhatsAppGatewayPage";
 import { RequireAdmin } from "../auth/RequireAdmin";
 
 const user = { email: "admin@example.test", getIdToken: vi.fn() };
@@ -33,6 +35,18 @@ beforeEach(() => {
 });
 
 describe("admin authentication gates and live pages", () => {
+  it("renders the live gateway status and only metadata from monitoring", async () => {
+    useAuth.mockReturnValue({ ...useAuth(), admin: { ...admin, permissions: [...admin.permissions, "whatsapp.read", "whatsapp.connect", "whatsapp.manage", "whatsapp.monitor"] } });
+    api.whatsappStatus.mockResolvedValue({ status: "CONNECTED", account: { phoneMasked: "1234", displayName: "ERRNO" }, connectedAt: new Date().toISOString(), lastHeartbeatAt: new Date().toISOString() });
+    api.whatsappMonitoring.mockResolvedValue({ counts: { otp_send_accepted: 2 }, events: [{ event_type: "otp_send", outcome: "accepted", destination_suffix: "3210", message_id: "wamid.1", created_at: new Date().toISOString() }] });
+    render(<MemoryRouter><WhatsAppGatewayPage /></MemoryRouter>);
+    expect(await screen.findByText("CONNECTED")).toBeInTheDocument();
+    expect(screen.getByText("•••• 1234")).toBeInTheDocument();
+    expect(screen.getByText("•••• 3210")).toBeInTheDocument();
+    expect(screen.queryByText(/otp value/i)).not.toBeInTheDocument();
+    expect(api.whatsappStatus).toHaveBeenCalledWith(user);
+  });
+
   it("starts Google sign-in from the login screen", async () => {
     const signIn = vi.fn().mockResolvedValue(undefined);
     useAuth.mockReturnValue({ ...useAuth(), user: null, admin: null, signIn });

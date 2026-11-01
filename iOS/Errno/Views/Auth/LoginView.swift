@@ -112,9 +112,9 @@ struct LoginView: View {
                     // Send OTP Button
                     Button {
                         isPhoneFocused = false
-                        viewModel.requestOTP(role: role) { phone, selectedRole in
+                        viewModel.requestOTP(role: role) { phone, selectedRole, challenge in
                             router.registrationName = ""
-                            router.navigateToOTP(phone: phone, role: selectedRole)
+                            router.navigateToOTP(phone: phone, role: selectedRole, challenge: challenge)
                         }
                     } label: {
                         Group {

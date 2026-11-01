@@ -26,7 +26,7 @@ final class AuthViewModel {
         phoneNumber.count == 10 && phoneNumber.allSatisfy(\.isNumber)
     }
 
-    func requestOTP(role: UserRole, onSuccess: @escaping (String, UserRole) -> Void) {
+    func requestOTP(role: UserRole, onSuccess: @escaping (String, UserRole, WhatsAppOTPChallenge) -> Void) {
         guard !isLoading else { return }
         guard isValidPhone else {
             errorMessage = "Please enter a valid 10-digit number."
@@ -38,11 +38,11 @@ final class AuthViewModel {
 
         requestTask = Task {
             do {
-                try await authService.sendOTP(to: phoneNumber)
+                let challenge = try await authService.sendOTP(to: phoneNumber, role: role)
                 try Task.checkCancellation()
                 await MainActor.run {
                     self.isLoading = false
-                    onSuccess(self.phoneNumber, role)
+                    onSuccess(self.phoneNumber, role, challenge)
                 }
             } catch {
                 await MainActor.run {

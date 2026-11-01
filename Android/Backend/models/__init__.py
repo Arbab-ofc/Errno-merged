@@ -291,3 +291,51 @@ class PresenceSession(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     __table_args__ = (UniqueConstraint("user_id", "session_identifier", name="uq_presence_user_session"),)
+
+
+class WhatsAppOTPChallenge(Base):
+    """Short-lived phone challenge; only a keyed digest of the code is stored."""
+    __tablename__ = "whatsapp_otp_challenges"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    phone_number = Column(String(16), nullable=False, index=True)
+    role = Column(String(20), nullable=False)
+    otp_digest = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    resend_after = Column(DateTime(timezone=True), nullable=False)
+    attempt_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_status = Column(String(20), nullable=False, default="pending", server_default=text("'pending'"))
+    gateway_message_id = Column(String(160), nullable=True)
+    request_ip_hash = Column(String(64), nullable=True, index=True)
+    __table_args__ = (
+        CheckConstraint("role IN ('worker','shop_owner','shopkeeper')", name="ck_wa_otp_role"),
+        CheckConstraint("attempt_count >= 0", name="ck_wa_otp_attempts"),
+        Index("ix_wa_otp_phone_created", "phone_number", "created_at"),
+    )
+
+
+class BackendAuthSession(Base):
+    """Opaque revocable backend bearer sessions issued after OTP verification."""
+    __tablename__ = "backend_auth_sessions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_digest = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    user = relationship("User")
+    __table_args__ = (Index("ix_backend_auth_sessions_token_digest", "token_digest", unique=True),)
+
+
+class WhatsAppGatewayAudit(Base):
+    """Operational status and message metadata; intentionally contains no OTP text."""
+    __tablename__ = "whatsapp_gateway_audit"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    event_type = Column(String(40), nullable=False, index=True)
+    outcome = Column(String(20), nullable=False)
+    message_id = Column(String(160), nullable=True)
+    destination_suffix = Column(String(4), nullable=True)
+    details = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)

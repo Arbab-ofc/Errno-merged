@@ -16,6 +16,7 @@ from models import AdminAuditLog, AdminPermission
 PERMISSIONS = {
     "dashboard.read", "users.read", "users.manage", "jobs.read", "jobs.manage",
     "pricing.read", "pricing.write", "pricing.activate", "presence.read",
+    "whatsapp.read", "whatsapp.connect", "whatsapp.manage", "whatsapp.monitor",
 }
 
 

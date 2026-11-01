@@ -33,12 +33,37 @@ nonisolated struct AuthResponse: Decodable, Sendable {
 }
 nonisolated struct FirebaseUserProfile: Decodable, Sendable {
     let id: String
-    let firebase_uid: String
+    let firebase_uid: String?
     let name: String?
     let email: String?
     let phone_number: String?
     let role: String?
     let onboarding_completed: Bool
+}
+nonisolated struct WhatsAppOTPRequest: Encodable, Sendable {
+    let phone: String
+    let role: String
+    var requestId: String?
+}
+nonisolated struct WhatsAppOTPChallenge: Decodable, Sendable {
+    let success: Bool
+    let requestId: String
+    let expiresInSeconds: Int
+    let resendAfterSeconds: Int
+    let deliveryStatus: String
+}
+nonisolated struct WhatsAppOTPVerification: Encodable, Sendable {
+    let phone: String
+    let requestId: String
+    let otp: String
+    let role: String
+    let fullName: String?
+}
+nonisolated struct WhatsAppLoginResponse: Decodable, Sendable {
+    let success: Bool
+    let accessToken: String
+    let expiresInSeconds: Int
+    let user: FirebaseUserProfile
 }
 nonisolated struct FirebaseLoginResponse: Decodable, Sendable {
     let success: Bool
@@ -253,6 +278,10 @@ nonisolated enum BackendEndpoints {
     }
     static func sendOTP(_ body: SendOTPRequest) throws -> APIEndpoint { try .json("POST", ["auth", "send-otp"], body: body) }
     static func verifyOTP(_ body: VerifyOTPRequest) throws -> APIEndpoint { try .json("POST", ["auth", "verify-otp"], body: body) }
+    static func whatsappSendOTP(_ body: WhatsAppOTPRequest) throws -> APIEndpoint { try .json("POST", ["api", "v1", "auth", "whatsapp", "send-otp"], body: body) }
+    static func whatsappResendOTP(_ body: WhatsAppOTPRequest) throws -> APIEndpoint { try .json("POST", ["api", "v1", "auth", "whatsapp", "resend-otp"], body: body) }
+    static func whatsappVerifyOTP(_ body: WhatsAppOTPVerification) throws -> APIEndpoint { try .json("POST", ["api", "v1", "auth", "whatsapp", "verify-otp"], body: body) }
+    static func whatsappLogout(token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["api", "v1", "auth", "whatsapp", "logout"], bearerToken: token) }
     static func register(_ body: RegisterRequest) throws -> APIEndpoint { try .json("POST", ["auth", "register"], body: body) }
     static func profile(phone: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["auth", "me", phone]) }
     static func shop(phone: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["shops", "me", phone]) }
@@ -282,7 +311,10 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func jobs(status: String? = nil) async throws -> [BackendJob] { try await client.send(BackendEndpoints.jobs(status: status)) }
     func job(id: String) async throws -> BackendJob { try await client.send(BackendEndpoints.job(id: id)) }
 
-    private func token() async throws -> String { try await FirebaseGoogleAuth.currentIDToken() }
+    private func token() async throws -> String {
+        if let token = BackendTokenStore.readToken() { return token }
+        return try await FirebaseGoogleAuth.currentIDToken()
+    }
     func apply(jobID: String) async throws -> BackendApplication { try await client.send(BackendEndpoints.apply(jobID: jobID, token: try await token())) }
     func myJobs() async throws -> [BackendJob] { try await client.send(BackendEndpoints.myJobs(token: try await token())) }
     func workerJobs() async throws -> [BackendJob] { try await client.send(BackendEndpoints.myWorkerJobs(token: try await token())) }

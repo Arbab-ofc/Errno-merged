@@ -38,6 +38,29 @@ class RegisterRequest(BaseModel):
     phone_number: str = Field(..., min_length=7, max_length=20)
     role: str = Field(..., pattern="^(worker|shop_owner|shopkeeper)$")
 
+
+class WhatsAppOTPRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phone: str = Field(..., min_length=8, max_length=16, pattern=r"^\+[1-9][0-9]{7,14}$")
+    role: str = Field(..., pattern="^(WORKER|SHOPKEEPER|worker|shop_owner|shopkeeper)$")
+
+
+class WhatsAppOTPResendRequest(WhatsAppOTPRequest):
+    requestId: str = Field(..., min_length=16, max_length=64)
+
+
+class WhatsAppOTPVerifyRequest(WhatsAppOTPResendRequest):
+    otp: str = Field(..., pattern=r"^[0-9]{6}$")
+    fullName: Optional[str] = Field(default=None, min_length=1, max_length=120)
+
+
+class WhatsAppOTPSendResponse(BaseModel):
+    success: bool
+    requestId: str
+    expiresInSeconds: int
+    resendAfterSeconds: int
+    deliveryStatus: str
+
 # Shop Schemas
 class ShopCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")

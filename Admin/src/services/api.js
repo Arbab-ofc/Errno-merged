@@ -77,4 +77,10 @@ export const api = {
   pricingAudit: (user, params = {}) => send(`/api/v1/admin/pricing/audit?${new URLSearchParams(params)}`, { user }),
   pricingBookings: (user, params = {}) => send(`/api/v1/admin/pricing/bookings?${new URLSearchParams(params)}`, { user }),
   presenceSummary: (user, signal) => send('/api/v1/admin/presence/summary', { user, signal }),
+  whatsappStatus: (user) => send('/api/v1/admin/whatsapp/status', { user }),
+  whatsappQr: (user) => send('/api/v1/admin/whatsapp/qr', { user }),
+  whatsappConnect: (user) => send('/api/v1/admin/whatsapp/connect', { user, method: 'POST', body: {} }),
+  whatsappDisconnect: (user) => send('/api/v1/admin/whatsapp/disconnect', { user, method: 'POST', body: {} }),
+  whatsappLogout: (user) => send('/api/v1/admin/whatsapp/logout', { user, method: 'POST', body: {} }),
+  whatsappMonitoring: (user) => send('/api/v1/admin/whatsapp/monitoring', { user }),
 };

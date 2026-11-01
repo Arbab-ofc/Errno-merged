@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.erno.app.data.repository.ErrnoMobileApi
+import com.erno.app.data.repository.ErrnoSessionStore
 import com.google.firebase.auth.FirebaseAuth
 import com.erno.app.navigation.NavGraph
 import com.erno.app.ui.theme.ErnoTheme
@@ -29,9 +30,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (FirebaseAuth.getInstance().currentUser != null && presenceLoop == null) {
+        startPresenceTracking()
+    }
+
+    fun startPresenceTracking() {
+        if ((FirebaseAuth.getInstance().currentUser != null || ErrnoSessionStore.hasToken()) && presenceLoop == null) {
             presenceLoop = lifecycleScope.launch {
-                while (FirebaseAuth.getInstance().currentUser != null) {
+                while (FirebaseAuth.getInstance().currentUser != null || ErrnoSessionStore.hasToken()) {
                     val interval = runCatching { ErrnoMobileApi.presenceHeartbeat(true) }.getOrDefault(60)
                     delay(interval * 1_000L)
                 }
@@ -40,8 +45,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        presenceLoop?.cancel(); presenceLoop = null
-        if (FirebaseAuth.getInstance().currentUser != null) lifecycleScope.launch { runCatching { ErrnoMobileApi.presenceOffline() } }
+        stopPresenceTracking()
+        if (FirebaseAuth.getInstance().currentUser != null || ErrnoSessionStore.hasToken()) lifecycleScope.launch { runCatching { ErrnoMobileApi.presenceOffline() } }
         super.onPause()
     }
+
+    fun stopPresenceTracking() { presenceLoop?.cancel(); presenceLoop = null }
 }

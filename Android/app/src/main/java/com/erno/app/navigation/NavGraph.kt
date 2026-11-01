@@ -27,6 +27,8 @@ import com.erno.app.ui.screens.legal.PrivacyPolicyScreen
 import com.erno.app.ui.screens.legal.TermsConditionsScreen
 import com.erno.app.ui.screens.legal.TermsConsentScreen
 import com.erno.app.data.repository.FirebaseGoogleAuth
+import com.erno.app.data.repository.WhatsAppAuthApi
+import com.erno.app.data.repository.ErrnoMobileApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 
@@ -44,6 +46,7 @@ fun NavGraph(navController: NavHostController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var googleLoading by remember { mutableStateOf(false) }
+    var otpSending by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         runCatching { FirebaseGoogleAuth.restore() }.getOrNull()?.let { identity ->
             val route = when (identity.role) {
@@ -52,6 +55,7 @@ fun NavGraph(navController: NavHostController) {
                 else -> Screen.RoleSelection.route
             }
             navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+            (context as? com.erno.app.MainActivity)?.startPresenceTracking()
         }
     }
     fun googleSignIn(selectedRole: String) {
@@ -67,6 +71,7 @@ fun NavGraph(navController: NavHostController) {
                     else -> Screen.RoleSelection.route
                 }
                 navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+                (context as? com.erno.app.MainActivity)?.startPresenceTracking()
             } catch (error: Exception) {
                 if (error !is CancellationException && error !is GetCredentialCancellationException) {
                     Toast.makeText(context, error.localizedMessage ?: "Google sign-in failed. Please retry.", Toast.LENGTH_LONG).show()
@@ -74,6 +79,20 @@ fun NavGraph(navController: NavHostController) {
             } finally {
                 googleLoading = false
             }
+        }
+    }
+    fun sendPhoneOtp(phone: String, selectedRole: String, fullName: String? = null) {
+        if (otpSending) return
+        otpSending = true
+        scope.launch {
+            try {
+                val challenge = WhatsAppAuthApi.send(phone, selectedRole)
+                val encodedPhone = android.net.Uri.encode(phone)
+                val encodedName = android.net.Uri.encode(fullName.orEmpty())
+                navController.navigate("verify_otp/$encodedPhone?role=$selectedRole&requestId=${challenge.requestId}&expires=${challenge.expiresInSeconds}&resend=${challenge.resendAfterSeconds}&fullName=$encodedName")
+            } catch (error: Exception) {
+                Toast.makeText(context, error.localizedMessage ?: "WhatsApp OTP is unavailable.", Toast.LENGTH_LONG).show()
+            } finally { otpSending = false }
         }
     }
     val shopkeeperViewModel: ShopkeeperViewModel = viewModel()
@@ -132,7 +151,7 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onSendOTP = { phoneNumber ->
-                    navController.navigate("verify_otp/$phoneNumber?role=shopkeeper")
+                    sendPhoneOtp(phoneNumber, "shopkeeper")
                 },
                 onGoogleSignInClick = { googleSignIn("shop_owner") },
                 isGoogleLoading = googleLoading,
@@ -154,7 +173,7 @@ fun NavGraph(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onSendOTP = { phoneNumber ->
-                    navController.navigate("verify_otp/$phoneNumber?role=worker")
+                    sendPhoneOtp(phoneNumber, "worker")
                 },
                 onGoogleSignInClick = { googleSignIn("worker") },
                 isGoogleLoading = googleLoading,
@@ -175,9 +194,9 @@ fun NavGraph(navController: NavHostController) {
                 onBackClick = {
                     navController.popBackStack()
                 },
-                onRegisterClick = { phoneNumber, role ->
+                onRegisterClick = { fullName, phoneNumber, role ->
                     val roleParam = if (role == Role.WORKER) "worker" else "shopkeeper"
-                    navController.navigate("verify_otp/$phoneNumber?role=$roleParam")
+                    sendPhoneOtp(phoneNumber, roleParam, fullName)
                 },
                 onLoginClick = {
                     navController.navigate(Screen.RoleSelection.route) {
@@ -198,32 +217,43 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(
-            route = "verify_otp/{phoneNumber}?role={role}",
+            route = "verify_otp/{phoneNumber}?role={role}&requestId={requestId}&expires={expires}&resend={resend}&fullName={fullName}",
             arguments = listOf(
                 navArgument("phoneNumber") { type = NavType.StringType },
                 navArgument("role") {
                     type = NavType.StringType
                     defaultValue = "shopkeeper"
-                }
+                },
+                navArgument("requestId") { type = NavType.StringType },
+                navArgument("expires") { type = NavType.IntType; defaultValue = 300 },
+                navArgument("resend") { type = NavType.IntType; defaultValue = 30 },
+                navArgument("fullName") { type = NavType.StringType; defaultValue = "" }
             )
         ) { backStackEntry ->
             val phoneNumber = backStackEntry.arguments?.getString("phoneNumber") ?: ""
             val role = backStackEntry.arguments?.getString("role") ?: "shopkeeper"
+            val requestId = backStackEntry.arguments?.getString("requestId") ?: ""
 
             VerifyOTPScreen(
                 phoneNumber = phoneNumber,
+                initialRequestId = requestId,
+                expiresInSeconds = backStackEntry.arguments?.getInt("expires") ?: 300,
+                resendAfterSeconds = backStackEntry.arguments?.getInt("resend") ?: 30,
                 onBackClick = {
                     navController.popBackStack()
                 },
-                onVerifyClick = { otp ->
-                    Toast.makeText(context, "Phone OTP is not configured. Use Google sign-in.", Toast.LENGTH_LONG).show()
-                    false
+                onVerifyClick = { otp, activeRequestId ->
+                    val identity = WhatsAppAuthApi.verify(phoneNumber, role, activeRequestId, otp, backStackEntry.arguments?.getString("fullName"))
+                    runCatching { ErrnoMobileApi.presenceHeartbeat(true) }
+                    (context as? com.erno.app.MainActivity)?.startPresenceTracking()
+                    val home = if (identity.role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
+                    navController.navigate(home) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
                 },
                 onEditClick = {
                     navController.popBackStack()
                 },
-                onResendClick = {
-                    // Resend logic
+                onResendClick = { activeRequestId ->
+                    WhatsAppAuthApi.resend(phoneNumber, role, activeRequestId)
                 }
             )
         }
@@ -389,6 +419,7 @@ fun NavGraph(navController: NavHostController) {
                 onLogoutClick = {
                     scope.launch {
                         runCatching { FirebaseGoogleAuth.logout() }
+                        (context as? com.erno.app.MainActivity)?.stopPresenceTracking()
                         navController.navigate(Screen.RoleSelection.route) {
                             popUpTo(0)
                         }
@@ -515,6 +546,7 @@ fun NavGraph(navController: NavHostController) {
                 onLogoutClick = {
                     scope.launch {
                         runCatching { FirebaseGoogleAuth.logout() }
+                        (context as? com.erno.app.MainActivity)?.stopPresenceTracking()
                         navController.navigate(Screen.RoleSelection.route) {
                             popUpTo(0)
                         }

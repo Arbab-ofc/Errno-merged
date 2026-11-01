@@ -32,7 +32,7 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 @Composable
 fun RegisterScreen(
     onBackClick: () -> Unit,
-    onRegisterClick: (String, Role) -> Unit,
+    onRegisterClick: (String, String, Role) -> Unit,
     onLoginClick: () -> Unit,
     onGoogleSignInClick: (Role) -> Unit = {},
     isGoogleLoading: Boolean = false
@@ -170,7 +170,7 @@ fun RegisterScreen(
                 Spacer(modifier = Modifier.height(28.dp))
 
                 Button(
-                    onClick = { onRegisterClick(phoneNumber, selectedRole) },
+                    onClick = { onRegisterClick(fullName.trim(), phoneNumber, selectedRole) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),

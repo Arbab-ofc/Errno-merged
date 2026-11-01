@@ -17,10 +17,14 @@ final class OTPViewModel {
     var errorMessage: String? = nil
 
     var timeRemaining: Int = 30
+    var expiryRemaining: Int = 300
     var canResend: Bool = false
 
     private let authService: AuthServiceProtocol
     private let phone: String
+    private let role: UserRole
+    private var requestID: String
+    private var initialResendAfter: Int
     private var timerCancellable: AnyCancellable?
     @ObservationIgnored private var verificationTask: Task<Void, Never>?
     @ObservationIgnored private var resendTask: Task<Void, Never>?
@@ -32,8 +36,12 @@ final class OTPViewModel {
         isLoading = false
     }
 
-    init(phone: String, authService: AuthServiceProtocol = AppDependencies.authService()) {
+    init(phone: String, role: UserRole, requestID: String, expiresIn: Int, resendAfter: Int, authService: AuthServiceProtocol = AppDependencies.authService()) {
         self.phone = phone
+        self.role = role
+        self.requestID = requestID
+        self.expiryRemaining = expiresIn
+        self.initialResendAfter = resendAfter
         self.authService = authService
         startTimer()
     }
@@ -43,7 +51,7 @@ final class OTPViewModel {
     }
 
     func startTimer() {
-        timeRemaining = 30
+        timeRemaining = initialResendAfter
         canResend = false
         timerCancellable?.cancel()
         
@@ -55,6 +63,10 @@ final class OTPViewModel {
                     self.timeRemaining -= 1
                 }
                 if self.timeRemaining == 0 {
+                    self.canResend = true
+                }
+                if self.expiryRemaining > 0 { self.expiryRemaining -= 1 }
+                if self.expiryRemaining == 0 {
                     self.canResend = true
                     self.timerCancellable?.cancel()
                 }
@@ -68,12 +80,20 @@ final class OTPViewModel {
         isError = false
         errorMessage = nil
         resendTask = Task {
-            do { try await authService.sendOTP(to: phone) }
+            do {
+                let challenge = try await authService.resendOTP(to: phone, role: role, requestID: requestID)
+                requestID = challenge.requestId
+                expiryRemaining = challenge.expiresInSeconds
+                initialResendAfter = challenge.resendAfterSeconds
+                timeRemaining = challenge.resendAfterSeconds
+                canResend = false
+                startTimer()
+            }
             catch { errorMessage = error.localizedDescription }
         }
     }
 
-    func verifyOTP(role: UserRole, onSuccess: @escaping (UserRole) -> Void) {
+    func verifyOTP(role: UserRole, fullName: String?, onSuccess: @escaping (FirebaseUserProfile) -> Void) {
         guard isOTPComplete, !isLoading, !isSuccess else { return }
 
         isLoading = true
@@ -82,22 +102,14 @@ final class OTPViewModel {
 
         verificationTask = Task {
             do {
-                let success = try await authService.verifyOTP(otp, phone: phone)
+                let profile = try await authService.verifyOTP(otp, phone: phone, role: role, requestID: requestID, fullName: fullName)
                 try Task.checkCancellation()
-                if success {
-                    isSuccess = true
-                    try await Task.sleep(for: .milliseconds(500))
-                    try Task.checkCancellation()
-                    isLoading = false
-                    onSuccess(role)
-                    return
-                }
-                await MainActor.run {
-                    self.isLoading = false
-                    self.isError = true
-                    self.errorMessage = "Incorrect code. Please try again."
-                    self.otp = ""
-                }
+                isSuccess = true
+                try await Task.sleep(for: .milliseconds(350))
+                try Task.checkCancellation()
+                isLoading = false
+                onSuccess(profile)
+                return
             } catch {
                 await MainActor.run {
                     self.isLoading = false

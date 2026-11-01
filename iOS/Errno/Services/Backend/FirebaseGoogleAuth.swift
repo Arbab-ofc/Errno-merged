@@ -19,6 +19,11 @@ enum FirebaseGoogleAuth {
     }
 
     static func signIn(role: UserRole) async throws -> FirebaseUserProfile {
+        if let backendToken = BackendTokenStore.readToken(), let configuration = try? BackendConfiguration.bundled() {
+            let client = APIClient(configuration: configuration)
+            let _: [String: Bool]? = try? await client.send(BackendEndpoints.whatsappLogout(token: backendToken))
+        }
+        try BackendTokenStore.clear()
         guard let clientID = FirebaseApp.app()?.options.clientID, !clientID.isEmpty else {
             throw APIError.googleSignInConfiguration
         }
@@ -65,6 +70,11 @@ enum FirebaseGoogleAuth {
         if Auth.auth().currentUser != nil, let repository = try? AppDependencies.backendRepository() {
             _ = try? await repository.presenceOffline(sessionID: presenceSessionIdentifier)
         }
+        if let backendToken = BackendTokenStore.readToken(), let configuration = try? BackendConfiguration.bundled() {
+            let client = APIClient(configuration: configuration)
+            let _: LogoutResponse? = try? await client.send(BackendEndpoints.whatsappLogout(token: backendToken))
+        }
+        try? BackendTokenStore.clear()
         if let user = Auth.auth().currentUser, let token = try? await user.getIDToken() {
             if let configuration = try? BackendConfiguration.bundled() {
                 let client = APIClient(configuration: configuration)

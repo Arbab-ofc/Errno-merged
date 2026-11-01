@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from firebase_auth import verified_claims
+from firebase_auth import verified_claims, authenticated_user
 from models import User
 
 router = APIRouter(prefix="/api/v1", tags=["Firebase authentication"])
@@ -68,17 +68,16 @@ def firebase_login(claims: dict = Depends(verified_claims), db: Session = Depend
 
 
 @router.get("/users/me")
-def get_me(claims: dict = Depends(verified_claims), db: Session = Depends(get_db)):
-    return profile(current_user(claims, db))
+def get_me(user: User = Depends(authenticated_user)):
+    return profile(user)
 
 
 @router.patch("/users/me")
 def update_me(
     body: ProfileUpdate,
-    claims: dict = Depends(verified_claims),
+    user: User = Depends(authenticated_user),
     db: Session = Depends(get_db),
 ):
-    user = current_user(claims, db)
     if body.name is not None:
         name = body.name.strip()
         if not name:

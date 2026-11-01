@@ -18,11 +18,12 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Firebase-token authenticated mobile workflow client. Never persists ID tokens. */
+/** Backend opaque sessions or verified Firebase tokens. Firebase ID tokens are never persisted here. */
 object ErrnoMobileApi {
     private suspend fun request(method: String, path: String, body: JSONObject? = null): String = withContext(Dispatchers.IO) {
-        val user = FirebaseAuth.getInstance().currentUser ?: error("Sign in to continue.")
-        val token = user.getIdToken(false).await().token ?: error("Your session expired. Sign in again.")
+        val sessionToken = ErrnoSessionStore.read()
+        val user = FirebaseAuth.getInstance().currentUser
+        val token = sessionToken ?: (user?.getIdToken(false)?.await()?.token) ?: error("Sign in to continue.")
         val base = BuildConfig.ERRNO_API_BASE_URL.trimEnd('/')
         check(base.startsWith("https://") || (BuildConfig.DEBUG && (base.startsWith("http://10.0.2.2") || base.startsWith("http://localhost")))) { "Backend URL is not configured securely." }
         val connection = (URL(base + path).openConnection() as HttpURLConnection).apply {

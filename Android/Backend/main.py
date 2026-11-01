@@ -4,6 +4,7 @@ from database import engine, Base
 import models
 from cors_config import allowed_origins
 from routers import auth, jobs, shops, firebase, admin, health, pricing
+from routers import whatsapp_auth
 
 # Keep automatic schema creation limited to disposable/local SQLite development.
 # PostgreSQL schema changes are migration-only; startup must never mutate a deployed DB.
@@ -32,6 +33,8 @@ app.include_router(firebase.router)
 app.include_router(admin.router)
 app.include_router(health.router)
 app.include_router(pricing.router)
+app.include_router(whatsapp_auth.router)
+app.include_router(whatsapp_auth.admin_router)
 
 if __name__ == "__main__":
     import uvicorn
