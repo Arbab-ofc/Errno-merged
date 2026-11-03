@@ -202,7 +202,9 @@ fun WorkerLoginScreen(
                                     }
                                 },
                                 placeholder = { Text("Enter 10 digit number", color = Color.Gray) },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                 textStyle = LocalTextStyle.current.copy(
                                     color = Color.Black,

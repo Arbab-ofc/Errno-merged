@@ -37,6 +37,7 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
+    onToggleOnlineStatus: (Boolean) -> Unit,
     onNavigateTab: (WorkerTab) -> Unit
 ) {
     Scaffold(
@@ -72,7 +73,7 @@ fun WorkerHomeScreen(
                     ) {
                         Column {
                             Text(
-                                text = "Hello, ${state.workerName} 👋",
+                                text = "Hello, ${state.workerName}",
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -94,6 +95,55 @@ fun WorkerHomeScreen(
                                 imageVector = Icons.Default.NotificationsNone,
                                 contentDescription = "Notifications",
                                 tint = Color.White
+                            )
+                        }
+                    }
+                }
+
+                // Active / Inactive (Online / Offline) Status Toggle Card
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF131D2A),
+                        border = BorderStroke(1.dp, if (state.isOnline) ErnoGreen.copy(alpha = 0.5f) else Color(0xFF2E3D52)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(if (state.isOnline) ErnoGreen else Color.Gray, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = if (state.isOnline) "Active (Online)" else "Inactive (Offline)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = if (state.isOnline) "Receiving job requests nearby" else "Not receiving shift requests",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = state.isOnline,
+                                onCheckedChange = { onToggleOnlineStatus(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = ErnoGreen,
+                                    uncheckedThumbColor = Color.Gray,
+                                    uncheckedTrackColor = Color(0xFF202D3D)
+                                )
                             )
                         }
                     }
@@ -142,7 +192,7 @@ fun WorkerHomeScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        modifier = Modifier.padding(top = 8.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
 
@@ -278,6 +328,19 @@ fun WorkerAvailableJobCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (job.bookingType == "PRE_BOOKING") Color(0xFFFFF3E0) else Color(0xFFEAF5D8)
+            ) {
+                Text(
+                    text = if (job.bookingType == "PRE_BOOKING") "Pre-Booking • ${job.scheduledDate}" else "Current Job • Today",
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (job.bookingType == "PRE_BOOKING") Color(0xFF9A5800) else ErnoGreen
+                )
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.LocationOn,
@@ -308,12 +371,12 @@ fun WorkerAvailableJobCard(
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
                         Text(
-                            text = "📦 Pickup: ${job.pickupLocation}",
+                            text = "Pickup: ${job.pickupLocation}",
                             fontSize = 11.sp,
                             color = Color.DarkGray
                         )
                         Text(
-                            text = "📍 Drop: ${job.dropLocation}",
+                            text = "Drop: ${job.dropLocation}",
                             fontSize = 11.sp,
                             color = Color.DarkGray
                         )
@@ -330,7 +393,7 @@ fun WorkerAvailableJobCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "🕒 $minHours - $maxHours Hours",
+                        text = "$minHours - $maxHours Hours",
                         fontSize = 13.sp,
                         color = Color.DarkGray
                     )

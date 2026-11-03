@@ -295,9 +295,9 @@ fun WorkerProfileScreen(
             title = { Text("My Work Skills", fontWeight = FontWeight.Bold, color = Color.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("✓ Express Delivery Partner", fontSize = 13.sp, color = Color.Black)
-                    Text("✓ Shop Assistant & Packing", fontSize = 13.sp, color = Color.Black)
-                    Text("✓ Store Counter Staff", fontSize = 13.sp, color = Color.Black)
+                    Text("• Express Delivery Partner", fontSize = 13.sp, color = Color.Black)
+                    Text("• Shop Assistant & Packing", fontSize = 13.sp, color = Color.Black)
+                    Text("• Store Counter Staff", fontSize = 13.sp, color = Color.Black)
                 }
             },
             confirmButton = {
@@ -327,7 +327,7 @@ fun WorkerProfileScreen(
                             Text("amanworker@upi", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ErnoGreen)
                         }
                     }
-                    Text("✓ Instant earnings transfer available to UPI or Bank account.", fontSize = 12.sp, color = Color.DarkGray)
+                    Text("• Instant earnings transfer available to UPI or Bank account.", fontSize = 12.sp, color = Color.DarkGray)
                 }
             },
             confirmButton = {

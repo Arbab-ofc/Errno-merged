@@ -264,13 +264,14 @@ fun NavGraph(navController: NavHostController) {
                 onBackClick = {
                     navController.popBackStack()
                 },
-                onTitleChange = shopkeeperViewModel::updateTitle,
                 onCategoryChange = shopkeeperViewModel::updateCategory,
                 onLocationChange = shopkeeperViewModel::updateLocation,
                 onScheduledDateChange = shopkeeperViewModel::updateScheduledDate,
+                onScheduledTimeChange = shopkeeperViewModel::updateScheduledTime,
+                onWorkingRequirementTypeChange = shopkeeperViewModel::updateWorkingRequirementType,
+                onBookingTypeChange = shopkeeperViewModel::updateBookingType,
                 onPickupLocationChange = shopkeeperViewModel::updatePickupLocation,
                 onDropLocationChange = shopkeeperViewModel::updateDropLocation,
-                onPackageTypeChange = shopkeeperViewModel::updatePackageType,
                 onDescriptionChange = shopkeeperViewModel::updateDescription,
                 onRemoveDuration = shopkeeperViewModel::removeDurationPay,
                 onToggleDuration = shopkeeperViewModel::toggleDurationPay,
@@ -308,9 +309,13 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onPostJobClick = {
                     val postedJob = shopkeeperViewModel.postJob()
-                    workerViewModel.addJobFromShopkeeper(postedJob)
-                    navController.navigate(Screen.JobSuccess.route) {
-                        popUpTo(Screen.ShopkeeperHome.route)
+                    if (postedJob != null) {
+                        workerViewModel.addJobFromShopkeeper(postedJob)
+                        navController.navigate(Screen.JobSuccess.route) {
+                            popUpTo(Screen.ShopkeeperHome.route)
+                        }
+                    } else {
+                        Toast.makeText(context, "Choose a valid date and start time for the pre-booking.", Toast.LENGTH_LONG).show()
                     }
                 }
             )
@@ -397,6 +402,7 @@ fun NavGraph(navController: NavHostController) {
                     workerViewModel.selectJob(job)
                     navController.navigate(Screen.WorkerJobDetails.route)
                 },
+                onToggleOnlineStatus = workerViewModel::toggleOnlineStatus,
                 onNavigateTab = { tab ->
                     when (tab) {
                         WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)

@@ -1,11 +1,13 @@
 package com.erno.app.ui.screens.auth
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,6 +22,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -170,23 +173,24 @@ fun VerifyOTPScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // OTP Input Fields with Auto-Advance Focus
+                    // OTP Input Fields with Auto-Advance Focus (Using BasicTextField to prevent digit clipping on any device density)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         otpValues.forEachIndexed { index, value ->
-                            OutlinedTextField(
+                            BasicTextField(
                                 value = value,
                                 onValueChange = { newValue ->
                                     verificationError = null
-                                    if (newValue.length <= 1) {
+                                    val digitsOnly = newValue.filter { it.isDigit() }
+                                    if (digitsOnly.length <= 1) {
                                         val newList = otpValues.toMutableList()
-                                        newList[index] = newValue
+                                        newList[index] = digitsOnly
                                         otpValues = newList
 
                                         // Auto advance focus to next box
-                                        if (newValue.isNotEmpty() && index < 5) {
+                                        if (digitsOnly.isNotEmpty() && index < 5) {
                                             focusRequesters[index + 1].requestFocus()
                                         }
                                     }
@@ -203,24 +207,36 @@ fun VerifyOTPScreen(
                                             } else false
                                         } else false
                                     },
-                                textStyle = LocalTextStyle.current.copy(
+                                textStyle = TextStyle(
                                     color = Color.Black,
                                     textAlign = TextAlign.Center,
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.Black,
-                                    unfocusedTextColor = Color.Black,
-                                    focusedBorderColor = ErnoGreen,
-                                    unfocusedBorderColor = Color(0xFFD0D0D0)
-                                ),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
+                                singleLine = true,
+                                decorationBox = { innerTextField ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(
+                                            width = if (value.isNotEmpty()) 2.dp else 1.dp,
+                                            color = if (value.isNotEmpty()) ErnoGreen else Color(0xFFD0D0D0)
+                                        )
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.fillMaxSize()
+                                        ) {
+                                            innerTextField()
+                                        }
+                                    }
+                                }
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = "Local demo code: $DEMO_OTP_CODE",

@@ -104,6 +104,22 @@ fun WorkerJobDetailsScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
+                        val isPreBooking = job.bookingType == "PRE_BOOKING"
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isPreBooking) Color(0xFFE3F2FD) else Color(0xFFEAF5D8)
+                        ) {
+                            Text(
+                                text = if (isPreBooking) "Pre-Booking • Date: ${job.scheduledDate} (${job.scheduledTime})" else "Current Job • Today (${job.scheduledDate})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isPreBooking) Color(0xFF1565C0) else ErnoGreen,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
@@ -122,11 +138,35 @@ fun WorkerJobDetailsScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Text(
+                            text = "Job Description:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
                             text = job.description,
                             fontSize = 14.sp,
                             color = ErnoTextSecondary,
                             lineHeight = 20.sp
                         )
+
+                        if (job.requirements.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Job Requirements:",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = job.requirements,
+                                fontSize = 14.sp,
+                                color = ErnoTextSecondary,
+                                lineHeight = 20.sp
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(20.dp))
 
