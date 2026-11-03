@@ -247,7 +247,7 @@ def verify_otp(body: WhatsAppOTPVerifyRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/whatsapp/logout")
-def logout(request: Request, db: Session = Depends(get_db)):
+def logout(request: Request, deviceId: str | None = None, db: Session = Depends(get_db)):
     token = request.headers.get("authorization", "").removeprefix("Bearer ")
     if not token.startswith("errno_"):
         raise HTTPException(status_code=401, detail="Backend session required")
@@ -257,6 +257,10 @@ def logout(request: Request, db: Session = Depends(get_db)):
     if session is None:
         raise HTTPException(status_code=401, detail="Invalid session")
     session.revoked_at = datetime.now(timezone.utc)
+    if deviceId:
+        from models import NotificationDevice
+        db.query(NotificationDevice).filter_by(user_id=session.user_id, device_identifier=deviceId, active=True).update(
+            {NotificationDevice.active: False, NotificationDevice.invalidated_at: datetime.now(timezone.utc)}, synchronize_session=False)
     db.commit()
     return {"success": True}
 

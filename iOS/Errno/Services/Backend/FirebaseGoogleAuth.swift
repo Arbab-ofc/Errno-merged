@@ -19,6 +19,7 @@ enum FirebaseGoogleAuth {
     }
 
     static func signIn(role: UserRole) async throws -> FirebaseUserProfile {
+        await ErrnoNotifications.unregisterCurrent()
         if let backendToken = BackendTokenStore.readToken(), let configuration = try? BackendConfiguration.bundled() {
             let client = APIClient(configuration: configuration)
             let _: [String: Bool]? = try? await client.send(BackendEndpoints.whatsappLogout(token: backendToken))

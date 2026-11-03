@@ -73,6 +73,16 @@ object ErrnoMobileApi {
     }
 
     suspend fun kycStatus(): JSONObject = JSONObject(request("GET", "/api/v1/worker/verification-status"))
+
+    suspend fun registerNotificationDevice(platform: String, deviceId: String, token: String, appVersion: String): JSONObject = JSONObject(request(
+        "POST", "/api/v1/devices/register", JSONObject().put("platform", platform).put("deviceId", deviceId).put("fcmToken", token).put("appVersion", appVersion)))
+    suspend fun notificationInbox(cursor: String? = null): JSONObject = JSONObject(request("GET", "/api/v1/notifications" + (cursor?.let { "?cursor=$it" } ?: "")))
+    suspend fun notificationUnreadCount(): Int = JSONObject(request("GET", "/api/v1/notifications/unread-count")).optInt("count")
+    suspend fun notificationPreferences(): JSONObject = JSONObject(request("GET", "/api/v1/notifications/preferences"))
+    suspend fun updateNotificationPreferences(body: JSONObject): JSONObject = JSONObject(request("PATCH", "/api/v1/notifications/preferences", body))
+    suspend fun markNotificationRead(id: String) = request("PATCH", "/api/v1/notifications/${java.net.URLEncoder.encode(id, "UTF-8")}/read", JSONObject())
+    suspend fun markAllNotificationsRead() = request("PATCH", "/api/v1/notifications/read-all", JSONObject())
+    suspend fun unregisterNotificationDevice(id: String) = request("DELETE", "/api/v1/devices/${java.net.URLEncoder.encode(id, "UTF-8")}")
     suspend fun startKyc(documentTypes: List<String>, version: String): JSONObject = JSONObject(request("POST", "/api/v1/worker/verification-sessions",
         JSONObject().put("requestedDocumentTypes", JSONArray(documentTypes)).put("consentVersion", version).put("consentGiven", true)))
     suspend fun withdrawKycConsent(): JSONObject = JSONObject(request("POST", "/api/v1/worker/verification/withdraw-consent", JSONObject()))

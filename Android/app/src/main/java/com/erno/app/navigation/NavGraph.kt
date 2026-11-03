@@ -48,6 +48,16 @@ fun NavGraph(navController: NavHostController) {
     val scope = rememberCoroutineScope()
     var googleLoading by remember { mutableStateOf(false) }
     var otpSending by remember { mutableStateOf(false) }
+    fun openPendingNotification() {
+        val activity = context as? com.erno.app.MainActivity ?: return
+        if (activity.intent?.hasExtra("notification_route") == true) {
+            navController.navigate(Screen.Notifications.route) { launchSingleTop = true }
+            activity.intent.removeExtra("notification_route")
+            activity.intent.removeExtra("notification_job_id")
+            activity.intent.removeExtra("notification_payment_id")
+            activity.intent.removeExtra("notification_kyc_id")
+        }
+    }
     LaunchedEffect(Unit) {
         runCatching { FirebaseGoogleAuth.restore() }.getOrNull()?.let { identity ->
             val route = when (identity.role) {
@@ -56,6 +66,7 @@ fun NavGraph(navController: NavHostController) {
                 else -> Screen.RoleSelection.route
             }
             navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+            openPendingNotification()
             (context as? com.erno.app.MainActivity)?.startPresenceTracking()
         }
     }
@@ -72,6 +83,7 @@ fun NavGraph(navController: NavHostController) {
                     else -> Screen.RoleSelection.route
                 }
                 navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+                openPendingNotification()
                 (context as? com.erno.app.MainActivity)?.startPresenceTracking()
             } catch (error: Exception) {
                 if (error !is CancellationException && error !is GetCredentialCancellationException) {
@@ -245,10 +257,12 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onVerifyClick = { otp, activeRequestId ->
                     val identity = WhatsAppAuthApi.verify(phoneNumber, role, activeRequestId, otp, backStackEntry.arguments?.getString("fullName"))
+                    runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.registerCurrent() }
                     runCatching { ErrnoMobileApi.presenceHeartbeat(true) }
                     (context as? com.erno.app.MainActivity)?.startPresenceTracking()
                     val home = if (identity.role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
                     navController.navigate(home) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+                    openPendingNotification()
                 },
                 onEditClick = {
                     navController.popBackStack()
@@ -271,6 +285,7 @@ fun NavGraph(navController: NavHostController) {
                 onViewAllClick = {
                     navController.navigate(Screen.ShopkeeperMyJobs.route)
                 },
+                onNotifications = { navController.navigate(Screen.Notifications.route) },
                 onNavigateTab = { tab ->
                     when (tab) {
                         ShopkeeperTab.HOME -> navController.navigateTab(Screen.ShopkeeperHome.route, Screen.ShopkeeperHome.route)
@@ -280,6 +295,10 @@ fun NavGraph(navController: NavHostController) {
                     }
                 }
             )
+        }
+
+        composable(Screen.Notifications.route) {
+            com.erno.app.ui.screens.notifications.NotificationInboxScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Screen.PostJob.route) {
@@ -473,7 +492,8 @@ fun NavGraph(navController: NavHostController) {
                         WorkerTab.EARNINGS -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerEarnings.route)
                         WorkerTab.PROFILE -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerProfile.route)
                     }
-                }
+                },
+                onNotifications = { navController.navigate(Screen.Notifications.route) }
             )
         }
 

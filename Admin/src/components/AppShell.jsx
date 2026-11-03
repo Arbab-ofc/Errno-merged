@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, BriefcaseBusiness, ChartNoAxesCombined, ChevronLeft, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Shield, Store, Users, Wrench, DollarSign, MessageCircle, Fingerprint } from "lucide-react";
+import { Activity, Bell, BriefcaseBusiness, ChartNoAxesCombined, ChevronLeft, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Shield, Store, Users, Wrench, DollarSign, MessageCircle, Fingerprint } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { api } from "../services/api";
 
 const links = [
   { to: "/admin/dashboard", label: "Overview", icon: LayoutDashboard, permission: "dashboard.read" },
@@ -17,7 +18,7 @@ const links = [
   { to: "/admin/attendance", label: "Attendance", icon: Activity },
   { to: "/admin/ratings", label: "Ratings", icon: ChartNoAxesCombined },
   { to: "/admin/disputes", label: "Reports & disputes", icon: CircleHelp },
-  { to: "/admin/notifications", label: "Notifications", icon: Activity },
+  { to: "/admin/notifications", label: "Notifications", icon: Activity, permission: "notifications.read" },
   { to: "/admin/system-health", label: "System health", icon: Activity },
 ];
 
@@ -25,7 +26,9 @@ export function AppShell() {
   const { user, admin, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
   const permissions = new Set(admin?.permissions || []);
+  useEffect(() => { if (permissions.has("notifications.read")) api.notificationUnreadCount(user).then((value) => setUnread(value.count || 0)).catch(() => {}); }, [user, admin]);
   return (
     <div className={"admin-shell " + (collapsed ? "collapsed " : "") + (mobileOpen ? "mobile-open" : "")}>
       <aside className="admin-sidebar">
@@ -53,6 +56,7 @@ export function AppShell() {
           <button className="mobile-menu" onClick={() => setMobileOpen((value) => !value)} aria-label="Toggle navigation"><Menu size={20} /></button>
           <div className="crumb"><span>ERRNO</span><b>/</b><strong>Administration</strong></div>
           <div className="topbar-spacer" />
+          {permissions.has("notifications.read") && <NavLink to="/admin/notifications" className="button-secondary" aria-label={`Notifications, ${unread} unread`}><Bell size={17}/>{unread > 0 && <span>{unread > 99 ? "99+" : unread}</span>}</NavLink>}
           <div className="admin-identity"><div className="identity-avatar">{user?.photoURL ? <img src={user.photoURL} alt="" /> : (admin?.email || user?.email || "A")[0].toUpperCase()}</div><div><b>{admin?.email || user?.email || "Administrator"}</b><small>Server-authorized admin</small></div></div>
           <button className="logout-button" onClick={() => logout()} aria-label="Sign out"><LogOut size={16} /><span>Sign out</span></button>
         </header>

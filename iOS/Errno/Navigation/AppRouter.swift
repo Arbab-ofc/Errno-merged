@@ -40,6 +40,7 @@ final class AppRouter {
         do {
             guard let profile = try await session.restore() else { return }
             marketplace.signIn(profile: profile)
+            await ErrnoNotifications.authorizationAndRegister()
             startPresenceTracking()
             switch profile.role {
             case "worker":
@@ -111,6 +112,7 @@ final class AppRouter {
     // MARK: Post-Auth Destination
 
     func navigateToHome(role: UserRole) {
+        Task { await ErrnoNotifications.authorizationAndRegister() }
         startPresenceTracking()
         withAnimation(ErrnoAnimation.smoothSlow) {
             authPath.removeAll()

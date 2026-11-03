@@ -10,6 +10,7 @@ from schemas import (JobCreateRequest, JobResponse, ApplicationResponse, Applica
                      ApplicationJobSummary, ApplicationShopSummary)
 from firebase_auth import authenticated_user, require_role
 from job_lifecycle import VALID_JOB_STATUSES, can_transition
+from services.notification_service import queue_notification, queue_admin_notifications
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -70,6 +71,12 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
     quote.status = "consumed"
     quote.consumed_at = now
     quote.job_id = job.id
+    queue_notification(db, recipient=user, event_type="booking_created", category="booking",
+        title="Booking received", body="Your ERRNO booking request has been received.",
+        data={"route":"booking","job_id":job.id}, event_id=f"job:{job.id}:created")
+    queue_admin_notifications(db, permission="jobs.read", event_type="booking_created_admin",
+        title="New booking", body="A new booking is available for operations review.",
+        data={"route":"booking","job_id":job.id}, event_id=f"job:{job.id}:created:admin")
     db.commit()
     db.refresh(job)
 
@@ -237,6 +244,17 @@ def decide_application(job_id: str, application_id: str, body: ApplicationDecisi
             Application.id != application_id,
             Application.status == "pending",
         ).update({Application.status: "rejected"}, synchronize_session=False)
+        worker = db.query(User).filter(User.id == application.worker_id).first()
+        shop = db.query(Shop).filter(Shop.id == job.shop_id).first()
+        owner = db.query(User).filter(User.id == shop.owner_id).first() if shop else None
+        if worker:
+            queue_notification(db, recipient=worker, event_type="job_assigned", category="job",
+                title="Job assigned", body="You have been assigned a job. Open ERRNO to review details.",
+                data={"route":"job","job_id":job.id}, event_id=f"job:{job.id}:assigned:{worker.id}")
+        if owner:
+            queue_notification(db, recipient=owner, event_type="worker_assigned", category="booking",
+                title="Worker assigned", body="A worker has accepted your booking.",
+                data={"route":"booking","job_id":job.id}, event_id=f"job:{job.id}:assigned:{worker.id}")
     else:
         application.status = "rejected"
     db.commit()
@@ -264,6 +282,12 @@ def update_job_status(
 
     job.status = new_status
     job.cancelled_at = datetime.now(timezone.utc)
+    if new_status == "cancelled" and job.assigned_worker_id:
+        worker = db.query(User).filter(User.id == job.assigned_worker_id).first()
+        if worker:
+            queue_notification(db, recipient=worker, event_type="booking_cancelled", category="job",
+                title="Booking cancelled", body="A booking assigned to you was cancelled.",
+                data={"route":"job","job_id":job.id}, event_id=f"job:{job.id}:cancelled")
 
     db.commit()
     db.refresh(job)
@@ -282,6 +306,12 @@ def start_assigned_job(job_id: str, user: User = Depends(authenticated_user), db
         raise HTTPException(status_code=409, detail="Only assigned jobs can be started")
     job.status = "in_progress"
     job.started_at = datetime.now(timezone.utc)
+    shop = db.query(Shop).filter(Shop.id == job.shop_id).first()
+    owner = db.query(User).filter(User.id == shop.owner_id).first() if shop else None
+    if owner:
+        queue_notification(db, recipient=owner, event_type="job_started", category="booking",
+            title="Job started", body="Your ERRNO job is now in progress.",
+            data={"route":"booking","job_id":job.id}, event_id=f"job:{job.id}:started")
     db.commit()
     db.refresh(job)
     return JobResponse.from_orm(job)
@@ -300,6 +330,11 @@ def confirm_job_completion(job_id: str, user: User = Depends(authenticated_user)
         raise HTTPException(status_code=409, detail="An assigned worker is required before completion")
     job.status = "completed"
     job.completed_at = datetime.now(timezone.utc)
+    worker = db.query(User).filter(User.id == job.assigned_worker_id).first()
+    if worker:
+        queue_notification(db, recipient=worker, event_type="job_completed", category="job",
+            title="Job completed", body="Your assigned job has been marked complete.",
+            data={"route":"job","job_id":job.id}, event_id=f"job:{job.id}:completed")
     db.commit()
     db.refresh(job)
     return JobResponse.from_orm(job)

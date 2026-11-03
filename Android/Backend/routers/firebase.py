@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from firebase_auth import verified_claims, authenticated_user
-from models import User
+from models import NotificationDevice, User
 
 router = APIRouter(prefix="/api/v1", tags=["Firebase authentication"])
 
@@ -14,6 +14,10 @@ class ProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=120)
     role: str | None = Field(default=None, pattern="^(worker|shop_owner)$")
+
+class LogoutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    deviceId: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 def profile(user: User) -> dict:
@@ -93,6 +97,13 @@ def update_me(
 
 
 @router.post("/auth/logout")
-def logout(_: dict = Depends(verified_claims)):
-    # Firebase ID tokens are stateless; mobile clients clear their local Firebase session.
+def logout(body: LogoutRequest = LogoutRequest(), claims: dict = Depends(verified_claims), db: Session = Depends(get_db)):
+    # Firebase ID tokens are stateless. Revoke this installation's push association
+    # even if the client's preceding best-effort DELETE did not reach the API.
+    user = db.query(User).filter_by(firebase_uid=claims["uid"]).first()
+    if user and body.deviceId:
+        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        db.query(NotificationDevice).filter_by(user_id=user.id, device_identifier=body.deviceId, active=True).update(
+            {NotificationDevice.active: False, NotificationDevice.invalidated_at: now}, synchronize_session=False)
+        db.commit()
     return {"success": True, "message": "Local session cleared by client"}

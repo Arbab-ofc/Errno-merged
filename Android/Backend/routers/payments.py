@@ -23,6 +23,7 @@ from models import (AdminAuditLog, CashCollection, FinancialAuditEvent, Financia
                     CompanyPaymentConfiguration, PaymentTransaction, PaymentWebhookEvent, PricingQuote, Shop, User,
                     PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal,
                     KYCVerificationProfile)
+from services.notification_service import queue_notification, queue_admin_notifications
 
 router = APIRouter(prefix="/api/v1", tags=["Payments and wallet"])
 admin_router = APIRouter(prefix="/api/v1/admin", tags=["Admin finance"])
@@ -222,6 +223,16 @@ def verify_payment(body: VerifyRequest, user: User = Depends(authenticated_user)
         raise HTTPException(409, detail="Provider payment does not match the booking order")
     if provider.get("status") != "captured":
         txn.status = "PAYMENT_PROCESSING" if provider.get("status") in {"created", "authorized"} else "PAYMENT_FAILED"
+        if txn.status == "PAYMENT_FAILED":
+            for recipient_id in {txn.shopkeeper_id, txn.worker_id}:
+                recipient = db.query(User).filter_by(id=recipient_id).first()
+                if recipient:
+                    queue_notification(db, recipient=recipient, event_type="payment_failed", category="payment",
+                        title="Payment status updated", body="Payment for your ERRNO booking needs attention.",
+                        data={"route":"payment","payment_id":txn.id,"booking_id":txn.booking_id}, event_id=f"payment:{txn.id}:failed")
+            queue_admin_notifications(db, permission="payments.read", event_type="payment_exception",
+                title="Payment exception", body="A booking payment requires operations review.",
+                data={"route":"payment","payment_id":txn.id,"booking_id":txn.booking_id}, event_id=f"payment:{txn.id}:failed:admin")
         db.commit()
         return {"paymentId": txn.id, "bookingId": job.id, "status": txn.status}
     if db.query(CashCollection).filter_by(booking_id=job.id).first():
@@ -230,7 +241,14 @@ def verify_payment(body: VerifyRequest, user: User = Depends(authenticated_user)
             details={"provider_payment_id": body.razorpayPaymentId}))
         db.commit()
         raise HTTPException(409, detail="Cash collection is also recorded; payment requires reconciliation")
-    _record_paid(db, txn, body.razorpayPaymentId)
+    changed = _record_paid(db, txn, body.razorpayPaymentId)
+    if changed:
+        for recipient_id in {txn.shopkeeper_id, txn.worker_id}:
+            recipient = db.query(User).filter_by(id=recipient_id).first()
+            if recipient:
+                queue_notification(db, recipient=recipient, event_type="payment_success", category="payment",
+                    title="Payment status updated", body="Payment status for your ERRNO booking has been confirmed.",
+                    data={"route":"payment","payment_id":txn.id,"booking_id":txn.booking_id}, event_id=f"payment:{txn.id}:paid")
     db.commit()
     return {"paymentId": txn.id, "bookingId": job.id, "status": txn.status}
 
@@ -321,7 +339,14 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str = Header(
                         details={"provider_payment_id": entity["id"]}))
                     event.outcome = "conflict"
                 else:
-                    _record_paid(db, txn, entity["id"])
+                    changed = _record_paid(db, txn, entity["id"])
+                    if changed:
+                        for recipient_id in {txn.shopkeeper_id, txn.worker_id}:
+                            recipient = db.query(User).filter_by(id=recipient_id).first()
+                            if recipient:
+                                queue_notification(db, recipient=recipient, event_type="payment_success", category="payment",
+                                    title="Payment status updated", body="Payment status for your ERRNO booking has been confirmed.",
+                                    data={"route":"payment","payment_id":txn.id,"booking_id":txn.booking_id}, event_id=f"payment:{txn.id}:paid")
                     event.outcome = "processed"
             else:
                 event.outcome = "unmatched"
@@ -329,6 +354,15 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str = Header(
             txn = db.query(PaymentTransaction).filter(PaymentTransaction.order_id == entity.get("order_id")).with_for_update().first()
             if txn and txn.status != "PAID":
                 txn.status = "PAYMENT_FAILED"
+                queue_admin_notifications(db, permission="payments.read", event_type="payment_exception",
+                    title="Payment exception", body="A booking payment requires operations review.",
+                    data={"route":"payment","payment_id":txn.id,"booking_id":txn.booking_id}, event_id=f"payment:{txn.id}:failed:admin")
+                for recipient_id in {txn.shopkeeper_id, txn.worker_id}:
+                    recipient = db.query(User).filter_by(id=recipient_id).first()
+                    if recipient:
+                        queue_notification(db, recipient=recipient, event_type="payment_failed", category="payment",
+                            title="Payment status updated", body="Payment for your ERRNO booking needs attention.",
+                            data={"route":"payment","payment_id":txn.id,"booking_id":txn.booking_id}, event_id=f"payment:{txn.id}:failed")
                 event.outcome = "processed"
         elif event_type == "refund.processed":
             refund_entity = payload.get("payload", {}).get("refund", {}).get("entity", {})

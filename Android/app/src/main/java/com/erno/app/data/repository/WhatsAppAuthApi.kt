@@ -57,7 +57,8 @@ object WhatsAppAuthApi {
     }
     suspend fun logout() {
         val token = ErrnoSessionStore.read() ?: return
-        runCatching { request("/api/v1/auth/whatsapp/logout", JSONObject(), token) }
+        val deviceId = com.erno.app.notifications.ErrnoNotificationDeviceSync.installIdentifier()
+        runCatching { request("/api/v1/auth/whatsapp/logout?deviceId=${java.net.URLEncoder.encode(deviceId, "UTF-8")}", JSONObject(), token) }
         ErrnoSessionStore.clear()
     }
     private fun phoneE164(raw: String): String {

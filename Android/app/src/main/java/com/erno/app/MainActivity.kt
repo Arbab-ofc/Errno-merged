@@ -1,11 +1,13 @@
 package com.erno.app
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavHostController
 import com.erno.app.data.repository.ErrnoMobileApi
 import com.erno.app.data.repository.ErrnoSessionStore
 import com.erno.app.data.repository.PaymentUiState
@@ -22,17 +24,30 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
+    private var appNavController: NavHostController? = null
     private var presenceLoop: Job? = null
     private var pendingPaymentBookingId: String? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.erno.app.notifications.ErrnoNotificationChannels.create(this)
         enableEdgeToEdge()
         Checkout.preload(applicationContext)
         setContent {
             ErnoTheme {
                 val navController = rememberNavController()
+                appNavController = navController
                 NavGraph(navController = navController)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val signedIn = !ErrnoSessionStore.read().isNullOrBlank() || FirebaseAuth.getInstance().currentUser != null
+        if (intent.hasExtra("notification_route") && signedIn) {
+            appNavController?.navigate("notifications")
+            intent.removeExtra("notification_route")
         }
     }
 

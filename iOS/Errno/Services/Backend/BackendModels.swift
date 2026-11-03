@@ -325,7 +325,8 @@ nonisolated enum BackendEndpoints {
         APIEndpoint(method: "POST", path: ["api", "v1", "auth", "firebase"], bearerToken: token)
     }
     static func logout(token: String) -> APIEndpoint {
-        APIEndpoint(method: "POST", path: ["api", "v1", "auth", "logout"], bearerToken: token)
+        let deviceID = UserDefaults.standard.string(forKey:"errno.notifications.installation") ?? ""
+        return APIEndpoint(method: "POST", path: ["api", "v1", "auth", "logout"], body: Data("{\"deviceId\":\"\(deviceID)\"}".utf8), bearerToken: token)
     }
     static func currentUser(token: String) -> APIEndpoint {
         APIEndpoint(method: "GET", path: ["api", "v1", "users", "me"], bearerToken: token)
@@ -419,7 +420,10 @@ nonisolated enum BackendEndpoints {
     static func whatsappSendOTP(_ body: WhatsAppOTPRequest) throws -> APIEndpoint { try .json("POST", ["api", "v1", "auth", "whatsapp", "send-otp"], body: body) }
     static func whatsappResendOTP(_ body: WhatsAppOTPRequest) throws -> APIEndpoint { try .json("POST", ["api", "v1", "auth", "whatsapp", "resend-otp"], body: body) }
     static func whatsappVerifyOTP(_ body: WhatsAppOTPVerification) throws -> APIEndpoint { try .json("POST", ["api", "v1", "auth", "whatsapp", "verify-otp"], body: body) }
-    static func whatsappLogout(token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["api", "v1", "auth", "whatsapp", "logout"], bearerToken: token) }
+    static func whatsappLogout(token: String) -> APIEndpoint {
+        APIEndpoint(method: "POST", path: ["api", "v1", "auth", "whatsapp", "logout"],
+                    query: [URLQueryItem(name:"deviceId", value:UserDefaults.standard.string(forKey:"errno.notifications.installation") ?? "")], bearerToken: token)
+    }
     static func register(_ body: RegisterRequest) throws -> APIEndpoint { try .json("POST", ["auth", "register"], body: body) }
     static func profile(phone: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["auth", "me", phone]) }
     static func shop(phone: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["shops", "me", phone]) }

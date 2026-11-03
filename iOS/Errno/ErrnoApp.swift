@@ -11,6 +11,7 @@ import GoogleSignIn
 
 @main
 struct ErrnoApp: App {
+    @UIApplicationDelegateAdaptor(ErrnoAppDelegate.self) private var appDelegate
     @State private var router = AppRouter()
     @Environment(\.scenePhase) private var scenePhase
     @State private var heartbeatTask: Task<Void, Never>?
