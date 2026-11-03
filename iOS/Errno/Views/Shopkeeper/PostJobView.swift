@@ -57,7 +57,7 @@ struct PostJobView: View {
                             .foregroundStyle(Color.errnoTextPrimary)
                             .padding(.top, Spacing.md)
                         
-                        // Category Dropdown mock
+                        // Category selector
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Job Category")
                                 .font(.system(size: 14, weight: .bold))
@@ -139,10 +139,16 @@ struct PostJobView: View {
             
         }
         .safeAreaInset(edge: .bottom) {
-            NavigationLink(destination: PayStructureView(viewModel: viewModel)) {
-                Text("Next: Select Duration →").font(.system(size: 15, weight: .bold))
-                    .frame(maxWidth: .infinity).frame(height: 52)
-                    .background(Color.errnoGreen, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(.white)
+            VStack(spacing: 6) {
+                if !viewModel.isStep1Valid {
+                    Text("Add a description and select a future date and valid start time.")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.errnoError)
+                }
+                NavigationLink(destination: PayStructureView(viewModel: viewModel)) {
+                    Text("Next: Select Duration →").font(.system(size: 15, weight: .bold))
+                        .frame(maxWidth: .infinity).frame(height: 52)
+                        .background(Color.errnoGreen, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(.white)
+                }.disabled(!viewModel.isStep1Valid).opacity(viewModel.isStep1Valid ? 1 : 0.55)
             }.padding(16).background(.white)
         }
         .navigationBarHidden(true)

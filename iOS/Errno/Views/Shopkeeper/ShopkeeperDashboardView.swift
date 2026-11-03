@@ -9,7 +9,6 @@ struct ShopkeeperDashboardView: View {
     @State private var viewModel: ShopkeeperDashboardViewModel
     @Environment(AppRouter.self) private var router
     init(store: LocalMarketplaceStore) { _viewModel = State(initialValue: ShopkeeperDashboardViewModel(store: store)) }
-    @State private var notifications = false
     
     var body: some View {
         @Bindable var router = router
@@ -24,15 +23,6 @@ struct ShopkeeperDashboardView: View {
                         HStack {
                             ErrnoLogo(variant: .iconOnly, size: .small, animate: false)
                             Spacer()
-                            Button(action: { notifications = true }) {
-                                Image(systemName: "bell")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(Color.errnoTextPrimary)
-                                    .padding(8)
-                                    .background(Color.errnoSurface)
-                                    .clipShape(Circle())
-                                    .overlay(Circle().strokeBorder(Color.errnoStroke, lineWidth: 1))
-                            }
                         }
                         
                         // Greeting
@@ -125,8 +115,6 @@ struct ShopkeeperDashboardView: View {
             }
             .task { await viewModel.fetchJobs() }
         }
-        .alert("Notifications", isPresented: $notifications) { Button("OK", role: .cancel) {} }
-        message: { Text("No notifications. Live notifications are not enabled in this local demo.") }
     }
 }
 

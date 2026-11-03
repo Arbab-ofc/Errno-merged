@@ -2,7 +2,7 @@ import SwiftUI
 
 struct WorkerJobDetailsView: View {
     let jobId: UUID
-    var onAccepted: () -> Void
+    var onAccepted: (BackendApplication) -> Void
     @Environment(LocalMarketplaceStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var error: String?
@@ -60,9 +60,18 @@ struct WorkerJobDetailsView: View {
         guard !isUpdating else { return }
         isUpdating = true; defer { isUpdating = false }
         do {
-            _ = try await AppDependencies.backendRepository().apply(jobID: job.id.uuidString)
-            actionMessage = "Application submitted. The shop owner will review it."
-        } catch { self.error = error.localizedDescription }
+            let repository = try AppDependencies.backendRepository()
+            let application = try await repository.apply(jobID: job.id.uuidString)
+            onAccepted(application)
+        } catch {
+            // A prior successful application is a valid confirmation after an interrupted response.
+            if let page = try? await AppDependencies.backendRepository().workerApplications(limit: 100, offset: 0),
+               let existing = page.items.first(where: { $0.job_id == job.id.uuidString && ["pending", "accepted"].contains($0.status) }) {
+                onAccepted(BackendApplication(id: existing.id, job_id: existing.job_id,
+                                              worker_id: existing.worker_id, status: existing.status,
+                                              created_at: existing.created_at))
+            } else { self.error = error.localizedDescription }
+        }
     }
 
     private func start(_ job: Job) async {

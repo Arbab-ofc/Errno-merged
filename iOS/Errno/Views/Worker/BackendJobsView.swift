@@ -2,21 +2,42 @@ import SwiftUI
 
 /// Public catalog uses the server's IDs and strings verbatim. Missing data is not replaced by demo locations or GPS.
 struct BackendJobsView: View {
+    var showsAvailabilityControl = false
+    var onApplicationSubmitted: ((UUID, BackendApplication) -> Void)? = nil
     @State private var model = BackendJobsViewModel()
     @State private var available = false
+    @State private var availabilityLoading = true
+    @State private var availabilitySaving = false
     @State private var availabilityError: String?
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 Text("Available Jobs & Deliveries").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                Toggle("Available for work", isOn: $available).tint(.errnoGreen)
-                    .onChange(of: available) { _, value in
+                if showsAvailabilityControl {
+                    Toggle("Available for work", isOn: Binding(get: { available }, set: { value in
                         Task {
-                            do { _ = try await AppDependencies.backendRepository().setWorkerAvailability(value); availabilityError = nil }
-                            catch { availabilityError = error.localizedDescription; available = !value }
+                            guard !availabilitySaving else { return }
+                            availabilitySaving = true
+                            let previous = available
+                            do {
+                                let result = try await AppDependencies.backendRepository().setWorkerAvailability(value)
+                                available = result.available ?? value
+                                availabilityError = nil
+                            } catch {
+                                available = previous
+                                availabilityError = error.localizedDescription
+                            }
+                            availabilitySaving = false
+                        }
+                    })).tint(.errnoGreen).disabled(availabilityLoading || availabilitySaving)
+                        .overlay(alignment: .trailing) { if availabilitySaving { ProgressView().padding(.trailing, 34) } }
+                    if availabilityLoading { ProgressView("Loading availability…").font(.footnote) }
+                    if let availabilityError {
+                        HStack { Text(availabilityError).font(.system(size: 12)).foregroundStyle(Color.errnoError)
+                            Button("Retry") { Task { await refreshAvailability() } }.font(.caption)
                         }
                     }
-                if let availabilityError { Text(availabilityError).font(.system(size: 12)).foregroundStyle(Color.errnoError) }
+                }
                 if model.isLoading { ProgressView("Loading jobs…").tint(.white).foregroundStyle(.white) }
                 else if let error = model.errorMessage {
                     MarketplaceEmptyState(title: "Unable to load jobs", message: error, dark: true)
@@ -25,7 +46,7 @@ struct BackendJobsView: View {
                     MarketplaceEmptyState(title: "No Available Jobs Nearby", message: "New work opportunities will appear here when posted.", dark: true)
                 }
                 ForEach(model.jobs) { job in
-                    NavigationLink { BackendJobDetailsView(jobID: job.id) } label: {
+                    NavigationLink { BackendJobDetailsView(jobID: job.id, onApplicationSubmitted: onApplicationSubmitted) } label: {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text(job.title).font(.system(size: 17, weight: .bold))
@@ -47,14 +68,24 @@ struct BackendJobsView: View {
             .toolbar(.visible, for: .navigationBar)
             .task {
                 await model.load()
-                if let current = try? await AppDependencies.backendRepository().workerAvailability() { available = current.available ?? false }
+                if showsAvailabilityControl { await refreshAvailability() }
             }
-            .refreshable { await model.load() }
+            .refreshable { await model.load(); if showsAvailabilityControl { await refreshAvailability() } }
+    }
+
+    @MainActor private func refreshAvailability() async {
+        availabilityLoading = true
+        defer { availabilityLoading = false }
+        do {
+            available = try await AppDependencies.backendRepository().workerAvailability().available ?? false
+            availabilityError = nil
+        } catch { availabilityError = error.localizedDescription }
     }
 }
 
 struct BackendJobDetailsView: View {
     let jobID: String
+    var onApplicationSubmitted: ((UUID, BackendApplication) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var job: BackendJob?
     @State private var isLoading = false
@@ -127,9 +158,23 @@ struct BackendJobDetailsView: View {
         isApplying = true; applicationMessage = nil
         defer { isApplying = false }
         do {
-            _ = try await AppDependencies.catalog().apply(jobID: jobID)
-            applicationMessage = "Application submitted. The shop owner will review it."
-        } catch { applicationMessage = error.localizedDescription }
+            let application = try await AppDependencies.catalog().apply(jobID: jobID)
+            confirm(application)
+        } catch {
+            if let page = try? await AppDependencies.backendRepository().workerApplications(limit: 100, offset: 0),
+               let existing = page.items.first(where: { $0.job_id == jobID && ["pending", "accepted"].contains($0.status) }) {
+                confirm(BackendApplication(id: existing.id, job_id: existing.job_id, worker_id: existing.worker_id,
+                                           status: existing.status, created_at: existing.created_at))
+            } else { applicationMessage = error.localizedDescription }
+        }
+    }
+    private func confirm(_ application: BackendApplication) {
+        guard let uuid = UUID(uuidString: jobID) else {
+            applicationMessage = "Application saved. Open My Jobs to review its status."
+            return
+        }
+        if let onApplicationSubmitted { onApplicationSubmitted(uuid, application) }
+        else { applicationMessage = "Application (\(application.status)). The shop owner will review it." }
     }
     private func loadPayout() async {
         do { payout = try await AppDependencies.backendRepository().workerPayout(jobID: jobID) }

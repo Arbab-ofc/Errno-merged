@@ -575,15 +575,21 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.WorkerProfile.route) {
-            LaunchedEffect(Unit) { workerViewModel.refreshKycStatus() }
+            LaunchedEffect(Unit) { workerViewModel.refreshProfile(); workerViewModel.refreshKycStatus() }
             WorkerProfileScreen(
                 state = workerState,
+                onSaveProfile = { workerViewModel.updateProfile(it) },
+                onSaveSkills = { skills ->
+                    ErrnoMobileApi.updateWorkerSkills(skills)
+                    workerViewModel.refreshProfile()
+                },
                 onBackClick = {
                     navController.popBackStack()
                 },
                 onLogoutClick = {
                     scope.launch {
                         runCatching { FirebaseGoogleAuth.logout() }
+                        workerViewModel.resetSession()
                         (context as? com.erno.app.MainActivity)?.stopPresenceTracking()
                         navController.navigate(Screen.RoleSelection.route) {
                             popUpTo(0)

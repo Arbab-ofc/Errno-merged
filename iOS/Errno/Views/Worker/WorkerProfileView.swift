@@ -6,6 +6,9 @@ struct WorkerProfileView: View {
     @State private var panel: ProfilePanel?
     @State private var logout = false
     @State private var verificationLabel = "Identity verification status unavailable"
+    @State private var workerName = ""
+    @State private var preferredSkills: [String] = []
+    @State private var wallet: WorkerWalletResponse?
     var body: some View {
         VStack(spacing: 0) {
             MarketplaceHeader(title: "Worker Profile Settings", dark: true)
@@ -14,14 +17,15 @@ struct WorkerProfileView: View {
                     VStack(spacing: 12) {
                         Image(systemName: "person.fill").font(.system(size: 36)).foregroundStyle(Color.errnoGreen)
                             .frame(width: 72, height: 72).background(Color.errnoGreenLight, in: Circle())
-                        Text(store.worker.name).font(.system(size: 20, weight: .bold))
-                        Text("Experienced Delivery Partner & Helper").font(.system(size: 13)).foregroundStyle(Color.errnoTextSecondary)
+                        Text(workerName.isEmpty ? store.worker.name : workerName).font(.system(size: 20, weight: .bold))
+                        Text(preferredSkills.isEmpty ? "Worker account" : preferredSkills.joined(separator: " · "))
+                            .font(.system(size: 13)).foregroundStyle(Color.errnoTextSecondary)
                         StatusBadge(text: verificationLabel)
                     }.frame(maxWidth: .infinity).marketplaceCard(padding: 20, radius: 20)
                     HStack(spacing: 12) {
                         stat("Jobs Completed", "\(store.workerJobs.filter { $0.status == .completed }.count)")
-                        stat("Total Earned", "₹\(Int(store.totalEarned))")
-                        stat("Rating", "\(store.worker.rating ?? 0) ★")
+                        stat("Total Earned", wallet.map { money($0.totalEarningsPaise) } ?? "Loading…")
+                        stat("Rating", store.worker.rating.map { String(format: "%.1f ★", $0) } ?? "Not rated")
                     }
                     VStack(spacing: 0) {
                         NavigationLink(value: WorkerRoute.verification) { menuLabel("Identity verification", "checkmark.shield") }.buttonStyle(.plain)
@@ -38,11 +42,8 @@ struct WorkerProfileView: View {
                     .padding(.bottom, 80)
             }
         }.marketplacePage(dark: true)
-            .task {
-                do { let repo = try AppDependencies.backendRepository(); let result = try await repo.kycStatus(); verificationLabel = result.status == "VERIFIED" ? "Identity verified · \(result.verificationMethod ?? "reviewed")" : "Identity · \(result.status.replacingOccurrences(of: "_", with: " ").lowercased())" }
-                catch { verificationLabel = "Identity verification status unavailable" }
-            }
-            .sheet(item: $panel) { ProfilePanelView(panel: $0, role: .worker) }
+            .task { await refreshProfile() }
+            .sheet(item: $panel, onDismiss: { Task { await refreshProfile() } }) { ProfilePanelView(panel: $0, role: .worker) }
             .confirmationDialog("Logout Account", isPresented: $logout, titleVisibility: .visible) {
                 Button("Yes, Logout", role: .destructive) { router.signOut() }
                 Button("Cancel", role: .cancel) {}
@@ -62,5 +63,19 @@ struct WorkerProfileView: View {
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").foregroundStyle(.gray)
         }.padding(.horizontal, 16).frame(minHeight: 52)
+    }
+    private func money(_ paise: Int) -> String {
+        let formatter = NumberFormatter(); formatter.numberStyle = .currency; formatter.currencyCode = "INR"
+        return formatter.string(from: NSDecimalNumber(decimal: Decimal(paise) / 100)) ?? "₹\(paise / 100)"
+    }
+
+    @MainActor private func refreshProfile() async {
+        guard let repo = try? AppDependencies.backendRepository() else { return }
+        if let profile = try? await repo.profile(), let name = profile.name, !name.isEmpty { workerName = name }
+        if let result = try? await repo.kycStatus() {
+            verificationLabel = result.status == "VERIFIED" ? "Identity verified · \(result.verificationMethod ?? "reviewed")" : "Identity · \(result.status.replacingOccurrences(of: "_", with: " ").lowercased())"
+        } else { verificationLabel = "Identity verification status unavailable" }
+        preferredSkills = (try? await repo.workerProfilePreferences().preferredSkills) ?? preferredSkills
+        wallet = try? await repo.workerWallet()
     }
 }

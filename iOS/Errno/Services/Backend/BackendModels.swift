@@ -200,6 +200,15 @@ nonisolated struct PayoutMethodResponse: Decodable, Sendable, Identifiable {
     let status: String
     let kycVerified: Bool
 }
+nonisolated struct WorkerProfilePreferencesResponse: Decodable, Sendable {
+    let preferredSkills: [String]
+}
+nonisolated struct WorkerProfilePreferencesUpdate: Encodable, Sendable {
+    let preferredSkills: [String]
+}
+nonisolated struct PayoutMethodCreateRequest: Encodable, Sendable {
+    let providerReference: String
+}
 nonisolated struct WithdrawalRequestBody: Encodable, Sendable {
     let amountPaise: Int
     let payoutMethodId: String
@@ -390,6 +399,13 @@ nonisolated enum BackendEndpoints {
     }
     static func workerWallet(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "wallet"], bearerToken: token) }
     static func workerPayoutMethods(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "payout-methods"], bearerToken: token) }
+    static func addWorkerPayoutMethod(_ body: PayoutMethodCreateRequest, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "worker", "payout-methods"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func workerProfilePreferences(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "workers", "me", "profile"], bearerToken: token) }
+    static func updateWorkerProfilePreferences(_ body: WorkerProfilePreferencesUpdate, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("PATCH", ["api", "v1", "workers", "me", "profile"], body: body); endpoint.bearerToken = token; return endpoint
+    }
     static func startCashCollection(bookingID: String, token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["api", "v1", "bookings", bookingID, "cash-collection"], bearerToken: token) }
     static func workerCashCollections(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "cash-collections"], bearerToken: token) }
     static func companyPaymentQR(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "company-upi-qr"], bearerToken: token) }
@@ -484,6 +500,17 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func bookingPaymentStatus(bookingID: String) async throws -> BookingPaymentStatus { try await client.send(BackendEndpoints.bookingPaymentStatus(bookingID: bookingID, token: try await token())) }
     func workerWallet() async throws -> WorkerWalletResponse { try await client.send(BackendEndpoints.workerWallet(token: try await token())) }
     func workerPayoutMethods() async throws -> [PayoutMethodResponse] { try await client.send(BackendEndpoints.workerPayoutMethods(token: try await token())) }
+    func addWorkerPayoutMethod(providerReference: String) async throws -> (id: String, message: String) {
+        struct Response: Decodable { let id: String; let message: String }
+        let response: Response = try await client.send(BackendEndpoints.addWorkerPayoutMethod(PayoutMethodCreateRequest(providerReference: providerReference), token: try await token()))
+        return (response.id, response.message)
+    }
+    func workerProfilePreferences() async throws -> WorkerProfilePreferencesResponse {
+        try await client.send(BackendEndpoints.workerProfilePreferences(token: try await token()))
+    }
+    func updateWorkerProfilePreferences(_ skills: [String]) async throws -> WorkerProfilePreferencesResponse {
+        try await client.send(BackendEndpoints.updateWorkerProfilePreferences(WorkerProfilePreferencesUpdate(preferredSkills: skills), token: try await token()))
+    }
     func startCashCollection(bookingID: String) async throws -> CashCollectionStartResponse { try await client.send(BackendEndpoints.startCashCollection(bookingID: bookingID, token: try await token())) }
     func workerCashCollections() async throws -> [CashCollectionRow] { try await client.send(BackendEndpoints.workerCashCollections(token: try await token())) }
     func companyPaymentQR() async throws -> CompanyPaymentQRResponse { try await client.send(BackendEndpoints.companyPaymentQR(token: try await token())) }

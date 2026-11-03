@@ -15,6 +15,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import com.erno.app.data.repository.ErrnoMobileApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,9 +38,12 @@ fun WorkerProfileScreen(
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onNavigateTab: (WorkerTab) -> Unit,
-    onDigiLockerClick: () -> Unit = {}
+    onDigiLockerClick: () -> Unit = {},
+    onSaveProfile: suspend (String) -> Unit,
+    onSaveSkills: suspend (List<String>) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showEditDetailsDialog by remember { mutableStateOf(false) }
     var showSkillsDialog by remember { mutableStateOf(false) }
     var showBankPayoutDialog by remember { mutableStateOf(false) }
@@ -46,6 +52,31 @@ fun WorkerProfileScreen(
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
 
     var workerNameInput by remember { mutableStateOf(state.workerName) }
+    LaunchedEffect(state.workerName) { workerNameInput = state.workerName }
+    var profileSaving by remember { mutableStateOf(false) }
+    var profileError by remember { mutableStateOf<String?>(null) }
+    val selectedSkills = remember { mutableStateListOf<String>() }
+    LaunchedEffect(state.preferredSkills) { selectedSkills.clear(); selectedSkills.addAll(state.preferredSkills) }
+    var skillsSaving by remember { mutableStateOf(false) }
+    var skillsError by remember { mutableStateOf<String?>(null) }
+    var payoutLoading by remember { mutableStateOf(false) }
+    var payoutSaving by remember { mutableStateOf(false) }
+    var payoutInput by remember { mutableStateOf("") }
+    var payoutError by remember { mutableStateOf<String?>(null) }
+    var payoutMessage by remember { mutableStateOf<String?>(null) }
+    var payoutMethods by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+
+    suspend fun refreshPayoutMethods() {
+        payoutLoading = true; payoutError = null
+        try {
+            val rows = ErrnoMobileApi.payoutMethods()
+            payoutMethods = (0 until rows.length()).map { index ->
+                val row = rows.getJSONObject(index)
+                row.optString("id") to row.optString("status")
+            }
+        } catch (error: Exception) { payoutError = error.localizedMessage ?: "Unable to load payout methods." }
+        finally { payoutLoading = false }
+    }
 
     Scaffold(
         topBar = {
@@ -122,7 +153,7 @@ fun WorkerProfileScreen(
                         )
 
                         Text(
-                            text = "Experienced Delivery Partner & Helper",
+                            text = state.preferredSkills.joinToString(" · ").ifBlank { "Add your preferred work skills" },
                             fontSize = 13.sp,
                             color = ErnoTextSecondary
                         )
@@ -164,7 +195,7 @@ fun WorkerProfileScreen(
                 ) {
                     WorkerProfileStatCard("Jobs Completed", String.format("%02d", state.jobsCompletedCount), Modifier.weight(1f))
                     WorkerProfileStatCard("Total Earned", "₹${state.totalEarnings}", Modifier.weight(1f))
-                    WorkerProfileStatCard("Rating", "${state.workerRating} ★", Modifier.weight(1f))
+                    WorkerProfileStatCard("Rating", state.workerRating?.let { String.format("%.1f ★", it) } ?: "Not rated", Modifier.weight(1f))
                 }
             }
 
@@ -197,7 +228,7 @@ fun WorkerProfileScreen(
                         WorkerProfileOptionItem(
                             icon = Icons.Default.AccountBalance,
                             title = "Bank Account & Payout Details",
-                            onClick = { showBankPayoutDialog = true }
+                            onClick = { showBankPayoutDialog = true; scope.launch { refreshPayoutMethods() } }
                         )
                         HorizontalDivider(color = Color(0xFFF5F5F5))
                         WorkerProfileOptionItem(
@@ -269,14 +300,25 @@ fun WorkerProfileScreen(
                         shape = RoundedCornerShape(10.dp)
                     )
                 }
+                profileError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             },
             confirmButton = {
                 Button(
-                    onClick = { showEditDetailsDialog = false },
+                    enabled = !profileSaving && workerNameInput.trim().isNotEmpty(),
+                    onClick = {
+                        if (profileSaving) return@Button
+                        scope.launch {
+                            profileSaving = true; profileError = null
+                            try { onSaveProfile(workerNameInput); showEditDetailsDialog = false }
+                            catch (error: Exception) { profileError = error.localizedMessage ?: "Unable to save profile." }
+                            finally { profileSaving = false }
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Save", color = Color.White)
+                    if (profileSaving) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text("Save", color = Color.White)
                 }
             },
             dismissButton = {
@@ -295,17 +337,35 @@ fun WorkerProfileScreen(
             title = { Text("My Work Skills", fontWeight = FontWeight.Bold, color = Color.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("• Express Delivery Partner", fontSize = 13.sp, color = Color.Black)
-                    Text("• Shop Assistant & Packing", fontSize = 13.sp, color = Color.Black)
-                    Text("• Store Counter Staff", fontSize = 13.sp, color = Color.Black)
+                    listOf("Express Delivery Partner", "Shop Assistant & Packing", "Store Counter Staff", "Loading & Unloading", "Cashier").forEach { skill ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable {
+                            if (skill in selectedSkills) selectedSkills.remove(skill) else selectedSkills.add(skill)
+                        }) {
+                            Checkbox(checked = skill in selectedSkills, onCheckedChange = { checked ->
+                                if (checked && skill !in selectedSkills) selectedSkills.add(skill)
+                                if (!checked) selectedSkills.remove(skill)
+                            })
+                            Text(skill, fontSize = 13.sp, color = Color.Black)
+                        }
+                    }
+                    skillsError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { showSkillsDialog = false },
+                    enabled = !skillsSaving,
+                    onClick = {
+                        scope.launch {
+                            skillsSaving = true; skillsError = null
+                            try { onSaveSkills(selectedSkills.toList()); showSkillsDialog = false }
+                            catch (error: Exception) { skillsError = error.localizedMessage ?: "Unable to save skills." }
+                            finally { skillsSaving = false }
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)
                 ) {
-                    Text("OK", color = Color.White)
+                    if (skillsSaving) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text("Save skills", color = Color.White)
                 }
             }
         )
@@ -320,24 +380,43 @@ fun WorkerProfileScreen(
             textContentColor = Color.Black,
             title = { Text("Withdrawal UPI & Bank Details", fontWeight = FontWeight.Bold, color = Color.Black) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFFEAF5D8), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Linked Payout UPI / Bank:", fontSize = 12.sp, color = Color.Gray)
-                            Text("amanworker@upi", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ErnoGreen)
-                        }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.heightIn(max = 420.dp)) {
+                    if (payoutLoading) CircularProgressIndicator()
+                    payoutError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        TextButton(onClick = { scope.launch { refreshPayoutMethods() } }) { Text("Retry") }
                     }
-                    Text("• Instant earnings transfer available to UPI or Bank account.", fontSize = 12.sp, color = Color.DarkGray)
+                    payoutMethods.forEach { (id, status) ->
+                        Text("Payout method ${id.take(8)} · ${status.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }}", fontSize = 12.sp, color = Color.DarkGray)
+                    }
+                    if (payoutMethods.isEmpty() && !payoutLoading) Text("No payout methods are registered.", fontSize = 12.sp, color = Color.DarkGray)
+                    OutlinedTextField(value = payoutInput, onValueChange = { payoutInput = it.trim() }, label = { Text("UPI ID for Admin review") }, singleLine = true)
+                    Text("New payout methods stay pending until Admin verification. Bank details are not collected here.", fontSize = 12.sp, color = Color.DarkGray)
+                    payoutError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                    payoutMessage?.let { Text(it, color = ErnoGreen, fontSize = 12.sp) }
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { showBankPayoutDialog = false },
+                    enabled = !payoutSaving && payoutInput.trim().length >= 8,
+                    onClick = {
+                        scope.launch {
+                            payoutSaving = true; payoutError = null; payoutMessage = null
+                            try {
+                                val result = ErrnoMobileApi.addPayoutMethod(payoutInput.trim())
+                                payoutMessage = result.optString("message", "Payout method submitted for Admin review.")
+                                payoutInput = ""
+                                refreshPayoutMethods()
+                            } catch (error: Exception) { payoutError = error.localizedMessage ?: "Unable to add payout method." }
+                            finally { payoutSaving = false }
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)
                 ) {
-                    Text("Close", color = Color.White)
+                    Text(if (payoutSaving) "Saving…" else "Add for review", color = Color.White)
                 }
-            }
+            },
+            dismissButton = { TextButton(onClick = { showBankPayoutDialog = false }) { Text("Close") } }
         )
     }
 

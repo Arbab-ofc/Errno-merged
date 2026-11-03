@@ -33,6 +33,9 @@ struct ShopkeeperRootView: View {
         }
         .sheet(isPresented:$notificationsPresented) { NotificationInboxView() }
         .onReceive(NotificationCenter.default.publisher(for:.errnoNotificationTapped)) { _ in notificationsPresented = true; UserDefaults.standard.removeObject(forKey:"errno.notifications.pending-route") }
+        .onReceive(NotificationCenter.default.publisher(for: .errnoNotificationInboxChanged)) { _ in
+            Task { unreadNotifications = (try? await ErrnoNotifications.unreadCount()) ?? unreadNotifications }
+        }
         .task { unreadNotifications = (try? await ErrnoNotifications.unreadCount()) ?? 0; if UserDefaults.standard.string(forKey:"errno.notifications.pending-route") != nil { notificationsPresented = true; UserDefaults.standard.removeObject(forKey:"errno.notifications.pending-route") } }
     }
 }

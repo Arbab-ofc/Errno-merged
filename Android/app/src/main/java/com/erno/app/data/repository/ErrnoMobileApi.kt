@@ -190,6 +190,9 @@ object ErrnoMobileApi {
 
     suspend fun profile(): JSONObject = JSONObject(request("GET", "/api/v1/users/me"))
     suspend fun updateProfile(name: String): JSONObject = JSONObject(request("PATCH", "/api/v1/users/me", JSONObject().put("name", name)))
+    suspend fun workerProfile(): JSONObject = JSONObject(request("GET", "/api/v1/workers/me/profile"))
+    suspend fun updateWorkerSkills(skills: List<String>): JSONObject = JSONObject(request("PATCH", "/api/v1/workers/me/profile", JSONObject().put("preferredSkills", JSONArray(skills))))
+    suspend fun addPayoutMethod(providerReference: String): JSONObject = JSONObject(request("POST", "/api/v1/worker/payout-methods", JSONObject().put("providerReference", providerReference)))
     suspend fun shop(): JSONObject? {
         val body = request("GET", "/shops/me")
         return if (body.trim() == "null") null else JSONObject(body)

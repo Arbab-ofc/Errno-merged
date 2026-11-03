@@ -102,7 +102,7 @@ struct PostJobSuccessView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Radius.md))
                     }
                     
-                    ShareLink(item: "\(viewModel.postedJob?.title ?? viewModel.title) • \(viewModel.postedJob?.locationLabel ?? viewModel.location) • ₹\(viewModel.payAmountString) (local demo)") {
+                    ShareLink(item: "\(viewModel.postedJob?.title ?? viewModel.title) • \(viewModel.postedJob?.locationLabel ?? viewModel.location) • ₹\(viewModel.payAmountString)") {
                         Text("Share Job")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(Color.errnoGreen)

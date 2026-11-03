@@ -2,9 +2,11 @@ import SwiftUI
 
 struct WorkerHomeView: View {
     @Environment(LocalMarketplaceStore.self) private var store
-    @State private var notifications = false
+    var onApplicationSubmitted: ((UUID, BackendApplication) -> Void)? = nil
     var body: some View {
-        if !AppDependencies.isDemo { BackendJobsView() } else { demoBody }
+        if !AppDependencies.isDemo {
+            BackendJobsView(showsAvailabilityControl: true, onApplicationSubmitted: onApplicationSubmitted)
+        } else { demoBody }
     }
     private var demoBody: some View {
         ScrollView {
@@ -15,7 +17,6 @@ struct WorkerHomeView: View {
                         Text("Find work & delivery shifts near you").font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
                     }
                     Spacer()
-                    Button { notifications = true } label: { Image(systemName: "bell").frame(width: 44, height: 44).background(Color(hex: "1B2738"), in: Circle()) }.accessibilityLabel("Notifications")
                 }.foregroundStyle(.white)
                 Label(store.currentLocation, systemImage: "mappin.and.ellipse")
                     .font(.system(size: 14, weight: .medium)).foregroundStyle(.white)
@@ -30,8 +31,6 @@ struct WorkerHomeView: View {
                 }
             }.padding(.horizontal, 20).padding(.vertical, 12).frame(maxWidth: 840).frame(maxWidth: .infinity)
         }.marketplacePage(dark: true)
-            .alert("Notifications", isPresented: $notifications) { Button("OK", role: .cancel) {} }
-            message: { Text("No notifications. Live notifications are not enabled in this local demo.") }
     }
 }
 

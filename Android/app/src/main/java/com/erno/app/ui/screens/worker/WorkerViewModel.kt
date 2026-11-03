@@ -18,7 +18,7 @@ data class WorkerState(
     val totalEarnings: Int = 0, // Starts at 0 for new workers
     val jobsCompletedCount: Int = 0, // Starts at 00
     val jobApprovalsCount: Int = 0, // Starts at 00
-    val workerRating: Float = 0.0f, // Starts at 0.0 rating for everyone initially
+    val workerRating: Float? = null,
     val isOnline: Boolean = true, // Active (online) vs Inactive (offline) toggle
     val isDigiLockerVerified: Boolean = false,
     val verificationStatus: String = "NOT_STARTED",
@@ -34,12 +34,17 @@ data class WorkerState(
     val earningsHistory: List<EarningRecord> = emptyList(), // Starts empty for new logins
     val isLoadingJobs: Boolean = false,
     val jobLoadError: String? = null,
-    val isAvailableForWork: Boolean = false
+    val isAvailableForWork: Boolean = false,
+    val preferredSkills: List<String> = emptyList()
 )
 
 class WorkerViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(WorkerState())
     val uiState: StateFlow<WorkerState> = _uiState.asStateFlow()
+
+    fun resetSession() {
+        _uiState.value = WorkerState()
+    }
 
     fun toggleOnlineStatus(online: Boolean) {
         _uiState.update { it.copy(isOnline = online) }
@@ -62,6 +67,30 @@ class WorkerViewModel : ViewModel() {
     }
     suspend fun refreshAvailability() {
         runCatching { ErrnoMobileApi.workerAvailability() }.onSuccess { value -> _uiState.update { it.copy(isAvailableForWork=value) } }
+    }
+
+    suspend fun refreshProfile() {
+        runCatching { ErrnoMobileApi.profile() }.onSuccess { profile ->
+            _uiState.update { it.copy(workerName = profile.optString("name").takeIf(String::isNotBlank) ?: it.workerName) }
+        }
+        runCatching { ErrnoMobileApi.workerProfile() }.onSuccess { profile ->
+            val skills = profile.optJSONArray("preferredSkills")
+            _uiState.update { state -> state.copy(preferredSkills = skills?.let { array -> (0 until array.length()).map { array.optString(it) } } ?: state.preferredSkills) }
+        }
+        runCatching { ErrnoMobileApi.workerJobs() }.onSuccess { jobs ->
+            val completed = jobs.count { it.status.equals("completed", ignoreCase = true) }
+            _uiState.update { it.copy(myJobs = jobs, jobsCompletedCount = completed) }
+        }
+        runCatching { ErrnoMobileApi.workerWallet() }.onSuccess { wallet ->
+            _uiState.update { it.copy(totalEarnings = wallet.optInt("totalEarningsPaise") / 100) }
+        }
+    }
+
+    suspend fun updateProfile(name: String) {
+        val normalized = name.trim()
+        require(normalized.isNotEmpty()) { "Name cannot be blank." }
+        ErrnoMobileApi.updateProfile(normalized)
+        _uiState.update { it.copy(workerName = normalized) }
     }
 
     suspend fun refreshBackendJobs() {

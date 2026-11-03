@@ -2,45 +2,47 @@ import SwiftUI
 
 struct WorkerAcceptingJobView: View {
     let jobId: UUID
+    let applicationID: String
+    let applicationStatus: String
     let viewJobInfo: () -> Void
     @Environment(LocalMarketplaceStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var confirmed = false
+    @Environment(\.dismiss) private var dismiss
+    @State private var job: BackendJob?
+    @State private var loading = true
+    @State private var error: String?
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Spacer(minLength: 60)
-                Image(systemName: "checkmark").font(.system(size: 48, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: confirmed ? 80 : 140, height: confirmed ? 80 : 140)
-                    .background(confirmed ? Color.errnoGreen : Color(hex: "131F2E"), in: Circle())
-                    .overlay(Circle().stroke(Color.errnoGreen, lineWidth: 3))
-                Text(confirmed ? "Job Accepted!" : "Accepting Job...").font(.system(size: 24, weight: .bold))
-                Text(confirmed ? "Get ready to start your work." : "Please wait while the shop owner gets notified.")
-                    .font(.system(size: 14)).foregroundStyle(.white.opacity(0.7))
-                MockNotice(text: "Local acceptance simulation • No notification is sent.").padding(.horizontal, 20)
-                if confirmed, let job = store.job(id: jobId) {
-                    VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(Color.errnoGreen)
+                Text("Application submitted").font(.system(size: 24, weight: .bold))
+                Text("The backend has recorded your application. The shopkeeper will review it.")
+                    .font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
+                Group {
+                    Text("Application ID: \(applicationID)")
+                    Text("Application status: \(applicationStatus.capitalized)")
+                }.font(.system(size: 12, weight: .medium)).foregroundStyle(Color.errnoTextSecondary)
+                if loading { ProgressView("Loading job details…") }
+                else if let error { Text(error).foregroundStyle(Color.errnoError); Button("Retry") { Task { await loadJob() } } }
+                else if let job {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text(job.title).font(.system(size: 18, weight: .bold))
-                        Text(job.locationLabel).font(.system(size: 13)).foregroundStyle(.gray)
-                        summary("Duration", job.durationLabel)
-                        summary("Pay", job.payLabel)
-                        summary("Schedule", job.scheduleLabel)
-                        Divider()
-                        Text("Note: Reach on time and complete your work.").font(.system(size: 12)).foregroundStyle(.gray)
-                    }.padding(20).frame(maxWidth: .infinity).background(Color(hex: "131D2A"), in: RoundedRectangle(cornerRadius: 20))
-                    PrimaryButton(title: "View Job Info", style: .dark, action: viewJobInfo)
-                } else if confirmed {
-                    Text("This job is no longer available.")
-                    Button("Return to My Jobs", action: viewJobInfo)
-                } else { ProgressView().tint(.errnoGreen) }
+                        StatusBadge(text: job.status.capitalized)
+                        if let location = job.location { Label(location, systemImage: "mappin.and.ellipse") }
+                        Text("\(job.duration_type) · \(job.pay_amount.formatted(.currency(code: "INR")))")
+                        if let date = job.scheduled_date { Text("Scheduled: \(date)") }
+                    }.marketplaceCard()
+                }
+                PrimaryButton(title: "Go to My Jobs", style: .dark, action: viewJobInfo)
+                Button("Back to job details") { dismiss() }.frame(maxWidth: .infinity)
             }.padding(24)
-        }.foregroundStyle(.white).marketplacePage(dark: true).toolbar(.hidden, for: .navigationBar)
-            .task {
-                do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { confirmed = true }
-            }
+        }.foregroundStyle(Color.errnoTextPrimary).marketplacePage().navigationTitle("Application")
+            .task { await loadJob() }
     }
-    private func summary(_ label: String, _ value: String) -> some View {
-        HStack { Text(label).foregroundStyle(.gray); Spacer(); Text(value).bold() }.font(.system(size: 13))
+
+    @MainActor private func loadJob() async {
+        loading = true; error = nil
+        defer { loading = false }
+        do { job = try await AppDependencies.catalog().job(id: jobId.uuidString) }
+        catch { self.error = error.localizedDescription }
     }
 }

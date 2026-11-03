@@ -40,6 +40,7 @@ final class PostJobViewModel {
     var isSubmitting: Bool = false
     var errorMessage: String? = nil
     var isSuccess: Bool = false
+    private var quoteRequestID = UUID()
     
     private let jobService: JobServiceProtocol
     private let currentUser: User
@@ -50,11 +51,28 @@ final class PostJobViewModel {
     }
     
     var isStep1Valid: Bool {
-        true // Android permits progression and supplies fallback text on submission.
+        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
+        let dayStart = Calendar.current.startOfDay(for: Date())
+        let latest = Calendar.current.date(byAdding: .day, value: 6, to: dayStart) ?? Date()
+        return !category.rawValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !trimmedDescription.isEmpty && trimmedDescription.count <= 250
+            && (9...20).contains(selectedTime)
+            && scheduledStartTime >= dayStart && scheduledStartTime <= latest
+            && (start ?? .distantPast) > Date()
     }
     
     var isStep3Valid: Bool {
         estimatedDurationHours >= 1 && estimatedDurationHours <= 12 && estimatedDurationHours.rounded() == estimatedDurationHours
+            && pricingOptions.contains(where: { Double($0.hours) == estimatedDurationHours })
+    }
+
+    var isLocationValid: Bool {
+        if category.isDelivery {
+            return !pickupLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !dropLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func loadPricingOptions() async {
@@ -69,21 +87,32 @@ final class PostJobViewModel {
     }
 
     var hasValidQuote: Bool {
-        guard let pricingQuote, let expires = Self.parseISODate(pricingQuote.expires_at) else { return !jobService.requiresAuthoritativeQuote }
-        return expires > Date()
+        guard let pricingQuote else { return !jobService.requiresAuthoritativeQuote }
+        guard let expires = Self.parseISODate(pricingQuote.expires_at),
+              let quoteStart = Self.parseISODate(pricingQuote.service_start_at),
+              let expectedStart = Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime) else { return false }
+        return expires > Date() && abs(quoteStart.timeIntervalSince(expectedStart)) < 1
+            && pricingQuote.final_service_charge > 0
+            && pricingQuote.final_service_charge >= pricingQuote.base_price
+            && pricingQuote.final_service_charge <= pricingQuote.maximum_price
     }
     var requiresPricingQuote: Bool { jobService.requiresAuthoritativeQuote }
 
     func refreshPricingQuote() async {
         guard isStep3Valid else { errorMessage = "Choose a configured duration."; return }
+        let requestID = UUID()
+        quoteRequestID = requestID
         isLoadingQuote = true; errorMessage = nil
-        defer { isLoadingQuote = false }
+        defer { if quoteRequestID == requestID { isLoadingQuote = false } }
         do {
-            pricingQuote = try await jobService.requestQuote(for: makeDraftJob())
+            let quote = try await jobService.requestQuote(for: makeDraftJob())
+            guard quoteRequestID == requestID else { return }
+            pricingQuote = quote
             if jobService.requiresAuthoritativeQuote && pricingQuote == nil {
                 errorMessage = "The backend did not return a valid pricing quote."
             }
         } catch {
+            guard quoteRequestID == requestID else { return }
             pricingQuote = nil
             errorMessage = error.localizedDescription
         }
@@ -94,6 +123,14 @@ final class PostJobViewModel {
         if postedJob != nil { onSuccess(); return }
         guard isStep3Valid else {
             errorMessage = "Choose a configured duration."
+            return
+        }
+        guard isStep1Valid else {
+            errorMessage = "Enter a job description and choose a future date and valid start time."
+            return
+        }
+        guard isLocationValid else {
+            errorMessage = category.isDelivery ? "Enter both pickup and drop-off locations." : "Enter the work address."
             return
         }
         if jobService.requiresAuthoritativeQuote && !hasValidQuote {

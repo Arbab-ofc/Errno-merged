@@ -350,6 +350,14 @@ class WorkerPayoutMethod(Base):
     __table_args__ = (UniqueConstraint("worker_id", "provider_reference", name="uq_worker_payout_provider_reference"),)
 
 
+class WorkerProfilePreferences(Base):
+    __tablename__ = "worker_profile_preferences"
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    preferred_skills = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 class CashCollection(Base):
     __tablename__ = "cash_collections"
     id = Column(String, primary_key=True, default=generate_uuid)
