@@ -70,6 +70,7 @@ actor BackendSessionManager {
         return try await FirebaseGoogleAuth.restore()
     }
     func logout() async throws {
+        await ErrnoNotifications.unregisterCurrent()
         if let token = BackendTokenStore.readToken(), let config = try? BackendConfiguration.bundled() {
             let client = APIClient(configuration: config)
             let _: [String: Bool]? = try? await client.send(BackendEndpoints.whatsappLogout(token: token))

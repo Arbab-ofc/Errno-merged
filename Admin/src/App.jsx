@@ -18,6 +18,7 @@ const PricingPage = lazy(() => import("./pages/PricingPage").then((module) => ({
 const WhatsAppGatewayPage = lazy(() => import("./pages/WhatsAppGatewayPage").then((module) => ({ default: module.WhatsAppGatewayPage })));
 const FinancePage = lazy(() => import("./pages/FinancePage").then((module) => ({ default: module.FinancePage })));
 const KycPage = lazy(() => import("./pages/KycPage").then((module) => ({ default: module.KycPage })));
+const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage").then((module) => ({ default: module.NotificationCenterPage })));
 
 function UnauthorizedPage() {
   const { logout, user } = useAuth();
@@ -47,7 +48,7 @@ function RouteTree() {
       <Route path="attendance" element={<UnavailablePage name="Attendance" />} />
       <Route path="ratings" element={<UnavailablePage name="Ratings" />} />
       <Route path="disputes" element={<UnavailablePage name="Disputes" />} />
-      <Route path="notifications" element={<UnavailablePage name="Notifications" />} />
+      <Route path="notifications" element={<NotificationCenterPage />} />
       <Route path="system-health" element={<SystemHealthPage />} />
       <Route path="settings" element={<SettingsPage />} />
     </Route>

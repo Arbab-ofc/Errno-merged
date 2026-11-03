@@ -15,7 +15,11 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,8 +43,11 @@ fun WorkerHomeScreen(
     onJobSelect: (WorkerJob) -> Unit,
     onToggleOnlineStatus: (Boolean) -> Unit,
     onRefresh: () -> Unit,
-    onNavigateTab: (WorkerTab) -> Unit
+    onNavigateTab: (WorkerTab) -> Unit,
+    onNotifications: () -> Unit = {}
 ) {
+    var unreadNotifications by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { unreadNotifications = runCatching { com.erno.app.data.repository.ErrnoMobileApi.notificationUnreadCount() }.getOrDefault(0) }
     Scaffold(
         bottomBar = {
             WorkerBottomNavigation(
@@ -87,16 +94,14 @@ fun WorkerHomeScreen(
                         }
 
                         IconButton(
-                            onClick = { },
+                            onClick = onNotifications,
                             modifier = Modifier
                                 .size(40.dp)
                                 .background(Color(0xFF1B2738), CircleShape)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.NotificationsNone,
-                                contentDescription = "Notifications",
-                                tint = Color.White
-                            )
+                            BadgedBox(badge={ if(unreadNotifications>0) Badge { Text(if(unreadNotifications>99) "99+" else unreadNotifications.toString()) } }) {
+                                Icon(imageVector = Icons.Default.NotificationsNone, contentDescription = "Notifications", tint = Color.White)
+                            }
                         }
                     }
                 }

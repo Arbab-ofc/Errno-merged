@@ -35,6 +35,7 @@ sealed class Screen(val route: String) {
     object WorkerMyJobs : Screen("worker_my_jobs")
     object WorkerEarnings : Screen("worker_earnings")
     object WorkerProfile : Screen("worker_profile")
+    object Notifications : Screen("notifications")
 
     // Verification Routes
     object DigiLockerVerification : Screen("digilocker_verification")

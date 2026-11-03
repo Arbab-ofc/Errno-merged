@@ -406,6 +406,117 @@ class FinancialAuditEvent(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    recipient_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    recipient_role = Column(String(24), nullable=False)
+    event_id = Column(String(64), nullable=False, index=True)
+    event_type = Column(String(80), nullable=False)
+    title = Column(String(180), nullable=False)
+    body = Column(String(500), nullable=False)
+    priority = Column(String(16), nullable=False, default="normal", server_default="normal")
+    category = Column(String(32), nullable=False)
+    data_payload = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    deduplication_key = Column(String(300), nullable=False, unique=True)
+    __table_args__ = (
+        CheckConstraint("priority IN ('low','normal','high')", name="ck_notification_priority"),
+        CheckConstraint("category IN ('booking','job','payment','account','verification','marketing','admin')", name="ck_notification_category"),
+        Index("ix_notifications_recipient_created", "recipient_user_id", "created_at", "id"),
+        Index("ix_notifications_recipient_read", "recipient_user_id", "read_at", "created_at"),
+        Index("ix_notifications_category_created", "category", "created_at"),
+    )
+
+
+class NotificationDevice(Base):
+    __tablename__ = "notification_devices"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(24), nullable=False)
+    platform = Column(String(12), nullable=False)
+    device_identifier = Column(String(160), nullable=False)
+    encrypted_token = Column(Text, nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    app_version = Column(String(40), nullable=True)
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    invalidated_at = Column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (
+        CheckConstraint("platform IN ('android','ios')", name="ck_notification_device_platform"),
+        UniqueConstraint("user_id", "device_identifier", name="uq_notification_device_user_install"),
+        Index("ix_notification_devices_user_active", "user_id", "active"),
+    )
+
+
+class NotificationOutbox(Base):
+    __tablename__ = "notification_outbox"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    notification_id = Column(String, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, unique=True)
+    event_id = Column(String(64), nullable=False)
+    event_type = Column(String(80), nullable=False)
+    recipient_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    payload = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    status = Column(String(24), nullable=False, default="queued", server_default="queued")
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    next_attempt_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_code = Column(String(80), nullable=True)
+    lease_owner = Column(String(80), nullable=True)
+    lease_until = Column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (
+        CheckConstraint("status IN ('queued','sending','retrying','accepted_by_fcm','permanently_failed','no_devices','suppressed','expired')", name="ck_notification_outbox_status"),
+        UniqueConstraint("event_id", "recipient_user_id", "event_type", name="uq_notification_outbox_event_recipient"),
+        Index("ix_notification_outbox_dispatch", "status", "next_attempt_at", "created_at"),
+        Index("ix_notification_outbox_lease", "status", "lease_until"),
+    )
+
+
+class NotificationDeliveryAttempt(Base):
+    __tablename__ = "notification_delivery_attempts"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    notification_id = Column(String, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("notification_devices.id", ondelete="SET NULL"), nullable=True, index=True)
+    attempt_number = Column(Integer, nullable=False)
+    provider_message_id = Column(String(240), nullable=True)
+    status = Column(String(24), nullable=False)
+    error_code = Column(String(80), nullable=True)
+    attempted_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (
+        CheckConstraint("status IN ('accepted_by_fcm','invalid_token','failed')", name="ck_notification_delivery_status"),
+        UniqueConstraint("notification_id", "device_id", "attempt_number", name="uq_notification_delivery_attempt"),
+    )
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    booking_updates_enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    job_alerts_enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    payment_updates_enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    account_updates_enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    marketing_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class NotificationRegistrationThrottle(Base):
+    __tablename__ = "notification_registration_throttles"
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    window_started_at = Column(DateTime(timezone=True), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+
+
 class CompanyPaymentConfiguration(Base):
     __tablename__ = "company_payment_configuration"
     id = Column(String(40), primary_key=True, default="company")

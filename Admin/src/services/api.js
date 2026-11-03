@@ -44,6 +44,12 @@ async function send(path, { user, method = 'GET', body, signal, publicRequest = 
 export const api = {
   request: send,
   health: (signal) => send('/health', { publicRequest: true, signal }),
+  notificationInbox: (user) => send('/api/v1/admin/notifications', { user }),
+  notificationUnreadCount: (user) => send('/api/v1/admin/notifications/unread-count', { user }),
+  notificationDelivery: (user) => send('/api/v1/admin/notifications/delivery', { user }),
+  markNotificationRead: (user, id) => send(`/api/v1/admin/notifications/${encodeURIComponent(id)}/read`, { user, method: 'PATCH', body: {} }),
+  markAllNotificationsRead: (user) => send('/api/v1/admin/notifications/read-all', { user, method: 'PATCH', body: {} }),
+  retryNotification: (user, id) => send(`/api/v1/admin/notifications/delivery/${encodeURIComponent(id)}/retry`, { user, method: 'POST', body: {} }),
   adminMe: (user) => send('/api/v1/admin/me', { user }),
   dashboard: (user, signal) => send('/api/v1/admin/dashboard', { user, signal }),
   shopOwners: (user, params, signal) => send(`/api/v1/admin/shop-owners?${new URLSearchParams(params)}`, { user, signal }),

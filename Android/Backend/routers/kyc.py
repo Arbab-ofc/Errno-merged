@@ -18,6 +18,7 @@ from firebase_auth import authenticated_user, require_admin, require_role
 from models import (AdminPermission, FinancialAuditEvent, KYCConsentRecord, KYCAuditEvent,
                     KYCManualReview, KYCVerificationProfile, KYCVerificationSession,
                     KYCVerifiedDocument, User)
+from services.notification_service import queue_notification, queue_admin_notifications
 
 router = APIRouter(prefix="/api/v1", tags=["Identity verification"])
 admin_router = APIRouter(prefix="/api/v1/admin/kyc", tags=["Admin KYC"])
@@ -118,6 +119,10 @@ def _start_session(db: Session, profile: KYCVerificationProfile, requested: list
         mock_callback_token_hash=(kyc_service.digest(provider_session.test_completion_token) if provider_session.test_completion_token else None),
         requested_document_types=document_types, consent_version=version, expires_at=kyc_service.expiry())
     db.add(row)
+    db.flush()
+    queue_admin_notifications(db, permission="kyc.review", event_type="kyc_manual_review_pending",
+        title="Worker verification review", body="A worker identity submission is awaiting manual review.",
+        data={"route":"kyc","kyc_profile_id":profile.id}, event_id=f"kyc:{profile.id}:manual-review:{row.id}")
     db.flush()
     db.add(KYCConsentRecord(profile_id=profile.id, session_id=row.id, subject_user_id=subject_user_id,
         subject_staff_uid=staff_uid, purpose="ERRNO worker/staff identity verification for onboarding and eligibility review",
@@ -472,6 +477,11 @@ def review_manual_kyc(profile_id: str, body: ReviewRequest, admin=Depends(requir
         {"manual_review_id": review.id, "reason_code": body.reasonCode, "note": body.note.strip()})
     db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type=f"kyc.manual_review.{body.action.lower()}",
         resource_type="kyc_profile", resource_id=profile.id, details={"reason_code": body.reasonCode, "method": "MANUAL_DOCUMENT_REVIEW"}))
+    subject = db.query(User).filter_by(id=profile.user_id).first() if profile.user_id else None
+    if subject and old != profile.status:
+        queue_notification(db, recipient=subject, event_type="kyc_status_changed", category="verification",
+            title="Verification status updated", body="Your ERRNO identity verification status has changed. Open the app for details.",
+            data={"route":"kyc","kyc_profile_id":profile.id}, event_id=f"kyc:{profile.id}:{profile.status}:{review.id}")
     db.commit()
     return {"profileId": profile.id, "status": profile.status, "verificationMethod": profile.verification_method,
         "manualReviewId": review.id, "reviewStatus": review.status}
