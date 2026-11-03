@@ -1,0 +1,14 @@
+{
+  "name": "errno-whatsapp-gateway",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node src/index.js", "test": "node --test" },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24",
+    "express": "^5.1.0",
+    "pino": "^9.7.0",
+    "qrcode": "^1.5.4"
+  }
+}

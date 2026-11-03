@@ -5,6 +5,8 @@ import com.erno.app.data.model.DurationPay
 import com.erno.app.data.model.EarningRecord
 import com.erno.app.data.model.JobPost
 import com.erno.app.data.model.WorkerJob
+import com.erno.app.data.model.WorkerApplication
+import com.erno.app.data.repository.ErrnoMobileApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,11 +21,20 @@ data class WorkerState(
     val workerRating: Float = 0.0f, // Starts at 0.0 rating for everyone initially
     val isOnline: Boolean = true, // Active (online) vs Inactive (offline) toggle
     val isDigiLockerVerified: Boolean = false,
-    val aadhaarMasked: String = "",
+    val verificationStatus: String = "NOT_STARTED",
     val availableJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
     val selectedJob: WorkerJob? = null,
     val myJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
-    val earningsHistory: List<EarningRecord> = emptyList() // Starts empty for new logins
+    val applications: List<WorkerApplication> = emptyList(),
+    val applicationsOffset: Int = 0,
+    val applicationsHasMore: Boolean = false,
+    val isLoadingApplications: Boolean = false,
+    val applicationsError: String? = null,
+    val lifecycleActionLoading: Boolean = false,
+    val earningsHistory: List<EarningRecord> = emptyList(), // Starts empty for new logins
+    val isLoadingJobs: Boolean = false,
+    val jobLoadError: String? = null,
+    val isAvailableForWork: Boolean = false
 )
 
 class WorkerViewModel : ViewModel() {
@@ -45,15 +56,84 @@ class WorkerViewModel : ViewModel() {
         }
     }
 
-    fun acceptCurrentJob() {
+    suspend fun setAvailableForWork(available: Boolean) {
+        ErrnoMobileApi.setWorkerAvailable(available)
+        _uiState.update { it.copy(isAvailableForWork = available, jobLoadError = null) }
+    }
+    suspend fun refreshAvailability() {
+        runCatching { ErrnoMobileApi.workerAvailability() }.onSuccess { value -> _uiState.update { it.copy(isAvailableForWork=value) } }
+    }
+
+    suspend fun refreshBackendJobs() {
+        _uiState.update { it.copy(isLoadingJobs = true, jobLoadError = null) }
+        runCatching { ErrnoMobileApi.availableJobs() }
+            .onSuccess { jobs ->
+                val mine = runCatching { ErrnoMobileApi.workerJobs() }.getOrDefault(emptyList())
+                _uiState.update { it.copy(availableJobs = jobs, myJobs = mine, isLoadingJobs = false) }
+            }
+            .onFailure { error -> _uiState.update { it.copy(isLoadingJobs = false, jobLoadError = error.localizedMessage ?: "Unable to load jobs. Retry.") } }
+    }
+
+    suspend fun refreshApplications() {
+        _uiState.update { it.copy(isLoadingApplications = true, applicationsError = null, applicationsOffset = 0) }
+        runCatching { ErrnoMobileApi.workerApplications(limit = 20, offset = 0) }
+            .onSuccess { page ->
+                val items = page.getJSONArray("items")
+                _uiState.update { it.copy(
+                    applications = (0 until items.length()).map { index -> ErrnoMobileApi.parseWorkerApplication(items.getJSONObject(index)) },
+                    applicationsOffset = items.length(), applicationsHasMore = page.optBoolean("has_more"),
+                    isLoadingApplications = false
+                ) }
+            }
+            .onFailure { error -> _uiState.update { it.copy(isLoadingApplications = false, applicationsError = error.localizedMessage ?: "Unable to load applications. Retry.") } }
+    }
+
+    suspend fun loadMoreApplications() {
+        if (_uiState.value.applications.isEmpty() || _uiState.value.applicationsError != null) {
+            refreshApplications()
+            return
+        }
+        val offset = _uiState.value.applicationsOffset
+        if (!_uiState.value.applicationsHasMore || _uiState.value.isLoadingApplications) return
+        _uiState.update { it.copy(isLoadingApplications = true, applicationsError = null) }
+        runCatching { ErrnoMobileApi.workerApplications(limit = 20, offset = offset) }
+            .onSuccess { page ->
+                val items = page.getJSONArray("items")
+                _uiState.update { state -> state.copy(
+                    applications = state.applications + (0 until items.length()).map { ErrnoMobileApi.parseWorkerApplication(items.getJSONObject(it)) },
+                    applicationsOffset = offset + items.length(), applicationsHasMore = page.optBoolean("has_more"), isLoadingApplications = false
+                ) }
+            }
+            .onFailure { error -> _uiState.update { it.copy(isLoadingApplications = false, applicationsError = error.localizedMessage ?: "Unable to load more applications.") } }
+    }
+
+    suspend fun cancelApplication(application: WorkerApplication) {
+        _uiState.update { it.copy(lifecycleActionLoading = true, applicationsError = null) }
+        try {
+            ErrnoMobileApi.cancelApplication(application.jobId)
+            refreshApplications()
+        } catch (error: Exception) {
+            _uiState.update { it.copy(applicationsError = error.localizedMessage ?: "Unable to cancel application.") }
+        } finally { _uiState.update { it.copy(lifecycleActionLoading = false) } }
+    }
+
+    suspend fun startAssignedJob(jobId: String) {
+        _uiState.update { it.copy(lifecycleActionLoading = true, jobLoadError = null) }
+        try { ErrnoMobileApi.startJob(jobId); refreshBackendJobs() }
+        catch (error: Exception) { _uiState.update { it.copy(jobLoadError = error.localizedMessage ?: "Unable to start job.") } }
+        finally { _uiState.update { it.copy(lifecycleActionLoading = false) } }
+    }
+
+    suspend fun acceptCurrentJob() {
         val state = _uiState.value
         val currentJob = state.selectedJob ?: return
-        // Set status directly to ONGOING when worker accepts job
-        val acceptedJob = currentJob.copy(status = "Ongoing", scheduledTime = "${currentJob.scheduledDate}, 11:00 AM")
+        ErrnoMobileApi.apply(currentJob.id)
+        val acceptedJob = currentJob.copy(status = "Applied", scheduledTime = "${currentJob.scheduledDate}, 11:00 AM")
         _uiState.update {
             it.copy(
                 selectedJob = acceptedJob,
-                myJobs = listOf(acceptedJob) + it.myJobs.filter { j -> j.id != acceptedJob.id }
+                availableJobs = it.availableJobs.filterNot { job -> job.id == acceptedJob.id },
+                jobLoadError = null
             )
         }
     }
@@ -82,13 +162,10 @@ class WorkerViewModel : ViewModel() {
         }
     }
 
-    fun verifyDigiLockerAadhaar(aadhaarNumber: String) {
-        val last4 = if (aadhaarNumber.length >= 4) aadhaarNumber.takeLast(4) else "1234"
-        _uiState.update {
-            it.copy(
-                isDigiLockerVerified = true,
-                aadhaarMasked = "XXXX-XXXX-$last4"
-            )
+    suspend fun refreshKycStatus() {
+        runCatching { ErrnoMobileApi.kycStatus() }.onSuccess { response ->
+            val verified = response.optString("status") == "VERIFIED" && response.optString("verificationMethod") in setOf("DIGILOCKER_VERIFIED", "MANUAL_DOCUMENT_REVIEW")
+            _uiState.update { it.copy(isDigiLockerVerified = verified, verificationStatus = response.optString("status", "NOT_STARTED")) }
         }
     }
 

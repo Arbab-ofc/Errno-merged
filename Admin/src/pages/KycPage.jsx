@@ -1,0 +1,24 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
+import { api } from '../services/api';
+import { PageHeader } from '../components/PageHeader';
+import { StatePanel } from '../components/StatePanel';
+
+const labels = ['NOT_STARTED','CONSENT_PENDING','VERIFICATION_PENDING','VERIFIED','FAILED','EXPIRED','MANUAL_REVIEW','REJECTED','REVERIFICATION_REQUIRED'];
+export function KycPage() {
+  const { user, admin } = useAuth();
+  const [overview,setOverview]=useState(null), [rows,setRows]=useState([]), [status,setStatus]=useState(''), [query,setQuery]=useState(''), [selected,setSelected]=useState(null), [busy,setBusy]=useState(false), [error,setError]=useState('');
+  const load=useCallback(async()=>{ setError(''); try { const [o,r]=await Promise.all([api.kycOverview(user),api.kycVerifications(user,{limit:50,offset:0,...(status?{status}:{}),...(query?{q:query}:{})})]); setOverview(o);setRows(r.items||[]); } catch(e){setError(e.message||'KYC data could not be loaded.');} },[user,status,query]);
+  useEffect(()=>{load()},[load]);
+  async function open(row){setBusy(true);setError('');try{setSelected(await api.kycVerification(user,row.id));}catch(e){setError(e.message||'Details could not be loaded.')}finally{setBusy(false)}}
+  async function review(action){ if(!selected)return; const note=window.prompt(`${action} reason and reviewer note`); if(!note?.trim())return; setBusy(true);setError('');try{await api.reviewKyc(user,selected.id,{action,reasonCode:action==='APPROVE'?'MANUAL_REVIEW_APPROVED':action==='REJECT'?'DOCUMENT_REJECTED':'RESUBMISSION_REQUIRED',note});setSelected(null);await load()}catch(e){setError(e.message||'Review could not be saved.')}finally{setBusy(false)} }
+  async function viewDocument(id){try{const blob=await api.kycDocument(user,id);const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(e){setError(e.message)}}
+  return <div className="page-stack"><PageHeader title="KYC Verification" description="Identity verification status and manual review. DigiLocker results are only shown after provider validation." />
+    {error&&<StatePanel tone="error" title="KYC request failed" detail={error} actionLabel="Retry" onAction={load}/>}
+    <section className="metrics-grid">{['TOTAL_WORKERS','VERIFIED_WORKERS','CONSENT_PENDING','VERIFICATION_PENDING','MANUAL_REVIEW_QUEUE','FAILED','REJECTED','EXPIRED'].map(k=><article className="metric-card" key={k}><span>{k.replaceAll('_',' ')}</span><strong>{overview?.[k]??'—'}</strong></article>)}</section>
+    <section className="content-panel"><div className="toolbar"><input aria-label="Search workers" placeholder="Search identity" value={query} onChange={e=>setQuery(e.target.value)}/><select aria-label="Filter verification status" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{labels.map(x=><option key={x}>{x}</option>)}</select><button onClick={load}>Refresh</button></div>
+      <div className="table-scroll"><table><thead><tr><th>Worker</th><th>Status</th><th>Method</th><th>Documents</th><th>Updated</th><th/></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.identity}<small>{r.role}</small></td><td>{r.status}</td><td>{r.verificationMethod||'—'}</td><td>{(r.documentTypes||[]).join(', ')||'—'}</td><td>{r.lastActionAt?new Date(r.lastActionAt).toLocaleString():'—'}</td><td><button onClick={()=>open(r)}>Details</button></td></tr>)}{!rows.length&&<tr><td colSpan="6">No verification records found.</td></tr>}</tbody></table></div></section>
+    {selected&&<div className="modal-backdrop" role="presentation"><section className="content-panel" role="dialog" aria-modal="true" aria-label="Verification details"><div className="toolbar"><h2>{selected.user?.name||'Staff'} · {selected.status}</h2><button onClick={()=>setSelected(null)}>Close</button></div><p>Method: {selected.verificationMethod||'Not verified'} · Provider: {selected.provider||'—'}</p><h3>Consent history</h3>{selected.consents?.map((c,i)=><p key={i}>{c.purpose} · {c.version} · {c.grantedAt}{c.withdrawnAt?` · withdrawn ${c.withdrawnAt}`:''}</p>)}<h3>Submitted documents</h3>{selected.manualReviews?.map(x=><div key={x.id}>{x.documentType} · {x.status} · scan {x.scanStatus} {x.scanStatus==='CLEAN'&&<button onClick={()=>viewDocument(x.id)}>Secure view</button>}</div>)}<h3>Verification timeline</h3>{selected.sessions?.map(x=><p key={x.id}>{x.provider} · {x.status} · {x.createdAt}</p>)}
+      {admin?.permissions?.includes('kyc.review')&&selected.status==='MANUAL_REVIEW'&&<div className="toolbar"><button disabled={busy} onClick={()=>review('APPROVE')}>Approve manual review</button><button disabled={busy} onClick={()=>review('RESUBMIT')}>Request resubmission</button><button disabled={busy} onClick={()=>review('REJECT')}>Reject</button></div>}</section></div>}
+  </div>;
+}

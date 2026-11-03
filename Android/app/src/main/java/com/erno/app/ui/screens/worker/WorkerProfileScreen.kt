@@ -145,7 +145,7 @@ fun WorkerProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (state.isDigiLockerVerified) "DigiLocker Verified SEIF Worker" else "DigiLocker Verification Pending",
+                                    text = if (state.isDigiLockerVerified) "Identity verified · ${state.verificationStatus}" else "Identity verification · ${state.verificationStatus}",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (state.isDigiLockerVerified) Color(0xFF2E7D32) else Color(0xFFE65100)
@@ -178,7 +178,7 @@ fun WorkerProfileScreen(
                     Column(modifier = Modifier.padding(vertical = 8.dp)) {
                         WorkerProfileOptionItem(
                             icon = Icons.Default.Shield,
-                            title = "DigiLocker Aadhaar Verification",
+                            title = "Identity verification",
                             onClick = onDigiLockerClick
                         )
                         HorizontalDivider(color = Color(0xFFF5F5F5))

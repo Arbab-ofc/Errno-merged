@@ -32,21 +32,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
-import com.erno.app.data.repository.DEMO_OTP_CODE
+import com.erno.app.data.repository.WhatsAppOtpChallenge
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VerifyOTPScreen(
     phoneNumber: String,
+    initialRequestId: String,
+    expiresInSeconds: Int = 300,
+    resendAfterSeconds: Int = 30,
     onBackClick: () -> Unit,
-    onVerifyClick: (String) -> Boolean,
+    onVerifyClick: suspend (String, String) -> Unit,
     onEditClick: () -> Unit,
-    onResendClick: () -> Unit
+    onResendClick: suspend (String) -> WhatsAppOtpChallenge
 ) {
+    val scope = rememberCoroutineScope()
     var otpValues by remember { mutableStateOf(List(6) { "" }) }
     val focusRequesters = remember { List(6) { FocusRequester() } }
-    var timerSeconds by remember { mutableIntStateOf(30) }
+    var requestId by remember(initialRequestId) { mutableStateOf(initialRequestId) }
+    var timerSeconds by remember { mutableIntStateOf(resendAfterSeconds) }
+    var expirySeconds by remember { mutableIntStateOf(expiresInSeconds) }
+    var isBusy by remember { mutableStateOf(false) }
     var verificationError by remember { mutableStateOf<String?>(null) }
 
     // Dynamic Countdown Timer
@@ -55,6 +63,9 @@ fun VerifyOTPScreen(
             delay(1000L)
             timerSeconds--
         }
+    }
+    LaunchedEffect(expirySeconds) {
+        if (expirySeconds > 0) { delay(1000L); expirySeconds-- }
     }
 
     val formattedPhoneNumber = remember(phoneNumber) {
@@ -149,7 +160,7 @@ fun VerifyOTPScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Enter the 6-digit OTP sent to",
+                            text = if (expirySeconds > 0) "Enter the 6-digit WhatsApp OTP sent to" else "This code has expired. Request a new OTP.",
                         fontSize = 14.sp,
                         color = ErnoTextSecondary
                     )
@@ -239,7 +250,7 @@ fun VerifyOTPScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Local demo code: $DEMO_OTP_CODE",
+                        text = "Phone verification is unavailable. Please use Google sign-in.",
                         fontSize = 12.sp,
                         color = ErnoTextSecondary
                     )
@@ -273,18 +284,22 @@ fun VerifyOTPScreen(
                     // Verify Button
                     Button(
                         onClick = {
-                            verificationError = if (onVerifyClick(otpValues.joinToString(""))) null
-                            else "Incorrect code. Please try again."
+                            if (!isBusy) scope.launch {
+                                isBusy = true; verificationError = null
+                                try { onVerifyClick(otpValues.joinToString(""), requestId) }
+                                catch (error: Exception) { verificationError = error.localizedMessage ?: "The code is invalid or expired."; otpValues = List(6) { "" } }
+                                finally { isBusy = false }
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = isOtpComplete
+                        enabled = isOtpComplete && expirySeconds > 0 && !isBusy
                     ) {
                         Text(
-                            text = "Verify OTP",
+                            text = if (isBusy) "Verifying…" else "Verify OTP",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -304,11 +319,16 @@ fun VerifyOTPScreen(
                             color = if (timerSeconds == 0) ErnoGreen else Color.Gray,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable(enabled = timerSeconds == 0) {
-                                timerSeconds = 30
-                                otpValues = List(6) { "" }
-                                verificationError = null
-                                onResendClick()
+                            modifier = Modifier.clickable(enabled = timerSeconds == 0 && !isBusy) {
+                                scope.launch {
+                                    isBusy = true; verificationError = null
+                                    try {
+                                        val next = onResendClick(requestId)
+                                        requestId = next.requestId; timerSeconds = next.resendAfterSeconds; expirySeconds = next.expiresInSeconds
+                                        otpValues = List(6) { "" }
+                                    } catch (error: Exception) { verificationError = error.localizedMessage ?: "Could not resend the code." }
+                                    finally { isBusy = false }
+                                }
                             }
                         )
                     }

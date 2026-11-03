@@ -12,14 +12,20 @@ struct VerifyOTPView: View {
 
     let phone: String
     let role: UserRole
+    let requestID: String
+    let expiresIn: Int
+    let resendAfter: Int
 
     @State private var viewModel: OTPViewModel
     @FocusState private var isOTPFieldFocused: Bool
 
-    init(phone: String, role: UserRole) {
+    init(phone: String, role: UserRole, requestID: String, expiresIn: Int, resendAfter: Int) {
         self.phone = phone
         self.role = role
-        _viewModel = State(initialValue: OTPViewModel(phone: phone))
+        self.requestID = requestID
+        self.expiresIn = expiresIn
+        self.resendAfter = resendAfter
+        _viewModel = State(initialValue: OTPViewModel(phone: phone, role: role, requestID: requestID, expiresIn: expiresIn, resendAfter: resendAfter))
     }
 
     var body: some View {
@@ -124,16 +130,15 @@ struct VerifyOTPView: View {
                             .foregroundStyle(Color.errnoError)
                     }
 
-                    if AppDependencies.isDemo { MockNotice(text: "Local demo • use 123456") }
                     // Resend Countdown
                     HStack(spacing: 4) {
-                        Text("Resend OTP in")
+                        Text(viewModel.expiryRemaining > 0 ? "Code expires in" : "Code expired — you can resend")
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(Color.errnoTextSecondary)
 
-                        let minutes = viewModel.timeRemaining / 60
-                        let seconds = viewModel.timeRemaining % 60
-                        Text(String(format: "%02d:%02d", minutes, seconds))
+                        let minutes = viewModel.expiryRemaining / 60
+                        let seconds = viewModel.expiryRemaining % 60
+                        Text(viewModel.expiryRemaining > 0 ? String(format: "%02d:%02d", minutes, seconds) : "")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Color.errnoLime)
                     }
@@ -142,9 +147,9 @@ struct VerifyOTPView: View {
                     // Verify OTP Button
                     Button {
                         isOTPFieldFocused = false
-                        viewModel.verifyOTP(role: role) { verifiedRole in
-                            store.signIn(phone: phone, role: verifiedRole, name: router.registrationName)
-                            router.navigateToHome(role: verifiedRole)
+                        viewModel.verifyOTP(role: role, fullName: router.registrationName) { profile in
+                            store.signIn(profile: profile)
+                            router.navigateToHome(role: profile.role == "worker" ? .worker : .shopkeeper)
                         }
                     } label: {
                         Group {
@@ -162,7 +167,7 @@ struct VerifyOTPView: View {
                         .background(viewModel.isOTPComplete ? Color.errnoGreen : Color(hex: "#E5E7EB"))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .disabled(!viewModel.isOTPComplete || viewModel.isLoading || viewModel.isSuccess)
+                    .disabled(!viewModel.isOTPComplete || viewModel.isLoading || viewModel.isSuccess || viewModel.expiryRemaining == 0)
                     .padding(.top, 4)
 
                     // Resend Link

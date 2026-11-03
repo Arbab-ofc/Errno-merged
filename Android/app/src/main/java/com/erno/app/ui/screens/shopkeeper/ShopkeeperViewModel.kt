@@ -3,6 +3,7 @@ package com.erno.app.ui.screens.shopkeeper
 import androidx.lifecycle.ViewModel
 import com.erno.app.data.model.DurationPay
 import com.erno.app.data.model.JobPost
+import com.erno.app.data.repository.ErrnoMobileApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,6 +76,8 @@ fun getCategorySuggestion(category: String): CategorySuggestion {
 
 data class ShopkeeperState(
     val ownerName: String = "Shopkeeper",
+    val shopName: String = "My Store",
+    val shopAddress: String = "",
     val activeJobsCount: Int = 0,
     val totalApplicationsCount: Int = 0,
     val recentJobs: List<JobPost> = emptyList(), // Starts empty for new login
@@ -96,13 +99,21 @@ data class ShopkeeperState(
     val draftRequirements: String = getCategorySuggestion("Loading & Unloading").requirements,
     val isDescriptionUserEdited: Boolean = false,
     val isRequirementsUserEdited: Boolean = false,
-    val draftPayStructure: List<DurationPay> = listOf(DurationPay(2, 249)),
-    val lastPostedJob: JobPost? = null
+    val draftPayStructure: List<DurationPay> = emptyList(),
+    val pricingOptions: List<DurationPay> = emptyList(),
+    val pricingQuote: Map<String, String> = emptyMap(),
+    val lastPostedJob: JobPost? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class ShopkeeperViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ShopkeeperState())
     val uiState: StateFlow<ShopkeeperState> = _uiState.asStateFlow()
+
+    fun setError(message: String) {
+        _uiState.update { it.copy(errorMessage = message, pricingQuote = emptyMap()) }
+    }
 
     fun updateTitle(title: String) {
         _uiState.update { it.copy(draftTitle = title) }
@@ -119,21 +130,22 @@ class ShopkeeperViewModel : ViewModel() {
                 draftTitle = category,
                 draftIsDelivery = isDelivery,
                 draftDescription = newDescription,
-                draftRequirements = newRequirements
+                draftRequirements = newRequirements,
+                pricingQuote = emptyMap()
             )
         }
     }
 
     fun updateLocation(location: String) {
-        _uiState.update { it.copy(draftLocation = location) }
+        _uiState.update { it.copy(draftLocation = location, pricingQuote = emptyMap()) }
     }
 
     fun updatePickupLocation(pickup: String) {
-        _uiState.update { it.copy(draftPickupLocation = pickup) }
+        _uiState.update { it.copy(draftPickupLocation = pickup, pricingQuote = emptyMap()) }
     }
 
     fun updateDropLocation(drop: String) {
-        _uiState.update { it.copy(draftDropLocation = drop) }
+        _uiState.update { it.copy(draftDropLocation = drop, pricingQuote = emptyMap()) }
     }
 
     fun updatePackageType(packageType: String) {
@@ -145,11 +157,11 @@ class ShopkeeperViewModel : ViewModel() {
     }
 
     fun updateScheduledDate(date: String) {
-        _uiState.update { it.copy(draftScheduledDate = date) }
+        _uiState.update { it.copy(draftScheduledDate = date, pricingQuote = emptyMap()) }
     }
 
     fun updateScheduledTime(time: String) {
-        _uiState.update { it.copy(draftScheduledTime = time) }
+        _uiState.update { it.copy(draftScheduledTime = time, pricingQuote = emptyMap()) }
     }
 
     fun updateWorkingRequirementType(type: String) {
@@ -157,7 +169,8 @@ class ShopkeeperViewModel : ViewModel() {
         _uiState.update { currentState ->
             currentState.copy(
                 draftWorkingRequirementType = if (isImmediate) "IMMEDIATE" else "DYNAMIC_TIME",
-                draftScheduledTime = if (isImmediate) "Immediate" else (if (currentState.draftScheduledTime == "Immediate") "09:00 AM" else currentState.draftScheduledTime)
+                draftScheduledTime = if (isImmediate) "Immediate" else (if (currentState.draftScheduledTime == "Immediate") "09:00 AM" else currentState.draftScheduledTime),
+                pricingQuote = emptyMap()
             )
         }
     }
@@ -169,7 +182,8 @@ class ShopkeeperViewModel : ViewModel() {
                 draftBookingType = if (isCurrent) "CURRENT" else "PRE_BOOKING",
                 draftScheduledDate = if (isCurrent) todayIsoDate() else "",
                 draftWorkingRequirementType = if (isCurrent) "IMMEDIATE" else "DYNAMIC_TIME",
-                draftScheduledTime = if (isCurrent) "Immediate" else ""
+                draftScheduledTime = if (isCurrent) "Immediate" else "",
+                pricingQuote = emptyMap()
             )
         }
     }
@@ -267,125 +281,158 @@ class ShopkeeperViewModel : ViewModel() {
                 draftRequirements = initialSuggestion.requirements,
                 isDescriptionUserEdited = false,
                 isRequirementsUserEdited = false,
-                draftPayStructure = listOf(DurationPay(2, 249))
+                draftPayStructure = emptyList(),
+                pricingQuote = emptyMap(),
+                errorMessage = null
             )
         }
     }
 
     fun toggleDurationPay(hours: Int, defaultPrice: Int) {
         _uiState.update { state ->
-            state.copy(draftPayStructure = listOf(DurationPay(hours, defaultPrice)))
+            val configured = state.pricingOptions.firstOrNull { it.hours == hours } ?: return@update state
+            state.copy(draftPayStructure = listOf(configured), pricingQuote = emptyMap())
         }
     }
 
     fun removeDurationPay(item: DurationPay) {
         _uiState.update { state ->
-            state.copy(draftPayStructure = state.draftPayStructure.filter { dp -> dp.hours != item.hours })
+            state.copy(draftPayStructure = state.draftPayStructure.filter { dp -> dp.hours != item.hours }, pricingQuote = emptyMap())
         }
     }
 
     fun updatePrice(hours: Int, newPrice: Int) {
-        _uiState.update { state ->
-            val updated = state.draftPayStructure.map {
-                if (it.hours == hours) it.copy(price = newPrice) else it
-            }
-            state.copy(draftPayStructure = updated)
-        }
+        // Prices and limits are authoritative backend values and are never edited on the client.
     }
 
     fun addDurationPay(hours: Int, price: Int) {
         _uiState.update { state ->
-            state.copy(draftPayStructure = listOf(DurationPay(hours, price)))
+            val configured = state.pricingOptions.firstOrNull { it.hours == hours } ?: return@update state
+            state.copy(draftPayStructure = listOf(configured), pricingQuote = emptyMap())
         }
     }
 
-    fun postJob(): JobPost? {
-        val state = _uiState.value
-        if (state.draftSubmitted) return null
+    suspend fun refreshJobs() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        runCatching { ErrnoMobileApi.myJobs() }
+            .onSuccess { jobs -> _uiState.update { it.copy(recentJobs = jobs, activeJobsCount = jobs.count { job -> job.status == "Active" }, isLoading = false) } }
+            .onFailure { error -> _uiState.update { it.copy(isLoading = false, errorMessage = error.localizedMessage ?: "Unable to load jobs. Retry.") } }
+    }
 
-        val todayCal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+    suspend fun updateJobLifecycle(jobId: String, action: String) {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        try {
+            when (action) {
+                "complete" -> ErrnoMobileApi.completeJob(jobId)
+                "cancel" -> ErrnoMobileApi.cancelJob(jobId)
+                else -> error("Unsupported job action")
+            }
+            refreshJobs()
+        } catch (error: Exception) {
+            _uiState.update { it.copy(isLoading = false, errorMessage = error.localizedMessage ?: "Unable to update job.") }
+            throw error
         }
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).apply { isLenient = false }
+    }
 
+    suspend fun refreshProfile() {
+        try {
+            val profile = ErrnoMobileApi.profile()
+            val shop = ErrnoMobileApi.shop()
+            _uiState.update { it.copy(ownerName = profile.optString("name", "Shopkeeper"), shopName = shop?.optString("shop_name", "My Store") ?: "My Store", shopAddress = shop?.optString("address", "") ?: "", errorMessage = null) }
+        } catch (error: Exception) {
+            _uiState.update { it.copy(errorMessage = error.localizedMessage ?: "Unable to load profile.") }
+        }
+    }
+
+    suspend fun refreshPricing() {
+        try {
+            val configured = ErrnoMobileApi.pricingDurations()
+            _uiState.update { state ->
+                val selected = configured.firstOrNull { it.hours == state.draftPayStructure.firstOrNull()?.hours } ?: configured.firstOrNull()
+                state.copy(pricingOptions = configured, draftPayStructure = listOfNotNull(selected), pricingQuote = emptyMap(), errorMessage = null)
+            }
+        } catch (error: Exception) {
+            _uiState.update { it.copy(errorMessage = error.localizedMessage ?: "Pricing configuration is unavailable.") }
+        }
+    }
+
+    suspend fun saveProfile(name: String, storeName: String) {
+        val current = _uiState.value
+        val profile = ErrnoMobileApi.updateProfile(name.trim())
+        val shop = ErrnoMobileApi.saveShop(storeName.trim(), current.shopAddress, "General Store")
+        _uiState.update { it.copy(ownerName = profile.optString("name"), shopName = shop.optString("shop_name"), errorMessage = null) }
+    }
+
+    suspend fun refreshQuote() {
+        val state = _uiState.value
+        val hours = state.draftPayStructure.firstOrNull()?.hours ?: error("Select a configured duration first.")
+        val area = if (state.draftIsDelivery) state.draftPickupLocation.ifBlank { "Pickup Store" } else state.draftLocation.ifBlank { "Okhla Market Area" }
+        val date = runCatching { java.time.LocalDate.parse(state.draftScheduledDate) }
+            .getOrElse { error("Choose a valid service date before requesting a quote.") }
+        val time = if (state.draftWorkingRequirementType == "IMMEDIATE") {
+            java.time.LocalTime.now()
+        } else {
+            runCatching { java.time.LocalTime.parse(state.draftScheduledTime, java.time.format.DateTimeFormatter.ofPattern("hh:mm a", Locale.ENGLISH)) }
+                .getOrElse { error("Choose a valid service time before requesting a quote.") }
+        }
+        val quoteSchedule = java.time.LocalDateTime.of(date, time)
+            .format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy 'at' hh:mm a", Locale.ENGLISH))
+        val quote = ErrnoMobileApi.requestPricingQuote(hours, quoteSchedule, area)
+        val fields = listOf("quote_id", "service_start_at", "final_service_charge", "base_price", "base_price_min", "max_price", "time_multiplier", "demand_multiplier", "commission_amount", "worker_payout_amount", "expires_at")
+        _uiState.update { it.copy(pricingQuote = fields.associateWith { key -> quote.optString(key) }.filterValues(String::isNotBlank), errorMessage = null) }
+    }
+
+    suspend fun postJob(): JobPost {
+        val state = _uiState.value
+        check(!state.draftSubmitted) { "This job has already been submitted." }
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).apply { isLenient = false }
         val persistedDate: String
         val persistedTime: String
-
         if (state.draftBookingType == "CURRENT") {
-            // Current Job MUST be assigned today's local date automatically.
             persistedDate = todayIsoDate()
-            persistedTime = if (state.draftWorkingRequirementType == "IMMEDIATE") "Immediate" else state.draftScheduledTime.ifBlank { "Immediate" }
-        } else if (state.draftBookingType == "PRE_BOOKING") {
-            if (state.draftScheduledDate.isBlank()) return null
-            if (state.draftWorkingRequirementType == "DYNAMIC_TIME" && (state.draftScheduledTime.isBlank() || state.draftScheduledTime == "Immediate")) return null
-
-            val parsePosition = ParsePosition(0)
-            val parsedDate = dateFormat.parse(state.draftScheduledDate, parsePosition)
-                ?.takeIf { parsePosition.index == state.draftScheduledDate.length && parsePosition.errorIndex < 0 }
-                ?: return null
-
-            val selectedCal = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-
-            val firstAllowed = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
-            val lastAllowed = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
-
-            // Strictly check date boundary: must be between tomorrow and day + 7
-            if (selectedCal.before(firstAllowed) || selectedCal.after(lastAllowed)) {
-                return null
-            }
-            persistedDate = dateFormat.format(selectedCal.time)
             persistedTime = if (state.draftWorkingRequirementType == "IMMEDIATE") "Immediate" else state.draftScheduledTime
         } else {
-            return null
+            require(state.draftBookingType == "PRE_BOOKING" && state.draftScheduledDate.isNotBlank()) { "Choose a valid pre-booking date." }
+            val pos = ParsePosition(0)
+            val parsed = dateFormat.parse(state.draftScheduledDate, pos)?.takeIf { pos.index == state.draftScheduledDate.length && pos.errorIndex < 0 }
+                ?: error("Choose a valid pre-booking date.")
+            val today = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+            val selected = Calendar.getInstance().apply { time = parsed; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+            val first = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+            val last = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
+            require(!selected.before(first) && !selected.after(last)) { "Pre-booking must be scheduled within the next seven days." }
+            require(state.draftWorkingRequirementType != "DYNAMIC_TIME" || (state.draftScheduledTime.isNotBlank() && state.draftScheduledTime != "Immediate")) { "Choose a start time for the pre-booking." }
+            persistedDate = dateFormat.format(selected.time)
+            persistedTime = if (state.draftWorkingRequirementType == "IMMEDIATE") "Immediate" else state.draftScheduledTime
         }
-
-        val computedLocation = if (state.draftIsDelivery) {
-            "${state.draftPickupLocation.ifBlank { "Pickup Store" }} -> ${state.draftDropLocation.ifBlank { "Drop Address" }}"
-        } else {
-            state.draftLocation.ifBlank { "Okhla Market Area" }
-        }
-
-        val categorySuggestion = getCategorySuggestion(state.draftCategory)
-
-        val newJob = JobPost(
-            id = System.currentTimeMillis().toString(),
-            title = state.draftCategory.ifBlank { "Loading & Unloading" },
-            category = state.draftCategory.ifBlank { "Loading & Unloading" },
-            location = computedLocation,
-            description = state.draftDescription.ifBlank { categorySuggestion.description },
-            requirements = state.draftRequirements.ifBlank { categorySuggestion.requirements },
-            payStructure = if (state.draftPayStructure.isNotEmpty()) state.draftPayStructure else listOf(DurationPay(2, 249)),
-            status = "Active",
-            postedTime = "Posted just now",
-            applicantsCount = 0,
-            isDeliveryJob = state.draftIsDelivery,
-            pickupLocation = state.draftPickupLocation,
-            dropLocation = state.draftDropLocation,
-            packageType = state.draftPackageType,
-            workerCount = state.draftWorkerCount,
-            scheduledDate = persistedDate,
-            bookingType = state.draftBookingType,
-            workingRequirementType = state.draftWorkingRequirementType,
-            scheduledTime = persistedTime
+        val quoteId = state.pricingQuote["quote_id"] ?: error("Request a current price quote before confirming the job.")
+        val serviceStart = state.pricingQuote["service_start_at"] ?: error("The pricing quote has no service time.")
+        val expiry = state.pricingQuote["expires_at"] ?: error("The pricing quote has no expiry.")
+        val expiryMillis = runCatching { java.time.Instant.parse(expiry).toEpochMilli() }.getOrElse { error("The pricing quote expiry is invalid.") }
+        require(expiryMillis > System.currentTimeMillis()) { "The price quote has expired. Request a new quote." }
+        val chosen = state.draftPayStructure.firstOrNull() ?: error("Select a configured duration.")
+        require(state.pricingOptions.any { it.hours == chosen.hours && it.price == chosen.price }) { "Selected price is no longer configured. Refresh pricing." }
+        val suggestion = getCategorySuggestion(state.draftCategory)
+        val location = if (state.draftIsDelivery) "${state.draftPickupLocation.ifBlank { "Pickup Store" }} -> ${state.draftDropLocation.ifBlank { "Drop Address" }}" else state.draftLocation.ifBlank { "Okhla Market Area" }
+        val draft = JobPost(
+            id = System.currentTimeMillis().toString(), title = state.draftCategory.ifBlank { "Loading & Unloading" },
+            category = state.draftCategory.ifBlank { "Loading & Unloading" }, location = location,
+            description = state.draftDescription.ifBlank { suggestion.description },
+            requirements = state.draftRequirements.ifBlank { suggestion.requirements }, payStructure = listOf(chosen),
+            status = "Active", isDeliveryJob = state.draftIsDelivery,
+            pickupLocation = state.draftPickupLocation, dropLocation = state.draftDropLocation,
+            packageType = state.draftPackageType, workerCount = state.draftWorkerCount,
+            scheduledDate = persistedDate, bookingType = state.draftBookingType,
+            workingRequirementType = state.draftWorkingRequirementType, scheduledTime = persistedTime
         )
-
-        _uiState.update {
-            it.copy(
-                recentJobs = listOf(newJob) + it.recentJobs,
-                activeJobsCount = it.activeJobsCount + 1,
-                lastPostedJob = newJob,
-                draftSubmitted = true
-            )
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        try {
+            val persisted = ErrnoMobileApi.postJob(draft, quoteId, serviceStart)
+            _uiState.update { it.copy(recentJobs = listOf(persisted) + it.recentJobs, activeJobsCount = it.activeJobsCount + 1, lastPostedJob = persisted, draftSubmitted = true, isLoading = false, pricingQuote = emptyMap(), errorMessage = null) }
+            return persisted
+        } catch (error: Exception) {
+            _uiState.update { it.copy(isLoading = false, errorMessage = error.localizedMessage ?: "Unable to post job.") }
+            throw error
         }
-        return newJob
     }
 }

@@ -1,62 +1,82 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
 
 struct DigiLockerVerificationView: View {
-    @Environment(LocalMarketplaceStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @State private var step = 1
-    @State private var aadhaar = ""
-    @State private var lastFour = ""
-    @State private var otp = ""
-    @State private var consent = true
-    @State private var loading = false
+    @State private var status: KYCStatusResponse?
+    @State private var documentType = ""
+    @State private var consent = false
+    @State private var busy = false
     @State private var error: String?
+    @State private var notice: String?
+    @State private var choosingDocument = false
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(spacing: 10) {
-                    Image(systemName: "shield.fill").font(.system(size: 32))
-                    Text("DigiLocker Identity Verification").font(.system(size: 18, weight: .bold))
-                    Text("Government of India • SEIF Worker Aadhaar Verification").font(.system(size: 12)).multilineTextAlignment(.center)
-                }.foregroundStyle(.white).padding(20).frame(maxWidth: .infinity).background(Color(hex: "0F52BA"), in: RoundedRectangle(cornerRadius: 16))
-                MockNotice(text: "Local verification simulation. Not connected to DigiLocker or the Government of India. Use test digits only; nothing is sent to a server.")
-                VStack(alignment: .leading, spacing: 16) {
-                    if step == 1 {
-                        Text("Enter 12-Digit Aadhaar Number").font(.system(size: 16, weight: .bold))
-                        Text("SEIF workers require Aadhaar verification via DigiLocker to start accepting jobs.").font(.system(size: 12)).foregroundStyle(.gray)
-                        TextField("Aadhaar Number", text: $aadhaar).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
-                            .onChange(of: aadhaar) { _, value in aadhaar = String(value.filter(\.isNumber).prefix(12)) }
-                        Toggle("I consent to share my Aadhaar card details via DigiLocker for worker identity verification.", isOn: $consent).font(.system(size: 11))
-                        PrimaryButton(title: "Fetch from DigiLocker", style: .dark, isLoading: loading, isDisabled: aadhaar.count != 12 || !consent) {
-                            lastFour = String(aadhaar.suffix(4)); aadhaar = ""; step = 2
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Identity verification").font(.system(size: 24, weight: .bold))
+                Text("Status: \(status?.status ?? "Loading")").font(.headline)
+                Text("Method: \(status?.verificationMethod ?? "Not verified")")
+                Text("ERRNO uses identity details for onboarding and eligibility review. Authorized reviewers can access verification results. Retention follows the configured policy. DigiLocker sign-in takes place outside ERRNO. Never share your DigiLocker password, PIN, or OTP with ERRNO.")
+                    .font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
+                if let status, !status.availableDocumentTypes.isEmpty {
+                    Picker("Document category", selection: $documentType) {
+                        ForEach(status.availableDocumentTypes, id: \.self) { Text($0).tag($0) }
+                    }.pickerStyle(.menu)
+                } else { Text("No document categories are currently configured.").font(.footnote) }
+                Toggle("I consent to use the selected category for ERRNO identity verification.", isOn: $consent)
+                Button {
+                    Task {
+                        await perform {
+                            guard let repo = try? AppDependencies.backendRepository() else { throw APIError.configuration }
+                            let result = try await repo.startKYC(documentTypes: [documentType], version: status?.consentVersion ?? "v1")
+                            if let raw = result.authorizationUrl, result.providerReady, let url = URL(string: raw), url.scheme == "https" { await UIApplication.shared.open(url) }
+                            else { notice = "DigiLocker is not configured. No identity verification was started." }
                         }
-                    } else if step == 2 {
-                        Text("Enter 6-Digit DigiLocker OTP").font(.system(size: 16, weight: .bold))
-                        Text("Demo OTP: 123456. No OTP has been sent.").font(.system(size: 12)).foregroundStyle(.gray)
-                        TextField("6-Digit OTP", text: $otp).keyboardType(.numberPad).textContentType(.oneTimeCode).textFieldStyle(.roundedBorder)
-                            .onChange(of: otp) { _, value in otp = String(value.filter(\.isNumber).prefix(6)) }
-                        if let error { Text(error).foregroundStyle(Color.errnoError) }
-                        PrimaryButton(title: "Verify Aadhaar & Complete", style: .dark, isLoading: loading, isDisabled: otp.count != 6) {
-                            guard !loading else { return }
-                            loading = true
-                            Task {
-                                do { try await Task.sleep(for: .milliseconds(600)) } catch { loading = false; return }
-                                loading = false
-                                if otp == "123456" { store.verify(lastFour: lastFour); otp = ""; lastFour = ""; step = 3 }
-                                else { error = "Incorrect demo OTP. Use 123456."; otp = "" }
-                            }
-                        }
-                    } else {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(Color.errnoGreen).frame(maxWidth: .infinity)
-                        Text("Aadhaar Card Verified ✓").font(.system(size: 20, weight: .bold))
-                        Text("Demo Verification ID: \(store.maskedAadhaar)").font(.system(size: 13))
-                        MockNotice(text: "Simulated verification only. No identity check was performed.")
-                        PrimaryButton(title: "Back to Worker Dashboard", style: .dark) { dismiss() }
                     }
-                }.marketplaceCard(padding: 20)
-            }.padding(24).frame(maxWidth: 600).frame(maxWidth: .infinity)
-        }.marketplacePage().navigationTitle("DigiLocker Aadhaar Verification").navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .onAppear { if store.isVerified { step = 3 } }
-            .onDisappear { aadhaar = ""; lastFour = ""; otp = "" }
+                } label: { Label("Continue with DigiLocker", systemImage: "arrow.up.forward.app") }
+                    .buttonStyle(.borderedProminent).disabled(busy || !consent || documentType.isEmpty || status?.digilockerEnabled != true)
+                if status?.manualReviewEnabled == true {
+                    Text("Manual review is a separate ERRNO process and does not mean DigiLocker verified the document.").font(.footnote)
+                    Button("Submit a document for manual review") { choosingDocument = true }
+                        .buttonStyle(.bordered).disabled(busy || !consent || documentType.isEmpty)
+                }
+                Button("Refresh status") { Task { await refresh() } }.disabled(busy)
+                Button("Withdraw consent", role: .destructive) {
+                    Task { await perform { let repo = try AppDependencies.backendRepository(); status = try await repo.withdrawKYCConsent(); notice = "Consent withdrawn." } }
+                }.disabled(busy)
+                if busy { ProgressView() }
+                if let error { Text(error).foregroundStyle(Color.errnoError) }
+                if let notice { Text(notice).foregroundStyle(Color.errnoTextSecondary) }
+            }.padding(22).frame(maxWidth: 640, alignment: .leading).frame(maxWidth: .infinity)
+        }.marketplacePage().navigationTitle("Identity verification").navigationBarTitleDisplayMode(.inline)
+            .task { await refresh() }
+            .fileImporter(isPresented: $choosingDocument, allowedContentTypes: [.pdf, .jpeg, .png], allowsMultipleSelection: false) { result in
+                Task {
+                    await perform {
+                        let picked = try result.get()
+                        guard let url = picked.first else { throw APIError.invalidInput }
+                        guard url.startAccessingSecurityScopedResource() else { throw APIError.invalidInput }
+                        defer { url.stopAccessingSecurityScopedResource() }
+                        let data = try Data(contentsOf: url)
+                        let mime = url.pathExtension.lowercased() == "pdf" ? "application/pdf" : (url.pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg")
+                        let repo = try AppDependencies.backendRepository()
+                        let response = try await repo.uploadKYC(documentType: documentType, version: status?.consentVersion ?? "v1", bytes: data, mime: mime)
+                        notice = "Submitted for manual review (\(response.status)). This is not official DigiLocker verification."
+                        await refresh()
+                    }
+                }
+            }
+    }
+
+    @MainActor private func refresh() async {
+        do { let repo = try AppDependencies.backendRepository(); status = try await repo.kycStatus(); if documentType.isEmpty { documentType = status?.availableDocumentTypes.first ?? "" } }
+        catch { self.error = error.localizedDescription }
+    }
+    @MainActor private func perform(_ action: @escaping () async throws -> Void) async {
+        busy = true; error = nil
+        defer { busy = false }
+        do { try await action() } catch { self.error = error.localizedDescription }
     }
 }

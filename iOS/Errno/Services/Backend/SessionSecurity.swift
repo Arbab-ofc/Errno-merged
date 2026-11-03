@@ -2,12 +2,25 @@ import Foundation
 import Security
 import FirebaseAuth
 
-/// No server-issued credential in the current backend is a verifiable session.
-/// The vault is ready for a future authenticated contract; current auth never writes to it.
+/// Opaque server session credentials are kept in the device-only Keychain vault.
 nonisolated protocol CredentialVault: Sendable {
     func read() throws -> Data?
     func write(_ data: Data) throws
     func clear() throws
+}
+
+nonisolated private struct StoredBackendSession: Codable, Sendable { let accessToken: String }
+nonisolated enum BackendTokenStore {
+    private static let vault = KeychainCredentialVault()
+    static func readToken() -> String? {
+        guard let data = try? vault.read(),
+              let stored = try? JSONDecoder().decode(StoredBackendSession.self, from: data) else { return nil }
+        return stored.accessToken
+    }
+    static func save(_ token: String) throws {
+        try vault.write(JSONEncoder().encode(StoredBackendSession(accessToken: token)))
+    }
+    static func clear() throws { try vault.clear() }
 }
 nonisolated struct KeychainCredentialVault: CredentialVault {
     private let service = "Errno.backend.session"
@@ -46,24 +59,50 @@ actor BackendSessionManager {
     private let vault: any CredentialVault
     init(vault: any CredentialVault = KeychainCredentialVault()) { self.vault = vault }
     func restore() async throws -> FirebaseUserProfile? {
-        try vault.clear() // Firebase owns the session; never persist an ID token in the app vault.
+        if let token = BackendTokenStore.readToken() {
+            do {
+                let client = APIClient(configuration: try .bundled())
+                return try await client.send(BackendEndpoints.currentUser(token: token))
+            } catch {
+                try? vault.clear()
+            }
+        }
         return try await FirebaseGoogleAuth.restore()
     }
     func logout() async throws {
+        if let token = BackendTokenStore.readToken(), let config = try? BackendConfiguration.bundled() {
+            let client = APIClient(configuration: config)
+            let _: [String: Bool]? = try? await client.send(BackendEndpoints.whatsappLogout(token: token))
+        }
         try vault.clear()
         try await FirebaseGoogleAuth.logout()
     }
 }
 
 nonisolated struct BackendAuthService: AuthServiceProtocol {
-    func sendOTP(to phone: String) async throws {
-        guard Self.validPhone(phone) else { throw APIError.invalidInput }
-        // Fixed server OTP + OTP disclosure + bypass in verify-otp: do not send or accept it.
-        throw APIError.insecureAuthentication
+    private func client() throws -> APIClient { APIClient(configuration: try .bundled()) }
+    private func normalizedPhone(_ phone: String) throws -> String {
+        let digits = phone.filter(\.isNumber)
+        guard digits.count == 10, digits.allSatisfy(\.isASCII) else { throw APIError.invalidInput }
+        return "+91" + digits
     }
-    func verifyOTP(_ otp: String, phone: String) async throws -> Bool {
+    func sendOTP(to phone: String, role: UserRole) async throws -> WhatsAppOTPChallenge {
+        guard Self.validPhone(phone) else { throw APIError.invalidInput }
+        return try await client().send(BackendEndpoints.whatsappSendOTP(WhatsAppOTPRequest(phone: try normalizedPhone(phone), role: role == .worker ? "WORKER" : "SHOPKEEPER")))
+    }
+    func resendOTP(to phone: String, role: UserRole, requestID: String) async throws -> WhatsAppOTPChallenge {
+        let request = WhatsAppOTPRequest(phone: try normalizedPhone(phone), role: role == .worker ? "WORKER" : "SHOPKEEPER", requestId: requestID)
+        return try await client().send(BackendEndpoints.whatsappResendOTP(request))
+    }
+    func verifyOTP(_ otp: String, phone: String, role: UserRole, requestID: String, fullName: String?) async throws -> FirebaseUserProfile {
         guard Self.validPhone(phone), otp.count == 6, otp.allSatisfy({ $0.isASCII && $0.isNumber }) else { throw APIError.invalidInput }
-        throw APIError.insecureAuthentication
+        let trimmedName = fullName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = WhatsAppOTPVerification(phone: try normalizedPhone(phone), requestId: requestID, otp: otp,
+                                              role: role == .worker ? "WORKER" : "SHOPKEEPER",
+                                              fullName: trimmedName?.isEmpty == false ? trimmedName : nil)
+        let response: WhatsAppLoginResponse = try await client().send(BackendEndpoints.whatsappVerifyOTP(payload))
+        try BackendTokenStore.save(response.accessToken)
+        return response.user
     }
     func register(name: String, phone: String, role: UserRole) async throws {
         // /register marks an arbitrary phone verified without OTP proof.
@@ -87,6 +126,9 @@ nonisolated enum AppDependencies {
         return BackendAuthService()
     }
     static func catalog() throws -> any JobCatalogRepository {
+        BackendRepository(client: APIClient(configuration: try .bundled()))
+    }
+    static func backendRepository() throws -> BackendRepository {
         BackendRepository(client: APIClient(configuration: try .bundled()))
     }
 }

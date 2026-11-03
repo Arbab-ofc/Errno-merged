@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
+import com.erno.app.data.repository.ErrnoMobileApi
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,16 +38,14 @@ import com.erno.app.ui.theme.ErnoTextSecondary
 
 data class ApplicationItem(
     val id: String,
+    val jobId: String,
     val workerName: String,
     val jobTitle: String,
     val experience: String,
     val distance: String,
     val rating: String,
-    val totalShiftsCompleted: Int = 14,
-    val pastReviews: List<String> = listOf(
-        "Punctual and very hard working. Completed store shift on time!",
-        "Handled customer orders with great care. Highly recommended worker."
-    ),
+    val totalShiftsCompleted: Int = 0,
+    val pastReviews: List<String> = emptyList(),
     var status: String // "Pending", "Accepted", "Declined"
 )
 
@@ -57,9 +57,25 @@ fun ShopkeeperApplicationsScreen(
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) } // 0: All, 1: Pending, 2: Accepted
     var selectedWorkerForReview by remember { mutableStateOf<ApplicationItem?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     // Starts empty (00) initially for new logins
     var applicationsList by remember { mutableStateOf(emptyList<ApplicationItem>()) }
+    suspend fun loadApplications() {
+        isLoading = true; errorMessage = null
+        try {
+            applicationsList = ErrnoMobileApi.ownerApplications().map { row ->
+                ApplicationItem(id = row.getString("id"), jobId = row.getString("job_id"),
+                    workerName = row.optString("worker_name").ifBlank { "Worker" }, jobTitle = row.getString("job_title"),
+                    experience = "", distance = "", rating = "—",
+                    status = when (row.optString("status")) { "accepted" -> "Accepted"; "rejected" -> "Declined"; else -> "Pending" })
+            }
+        } catch (error: Exception) { errorMessage = error.localizedMessage ?: "Unable to load applications." }
+        finally { isLoading = false }
+    }
+    LaunchedEffect(Unit) { loadApplications() }
 
     val pendingApps = applicationsList.filter { it.status == "Pending" }
     val acceptedApps = applicationsList.filter { it.status == "Accepted" }
@@ -158,7 +174,14 @@ fun ShopkeeperApplicationsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (filteredList.isEmpty()) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally), color = ErnoGreen)
+            } else if (errorMessage != null) {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text(errorMessage.orEmpty(), color = Color.DarkGray)
+                    TextButton(onClick = { scope.launch { loadApplications() } }) { Text("Retry", color = ErnoGreen) }
+                }
+            } else if (filteredList.isEmpty()) {
                 val monochromeMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
 
                 Box(
@@ -208,12 +231,20 @@ fun ShopkeeperApplicationsScreen(
                             application = app,
                             onViewReviews = { selectedWorkerForReview = app },
                             onAccept = {
-                                applicationsList = applicationsList.map {
-                                    if (it.id == app.id) it.copy(status = "Accepted") else it
+                                scope.launch {
+                                    try {
+                                        ErrnoMobileApi.decideApplication(app.jobId, app.id, "accepted")
+                                        applicationsList = applicationsList.map { if (it.id == app.id) it.copy(status = "Accepted") else it }
+                                    } catch (error: Exception) { errorMessage = error.localizedMessage ?: "Unable to accept application." }
                                 }
                             },
                             onDecline = {
-                                applicationsList = applicationsList.filter { it.id != app.id }
+                                scope.launch {
+                                    try {
+                                        ErrnoMobileApi.decideApplication(app.jobId, app.id, "rejected")
+                                        applicationsList = applicationsList.map { if (it.id == app.id) it.copy(status = "Declined") else it }
+                                    } catch (error: Exception) { errorMessage = error.localizedMessage ?: "Unable to decline application." }
+                                }
                             }
                         )
                     }

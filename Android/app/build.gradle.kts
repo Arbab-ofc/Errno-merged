@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,7 +17,12 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "ERRNO_API_BASE_URL", "\"${providers.gradleProperty("ERRNO_API_BASE_URL").orElse("").get()}\"")
+        val localApiProperties = Properties().apply {
+            rootProject.file("gradle.properties.local").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+        }
+        val apiBaseUrl = localApiProperties.getProperty("ERRNO_API_BASE_URL")
+            ?: providers.gradleProperty("ERRNO_API_BASE_URL").orElse("").get()
+        buildConfigField("String", "ERRNO_API_BASE_URL", "\"$apiBaseUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -43,6 +50,9 @@ android {
 }
 
 dependencies {
+
+    implementation("com.razorpay:checkout:1.6.40")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

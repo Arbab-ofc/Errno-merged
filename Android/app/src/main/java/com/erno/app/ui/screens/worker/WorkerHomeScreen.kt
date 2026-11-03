@@ -38,6 +38,7 @@ fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
     onToggleOnlineStatus: (Boolean) -> Unit,
+    onRefresh: () -> Unit,
     onNavigateTab: (WorkerTab) -> Unit
 ) {
     Scaffold(
@@ -105,7 +106,7 @@ fun WorkerHomeScreen(
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xFF131D2A),
-                        border = BorderStroke(1.dp, if (state.isOnline) ErnoGreen.copy(alpha = 0.5f) else Color(0xFF2E3D52)),
+                        border = BorderStroke(1.dp, if (state.isAvailableForWork) ErnoGreen.copy(alpha = 0.5f) else Color(0xFF2E3D52)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -117,18 +118,18 @@ fun WorkerHomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
-                                        .background(if (state.isOnline) ErnoGreen else Color.Gray, CircleShape)
+                                        .background(if (state.isAvailableForWork) ErnoGreen else Color.Gray, CircleShape)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
                                     Text(
-                                        text = if (state.isOnline) "Active (Online)" else "Inactive (Offline)",
+                                        text = if (state.isAvailableForWork) "Active (Available)" else "Inactive (Unavailable)",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
                                     Text(
-                                        text = if (state.isOnline) "Receiving job requests nearby" else "Not receiving shift requests",
+                                        text = if (state.isAvailableForWork) "Recruiters can see you as available" else "You are not marked available",
                                         fontSize = 11.sp,
                                         color = Color.Gray
                                     )
@@ -136,7 +137,7 @@ fun WorkerHomeScreen(
                             }
 
                             Switch(
-                                checked = state.isOnline,
+                                checked = state.isAvailableForWork,
                                 onCheckedChange = { onToggleOnlineStatus(it) },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
@@ -197,7 +198,16 @@ fun WorkerHomeScreen(
                 }
 
                 // Available Job Cards OR Empty State with Big Grey ERRNO Logo
-                if (state.availableJobs.isEmpty()) {
+                if (state.isLoadingJobs) {
+                    item { CircularProgressIndicator(color = ErnoGreen, modifier = Modifier.padding(24.dp)) }
+                } else if (state.jobLoadError != null) {
+                    item {
+                        Column {
+                            Text(state.jobLoadError, color = Color.White)
+                            TextButton(onClick = onRefresh) { Text("Retry", color = ErnoGreen) }
+                        }
+                    }
+                } else if (state.availableJobs.isEmpty()) {
                     item {
                         val monochromeMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
 

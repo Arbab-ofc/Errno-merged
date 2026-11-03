@@ -1,0 +1,27 @@
+services:
+  whatsapp-gateway:
+    build: .
+    restart: unless-stopped
+    environment:
+      WHATSAPP_GATEWAY_BIND: 0.0.0.0
+      WHATSAPP_GATEWAY_PORT: 8787
+      WHATSAPP_GATEWAY_SESSION_PATH: /var/lib/errno-whatsapp/session
+      WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET: ${WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET:?set a random secret of at least 32 characters}
+      WHATSAPP_GATEWAY_AUTOCONNECT: ${WHATSAPP_GATEWAY_AUTOCONNECT:-true}
+      WHATSAPP_GATEWAY_QR_TTL_SECONDS: ${WHATSAPP_GATEWAY_QR_TTL_SECONDS:-60}
+    volumes:
+      - whatsapp-session:/var/lib/errno-whatsapp/session
+    networks:
+      - errno-private
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  whatsapp-session:
+
+networks:
+  errno-private:
+    external: true

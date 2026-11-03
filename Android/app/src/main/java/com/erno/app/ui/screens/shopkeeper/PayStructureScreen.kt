@@ -7,11 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.data.model.DurationPay
@@ -34,9 +30,6 @@ fun PayStructureScreen(
     onAddMoreDuration: (hours: Int, price: Int) -> Unit,
     onDoneClick: () -> Unit
 ) {
-    var editingItem by remember { mutableStateOf<DurationPay?>(null) }
-    var editPriceText by remember { mutableStateOf("") }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -112,7 +105,7 @@ fun PayStructureScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Set pay for multiple duration options. Workers can choose as per their availability.",
+                            text = "Customer prices come from the active ERRNO pricing configuration.",
                             fontSize = 12.sp,
                             color = Color(0xFF33691E),
                             lineHeight = 16.sp
@@ -122,13 +115,12 @@ fun PayStructureScreen(
             }
 
             // Duration Rows
-            items(state.draftPayStructure) { item ->
+            items(state.pricingOptions) { item ->
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            editingItem = item
-                            editPriceText = item.price.toString()
+                            onAddMoreDuration(item.hours, item.price)
                         },
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -152,91 +144,13 @@ fun PayStructureScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.Black
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit",
-                                tint = Color.Gray,
-                                modifier = Modifier.size(18.dp)
-                            )
                         }
                     }
                 }
             }
 
-            // "+ Add More" button
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val nextHour = (state.draftPayStructure.maxOfOrNull { it.hours } ?: 0) + 1
-                            val lastPrice = state.draftPayStructure.lastOrNull()?.price ?: 99
-                            onAddMoreDuration(nextHour, lastPrice + 70)
-                        }
-                        .padding(vertical = 10.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        tint = ErnoGreen,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Add More",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = ErnoGreen
-                    )
-                }
-            }
+            if (state.pricingOptions.isEmpty()) item { Text("No approved duration prices are currently available.", color = Color.Gray) }
         }
     }
 
-    // Edit Price Dialog
-    editingItem?.let { item ->
-        AlertDialog(
-            onDismissRequest = { editingItem = null },
-            title = { Text("Edit Pay for ${item.hours} Hour(s)", color = Color.Black) },
-            text = {
-                OutlinedTextField(
-                    value = editPriceText,
-                    onValueChange = { editPriceText = it },
-                    label = { Text("Price (₹)", color = Color.Gray) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black,
-                        focusedBorderColor = ErnoGreen,
-                        unfocusedBorderColor = Color(0xFFE0E0E0),
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val newPrice = editPriceText.toIntOrNull()
-                        if (newPrice != null && newPrice > 0) {
-                            onUpdatePrice(item.hours, newPrice)
-                        }
-                        editingItem = null
-                    }
-                ) {
-                    Text("Save", color = ErnoGreen, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { editingItem = null }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            }
-        )
-    }
 }

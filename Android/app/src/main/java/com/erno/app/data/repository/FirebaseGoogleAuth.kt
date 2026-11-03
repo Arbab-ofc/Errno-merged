@@ -21,6 +21,8 @@ data class ErrnoIdentity(val id: String, val role: String?, val onboardingComple
 /** Google Credential Manager -> Firebase -> verified Firebase ID token -> ERRNO API. */
 object FirebaseGoogleAuth {
     suspend fun signIn(activity: Activity, selectedRole: String): ErrnoIdentity {
+        runCatching { WhatsAppAuthApi.logout() }
+        ErrnoSessionStore.clear()
         val clientIdName = "default_web_client_id"
         val resourceId = activity.resources.getIdentifier(clientIdName, "string", activity.packageName)
         check(resourceId != 0) { "Google OAuth web client is missing. Configure OAuth in Firebase and download google-services.json again." }
@@ -47,13 +49,26 @@ object FirebaseGoogleAuth {
         }
     }
 
-    suspend fun restore(): ErrnoIdentity? = withContext(Dispatchers.IO) {
+    suspend fun restore(): ErrnoIdentity? {
+        if (ErrnoSessionStore.hasToken()) {
+            val sessionIdentity = runCatching {
+                val profile = ErrnoMobileApi.profile()
+                ErrnoIdentity(profile.getString("id"), profile.optString("role").takeUnless { it.isBlank() || it == "null" }, profile.optBoolean("onboarding_completed"))
+            }.getOrNull()
+            if (sessionIdentity != null) return sessionIdentity
+            ErrnoSessionStore.clear()
+        }
+        return withContext(Dispatchers.IO) {
         val user = FirebaseAuth.getInstance().currentUser ?: return@withContext null
         val token = user.getIdToken(true).await().token ?: error("Firebase did not return an ID token.")
         syncWithBackend(token, null)
+        }
     }
 
     suspend fun logout() {
+        runCatching { ErrnoMobileApi.presenceOffline() }
+        runCatching { WhatsAppAuthApi.logout() }
+        runCatching { WhatsAppAuthApi.logout() }
         val user = FirebaseAuth.getInstance().currentUser
         if (user != null && BuildConfig.ERRNO_API_BASE_URL.isNotBlank()) {
             runCatching {

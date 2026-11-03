@@ -22,6 +22,8 @@ struct ProfilePanelView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var shopName = ""
+    @State private var isSaving = false
+    @State private var saveError: String?
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -30,8 +32,22 @@ struct ProfilePanelView: View {
                     case .edit:
                         TextField(role == .worker ? "Worker Full Name" : "Owner Name", text: $name).textFieldStyle(.roundedBorder)
                         if role == .shopkeeper { TextField("Store / Business Name", text: $shopName).textFieldStyle(.roundedBorder) }
-                        PrimaryButton(title: "Save Details", style: .dark, isDisabled: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
-                            store.updateProfile(role: role, name: name, shopName: shopName); dismiss()
+                        if let saveError { Text(saveError).foregroundStyle(Color.errnoError) }
+                        PrimaryButton(title: isSaving ? "Saving…" : "Save Details", style: .dark,
+                                      isDisabled: isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                            Task {
+                                isSaving = true; saveError = nil
+                                defer { isSaving = false }
+                                do {
+                                    let repository = try AppDependencies.backendRepository()
+                                    _ = try await repository.updateProfile(name: name.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    if role == .shopkeeper {
+                                        _ = try await repository.updateShop(UpdateShopRequest(shop_name: shopName, address: store.shopAddress, category: "General Store"))
+                                    }
+                                    store.updateProfile(role: role, name: name, shopName: shopName)
+                                    dismiss()
+                                } catch { saveError = error.localizedDescription }
+                            }
                         }
                     case .location:
                         Text("📍 Address: \(store.shopAddress)")
