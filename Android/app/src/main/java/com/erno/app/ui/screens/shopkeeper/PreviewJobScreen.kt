@@ -112,7 +112,8 @@ fun PreviewJobScreen(
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("Backend price quote", fontWeight = FontWeight.Bold, color = Color.Black)
                         Text("Customer charge: ₹${state.pricingQuote["final_service_charge"] ?: "Unavailable"}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ErnoGreen)
-                        Text("Base ₹${state.pricingQuote["base_price"] ?: "—"} · time ${state.pricingQuote["time_multiplier"] ?: "—"}× · demand ${state.pricingQuote["demand_multiplier"] ?: "—"}×", fontSize = 12.sp, color = ErnoTextSecondary)
+                        Text("Base ₹${state.pricingQuote["base_price"] ?: "—"} · maximum ₹${state.pricingQuote["maximum_price"] ?: "—"}", fontSize = 12.sp, color = ErnoTextSecondary)
+                        Text("Time ${state.pricingQuote["time_multiplier"] ?: "—"}× · demand ${state.pricingQuote["demand_multiplier"] ?: "—"}×", fontSize = 12.sp, color = ErnoTextSecondary)
                         Text("ERRNO commission ₹${state.pricingQuote["commission_amount"] ?: "—"} · worker payout ₹${state.pricingQuote["worker_payout_amount"] ?: "—"}", fontSize = 12.sp, color = ErnoTextSecondary)
                         Text("Quote expires: ${state.pricingQuote["expires_at"] ?: "—"}", fontSize = 11.sp, color = ErnoTextSecondary)
                         if (state.errorMessage != null) Text(state.errorMessage, color = Color(0xFFB3261E), fontSize = 12.sp)

@@ -378,7 +378,7 @@ class ShopkeeperViewModel : ViewModel() {
         val quoteSchedule = java.time.LocalDateTime.of(date, time)
             .format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy 'at' hh:mm a", Locale.ENGLISH))
         val quote = ErrnoMobileApi.requestPricingQuote(hours, quoteSchedule, area)
-        val fields = listOf("quote_id", "service_start_at", "final_service_charge", "base_price", "base_price_min", "max_price", "time_multiplier", "demand_multiplier", "commission_amount", "worker_payout_amount", "expires_at")
+        val fields = listOf("quote_id", "service_start_at", "final_service_charge", "base_price", "maximum_price", "time_multiplier", "demand_multiplier", "commission_amount", "worker_payout_amount", "expires_at")
         _uiState.update { it.copy(pricingQuote = fields.associateWith { key -> quote.optString(key) }.filterValues(String::isNotBlank), errorMessage = null) }
     }
 
