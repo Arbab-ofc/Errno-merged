@@ -62,12 +62,15 @@ fun ShopkeeperMyJobsScreen(
     onNavigateTab: (ShopkeeperTab) -> Unit,
     onRateWorkerClick: (jobId: String, rating: Float, comment: String) -> Unit = { _, _, _ -> },
     onJobLifecycleAction: (jobId: String, action: String) -> Unit = { _, _ -> },
+    onReschedule: (JobPost, String) -> Unit = { _, _ -> },
     onPayJob: (jobId: String) -> Unit = {}
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(1) } // 0: All, 1: Active, 2: Completed
     var ratingJob by remember { mutableStateOf<JobPost?>(null) }
     var selectedAssignedWorkerJob by remember { mutableStateOf<JobPost?>(null) }
     var pendingAction by remember { mutableStateOf<Pair<JobPost, String>?>(null) }
+    var rescheduleJob by remember { mutableStateOf<JobPost?>(null) }
+    var rescheduleLabel by remember { mutableStateOf("") }
 
     val activeJobs = state.recentJobs.filter { it.status in setOf("Active", "Worker Assigned", "In Progress") }
     val completedJobs = state.recentJobs.filter { it.status == "Completed" }
@@ -197,6 +200,7 @@ fun ShopkeeperMyJobsScreen(
                             onViewWorkerProfile = { selectedAssignedWorkerJob = job },
                             onRateWorkerClick = { ratingJob = job },
                             onLifecycleAction = { action -> pendingAction = job to action },
+                            onReschedule = { rescheduleJob = job; rescheduleLabel = "" },
                             onPayJob = { onPayJob(job.id) }
                         )
                     }
@@ -215,6 +219,22 @@ fun ShopkeeperMyJobsScreen(
             text = { Text(if (action == "complete") "This marks ${job.title} as completed. No payment is processed." else "Workers will no longer be able to apply or continue this job.") },
             confirmButton = { TextButton(onClick = { onJobLifecycleAction(job.id, action); pendingAction = null }) { Text("Confirm") } },
             dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Keep job") } }
+        )
+    }
+
+    rescheduleJob?.let { job ->
+        AlertDialog(
+            onDismissRequest = { rescheduleJob = null },
+            title = { Text("Reschedule pre-booking") },
+            text = {
+                Column {
+                    Text("Enter India time, for example: 12 Nov 2026 at 10:30 AM")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(value = rescheduleLabel, onValueChange = { rescheduleLabel = it }, label = { Text("Date and time") }, singleLine = true)
+                }
+            },
+            confirmButton = { TextButton(onClick = { onReschedule(job, rescheduleLabel); rescheduleJob = null }) { Text("Get price and reschedule") } },
+            dismissButton = { TextButton(onClick = { rescheduleJob = null }) { Text("Keep schedule") } }
         )
     }
 
@@ -392,6 +412,7 @@ fun ShopkeeperJobManageCard(
     onViewWorkerProfile: () -> Unit = {},
     onRateWorkerClick: () -> Unit = {},
     onLifecycleAction: (String) -> Unit = {},
+    onReschedule: () -> Unit = {},
     onPayJob: () -> Unit = {}
 ) {
     val maxPrice = job.payStructure.maxOfOrNull { it.price } ?: 349
@@ -482,6 +503,19 @@ fun ShopkeeperJobManageCard(
                     fontSize = 13.sp,
                     color = Color.Gray
                 )
+            }
+
+            if (job.bookingType == "PRE_BOOKING") {
+                val stateLabel = when (job.dispatchStatus) {
+                    "SCHEDULED", "DISPATCHING" -> "Scheduled • worker requests at ${job.dispatchAt.ifBlank { "four hours before start" }}"
+                    "DISPATCHED" -> "Dispatched • requests sent to ${job.dispatchWorkerCount ?: 0} eligible workers"
+                    "NO_ELIGIBLE_WORKERS" -> "Awaiting eligible workers • ${job.dispatchAt}"
+                    "FAILED_RETRYABLE" -> "Dispatch retry scheduled"
+                    "CANCELLED" -> "Dispatch cancelled"
+                    "FAILED" -> "Dispatch failed • check booking status or contact support"
+                    else -> "Awaiting dispatch"
+                }
+                Text(stateLabel, fontSize = 12.sp, color = Color(0xFF795548), modifier = Modifier.padding(top = 6.dp))
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -609,6 +643,9 @@ fun ShopkeeperJobManageCard(
             }
             if (job.status == "In Progress" || job.status == "Worker Assigned" || job.status == "Active") {
                 Spacer(modifier = Modifier.height(10.dp))
+                if (job.bookingType == "PRE_BOOKING" && job.dispatchStatus in setOf("SCHEDULED", "NO_ELIGIBLE_WORKERS", "FAILED_RETRYABLE", "DISPATCHING")) {
+                    OutlinedButton(onClick = onReschedule, modifier = Modifier.fillMaxWidth()) { Text("Reschedule") }
+                }
                 when (job.status) {
                     "In Progress" -> Button(onClick = { onLifecycleAction("complete") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)) { Text("Confirm work completed") }
                     else -> OutlinedButton(onClick = { onLifecycleAction("cancel") }, modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, Color(0xFFB3261E))) { Text("Cancel job", color = Color(0xFFB3261E)) }

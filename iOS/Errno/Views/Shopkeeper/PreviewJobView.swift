@@ -14,7 +14,10 @@ struct PreviewJobView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Text(viewModel.category.rawValue).font(.system(size: 20, weight: .bold)); Spacer(); if viewModel.category.isDelivery { StatusBadge(text: "Delivery Job") } }
                 Label(viewModel.location, systemImage: "mappin.and.ellipse").font(.system(size: 14)).foregroundStyle(.gray)
-                Text("Scheduled: \(viewModel.scheduledStartTime.formatted(date: .abbreviated, time: .omitted)) at \(viewModel.selectedTime):00").font(.system(size: 13))
+                if viewModel.isScheduled {
+                    Text("Pre-Booking: \(viewModel.scheduledStartTime.formatted(date: .abbreviated, time: .omitted)) at \(viewModel.selectedTime):00").font(.system(size: 13))
+                    Text("Worker requests will be sent four hours before this time.").font(.system(size: 12)).foregroundStyle(.secondary)
+                } else { Text("Instant booking • worker requests sent immediately").font(.system(size: 13)) }
                 if viewModel.category.isDelivery {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("📦 Pickup: \(viewModel.pickupLocation)")
@@ -53,6 +56,7 @@ struct PreviewJobView: View {
             .onChange(of: viewModel.estimatedDurationHours) { _, _ in Task { await viewModel.refreshPricingQuote() } }
             .onChange(of: viewModel.selectedTime) { _, _ in Task { await viewModel.refreshPricingQuote() } }
             .onChange(of: viewModel.scheduledStartTime) { _, _ in Task { await viewModel.refreshPricingQuote() } }
+            .onChange(of: viewModel.isScheduled) { _, _ in Task { await viewModel.refreshPricingQuote() } }
     }
 
     @ViewBuilder private var quoteBreakdown: some View {

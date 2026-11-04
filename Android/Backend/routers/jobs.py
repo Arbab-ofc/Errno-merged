@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import hashlib
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.exc import IntegrityError
@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from database import get_db
 from models import Job, Application, User, Shop, PricingQuote, WorkerLocation
-from schemas import (JobCreateRequest, JobResponse, ApplicationResponse, ApplicationDecisionRequest,
+from schemas import (JobCreateRequest, JobResponse, JobRescheduleRequest, ApplicationResponse, ApplicationDecisionRequest,
                      OwnerApplicationResponse, WorkerApplicationResponse, WorkerApplicationsPage,
                      ApplicationJobSummary, ApplicationShopSummary)
 from firebase_auth import authenticated_user, require_role
@@ -18,6 +18,7 @@ def _assignment_notification_event_id(job_id: str, worker_id: str) -> str:
     return f"job-assigned:{digest}"
 from services.notification_service import queue_notification, queue_admin_notifications
 from routers.maps import tracking_hub
+from services.prebooking_dispatcher import dispatch_immediately_or_retry, utc_now
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -27,7 +28,7 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
     if (request.latitude is None) != (request.longitude is None):
         raise HTTPException(status_code=422, detail="Latitude and longitude must be supplied together")
     quote = db.query(PricingQuote).filter(PricingQuote.id == request.quote_id).with_for_update().first()
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     if quote is None or quote.user_id != user.id:
         raise HTTPException(status_code=404, detail="Pricing quote not found")
     if quote.status != "active" or quote.consumed_at is not None:
@@ -43,6 +44,9 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
         raise HTTPException(status_code=409, detail="Job duration does not match the pricing quote")
     if request.service_start_at.tzinfo is None:
         raise HTTPException(status_code=422, detail="Service start time must include a timezone")
+    scheduled_start = request.service_start_at.astimezone(timezone.utc)
+    if request.booking_type == "PRE_BOOKING" and scheduled_start <= now:
+        raise HTTPException(status_code=422, detail="Pre-booking service time must be in the future")
     quoted_start = quote.service_start_at if quote.service_start_at.tzinfo else quote.service_start_at.replace(tzinfo=timezone.utc)
     if request.service_start_at.astimezone(timezone.utc) != quoted_start.astimezone(timezone.utc):
         raise HTTPException(status_code=409, detail="Job service time does not match the pricing quote")
@@ -74,10 +78,20 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
         pickup_location=request.pickup_location,
         drop_location=request.drop_location,
         is_delivery=request.is_delivery,
-        status="open"
+        status="open",
+        booking_type=request.booking_type,
+        scheduled_at=scheduled_start if request.booking_type == "PRE_BOOKING" else None,
+        dispatch_at=scheduled_start - timedelta(hours=4) if request.booking_type == "PRE_BOOKING" else None,
+        prebooking_dispatch_status="SCHEDULED" if request.booking_type == "PRE_BOOKING" else None,
+        prebooking_next_attempt_at=(scheduled_start - timedelta(hours=4)) if request.booking_type == "PRE_BOOKING" else None,
     )
     db.add(job)
     db.flush()
+    if request.booking_type == "PRE_BOOKING" and job.dispatch_at <= now:
+        job.prebooking_dispatch_status = "DISPATCHING"
+        job.prebooking_dispatch_attempts = 1
+        job.prebooking_dispatch_started_at = now
+        dispatch_immediately_or_retry(db, job, now)
     quote.status = "consumed"
     quote.consumed_at = now
     quote.job_id = job.id
@@ -92,9 +106,72 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
 
     return JobResponse.from_orm(job)
 
+
+@router.patch("/{job_id}/reschedule", response_model=JobResponse)
+def reschedule_prebooking(job_id: str, body: JobRescheduleRequest,
+                          user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "shop_owner", "shopkeeper")
+    job = db.query(Job).filter(Job.id == job_id).with_for_update().first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.shop_id is None or db.query(Shop.id).filter(Shop.id == job.shop_id, Shop.owner_id == user.id).first() is None:
+        raise HTTPException(status_code=403, detail="You do not own this job")
+    if job.booking_type != "PRE_BOOKING" or job.status != "open" or job.prebooking_dispatch_status in ("DISPATCHED", "CANCELLED", "FAILED"):
+        raise HTTPException(status_code=409, detail="This booking can no longer be rescheduled")
+    if body.service_start_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="Service start time must include a timezone")
+    start = body.service_start_at.astimezone(timezone.utc)
+    now = utc_now()
+    if start <= now:
+        raise HTTPException(status_code=422, detail="Pre-booking service time must be in the future")
+    quote = db.query(PricingQuote).filter(PricingQuote.id == body.quote_id).with_for_update().first()
+    if quote is None or quote.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Pricing quote not found")
+    expires = quote.expires_at if quote.expires_at.tzinfo else quote.expires_at.replace(tzinfo=timezone.utc)
+    if quote.status != "active" or quote.consumed_at is not None or expires <= now:
+        raise HTTPException(status_code=409, detail="Pricing quote is no longer active")
+    import re
+    match = re.search(r"\d+", job.duration_type or "")
+    if not match or int(match.group()) != quote.duration_hours or start != (quote.service_start_at if quote.service_start_at.tzinfo else quote.service_start_at.replace(tzinfo=timezone.utc)):
+        raise HTTPException(status_code=409, detail="Quote does not match this booking's duration and new service time")
+    area = job.pickup_location if job.is_delivery else job.location
+    normalized_area = " ".join((area or "").split()).casefold() or None
+    if quote.area_id != normalized_area:
+        raise HTTPException(status_code=409, detail="Quote does not match the booking location")
+    job.scheduled_at = start
+    job.scheduled_date = start.isoformat()
+    job.dispatch_at = start - timedelta(hours=4)
+    job.prebooking_schedule_version += 1
+    job.prebooking_dispatch_status = "SCHEDULED"
+    job.prebooking_dispatch_attempts = 0
+    job.prebooking_next_attempt_at = job.dispatch_at
+    job.prebooking_dispatch_started_at = None
+    job.prebooking_dispatch_completed_at = None
+    job.prebooking_dispatch_lease_owner = None
+    job.prebooking_dispatch_lease_until = None
+    job.prebooking_dispatch_worker_count = None
+    job.prebooking_dispatch_failure_code = None
+    job.prebooking_dispatch_failure_detail = None
+    job.pay_amount = float(quote.final_service_charge)
+    # A booking has one active quote association. Keep the old consumed quote
+    # for audit, but release its unique job link so the replacement can attach.
+    db.query(PricingQuote).filter(PricingQuote.job_id == job.id, PricingQuote.id != quote.id).update(
+        {PricingQuote.job_id: None}, synchronize_session=False
+    )
+    quote.status, quote.consumed_at, quote.job_id = "consumed", now, job.id
+    if job.dispatch_at <= now:
+        job.prebooking_dispatch_status = "DISPATCHING"
+        job.prebooking_dispatch_attempts = 1
+        job.prebooking_dispatch_started_at = now
+        dispatch_immediately_or_retry(db, job, now)
+    db.commit()
+    db.refresh(job)
+    return JobResponse.from_orm(job)
+
 @router.get("", response_model=List[JobResponse])
 def get_jobs(status_filter: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(Job)
+    query = query.filter((Job.booking_type != "PRE_BOOKING") | (Job.prebooking_dispatch_status == "DISPATCHED"))
     if status_filter:
         query = query.filter(Job.status == status_filter)
     jobs = query.order_by(Job.created_at.desc()).all()
@@ -120,6 +197,8 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if job.booking_type == "PRE_BOOKING" and job.prebooking_dispatch_status != "DISPATCHED":
+        raise HTTPException(status_code=404, detail="Job not found")
     return JobResponse.from_orm(job)
 
 @router.post("/{job_id}/apply", response_model=ApplicationResponse)
@@ -130,6 +209,8 @@ def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Ses
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status != "open":
         raise HTTPException(status_code=409, detail="This job is no longer accepting applications")
+    if job.booking_type == "PRE_BOOKING" and job.prebooking_dispatch_status != "DISPATCHED":
+        raise HTTPException(status_code=404, detail="Job not found")
 
     worker = user
 
@@ -291,9 +372,15 @@ def update_job_status(
         raise HTTPException(status_code=409, detail="Invalid job status transition")
 
     job.status = new_status
+    if new_status == "cancelled" and job.booking_type == "PRE_BOOKING" and job.prebooking_dispatch_status != "DISPATCHED":
+        job.prebooking_dispatch_status = "CANCELLED"
+        job.prebooking_next_attempt_at = None
+        job.prebooking_dispatch_lease_owner = None
+        job.prebooking_dispatch_lease_until = None
     if new_status in ("completed", "cancelled"):
         db.query(WorkerLocation).filter(WorkerLocation.job_id == job.id).delete(synchronize_session=False)
-    job.cancelled_at = datetime.now(timezone.utc)
+    if new_status == "cancelled":
+        job.cancelled_at = datetime.now(timezone.utc)
     if new_status == "cancelled" and job.assigned_worker_id:
         worker = db.query(User).filter(User.id == job.assigned_worker_id).first()
         if worker:

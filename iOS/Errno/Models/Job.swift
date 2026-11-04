@@ -63,6 +63,10 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     var status: JobStatus
     var createdAt: Date
     var scheduledStartTime: Date?
+    var bookingType: String = "CURRENT"
+    var dispatchAt: Date? = nil
+    var dispatchStatus: String? = nil
+    var dispatchWorkerCount: Int? = nil
     var location = "Okhla Market Area"
     var pickupLocation = "Okhla Market Store #12"
     var dropLocation = "Sector 18 Noida"
@@ -80,7 +84,12 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     var payLabel: String { "₹\(Int(payAmount))" }
     var scheduleLabel: String {
         guard let date = scheduledStartTime else { return "Today" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_IN")
+        formatter.timeZone = TimeZone(identifier: "Asia/Kolkata")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
     var displayStatus: String {
         switch status {

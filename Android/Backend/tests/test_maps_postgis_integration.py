@@ -18,11 +18,11 @@ def postgis_db():
 def test_map_migration_postgis_columns_and_gist_index(postgis_db):
     with postgis_db.connect() as db:
         assert db.execute(text("SELECT PostGIS_Full_Version()")).scalar_one()
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="eb72a31c4890"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="fb4a6c90d112"
         indexes={row[0] for row in db.execute(text("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='worker_live_locations'"))}
         assert "ix_worker_live_locations_location_gist" in indexes
         columns={row[0] for row in db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='jobs'"))}
-        assert {"latitude","longitude"} <= columns
+        assert {"latitude","longitude","booking_type","scheduled_at","dispatch_at","prebooking_dispatch_status"} <= columns
 
 def test_postgis_nearby_distance_and_radius_boundary(postgis_db):
     with postgis_db.connect() as db:

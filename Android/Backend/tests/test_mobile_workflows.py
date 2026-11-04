@@ -1,4 +1,6 @@
 import sys
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pytest
@@ -13,9 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import firebase_auth
 from database import Base, get_db
-from models import AdminPermission, Application, Job, Shop, User
+from models import AdminPermission, Application, Job, Notification, PresenceSession, Shop, User
 from routers import admin, auth, firebase, jobs, shops
 from pricing_test_utils import insert_job_quote
+from services import prebooking_dispatcher
 
 
 @pytest.fixture
@@ -162,6 +165,134 @@ def test_job_lifecycle_authorization_timestamps_and_idempotency(mobile_client):
     assert admin_jobs.json()["items"][0]["id"] == job["id"]
     assert admin_jobs.json()["items"][0]["status"] == "completed"
     assert admin_jobs.json()["items"][0]["started_at"] and admin_jobs.json()["items"][0]["completed_at"]
+
+
+def test_prebooking_is_hidden_until_exact_four_hour_dispatch(mobile_client, monkeypatch):
+    client, factory = mobile_client
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
+    worker_headers, worker_id = onboard(client, "worker", "worker")
+    start = datetime.now(timezone.utc) + timedelta(hours=6)
+    quote_id, quote_start = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=start, area_id="market road")
+    created = client.post("/jobs", headers=owner_headers, json={
+        "title": "Scheduled helper", "category": "General", "duration_type": "2 hours", "location": "Market Road",
+        "booking_type": "PRE_BOOKING", "quote_id": quote_id, "service_start_at": quote_start,
+    })
+    assert created.status_code == 200, created.text
+    row = created.json()
+    assert row["prebooking_dispatch_status"] == "SCHEDULED"
+    assert datetime.fromisoformat(row["dispatch_at"]) == start - timedelta(hours=4)
+    assert client.get("/jobs").json() == []
+    assert client.get(f"/jobs/{row['id']}").status_code == 404
+    assert client.post(f"/jobs/{row['id']}/apply", headers=worker_headers).status_code == 404
+    with factory() as db:
+        db.add(PresenceSession(user_id=worker_id, session_identifier="prebook-test", expires_at=start + timedelta(hours=1),
+                               is_foreground=True, availability_status="available"))
+        db.commit()
+        assert db.query(Notification).filter_by(recipient_user_id=worker_id).count() == 0
+
+    monkeypatch.setattr(prebooking_dispatcher, "SessionLocal", factory)
+    dispatch_time = start - timedelta(hours=4)
+    assert not prebooking_dispatcher.dispatch_due_once(now=dispatch_time - timedelta(seconds=1), owner="worker-a")
+    assert prebooking_dispatcher.dispatch_due_once(now=dispatch_time, owner="worker-a")
+    assert client.get("/jobs").json()[0]["id"] == row["id"]
+    application = client.post(f"/jobs/{row['id']}/apply", headers=worker_headers)
+    assert application.status_code == 200
+    decision = client.patch(f"/jobs/{row['id']}/applications/{application.json()['id']}", headers=owner_headers,
+                            json={"decision": "accepted"})
+    assert decision.status_code == 200 and decision.json()["status"] == "accepted"
+    with factory() as db:
+        persisted = db.query(Job).filter_by(id=row["id"]).one()
+        assert persisted.prebooking_dispatch_status == "DISPATCHED"
+        assert persisted.prebooking_dispatch_worker_count == 1
+        invitations = db.query(Notification).filter_by(recipient_user_id=worker_id, event_type="prebooking_worker_request").all()
+        assert len(invitations) == 1
+        # A second dispatcher pass and idempotent generation cannot duplicate invitation notices.
+        assert not prebooking_dispatcher.dispatch_due_once(now=dispatch_time + timedelta(seconds=1), owner="worker-b")
+        assert db.query(Notification).filter_by(recipient_user_id=worker_id, event_type="prebooking_worker_request").count() == 1
+
+
+def test_prebooking_cancel_and_reschedule_invalidate_old_dispatch_generation(mobile_client):
+    client, factory = mobile_client
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
+    onboard(client, "worker", "worker")
+    first_start = datetime.now(timezone.utc) + timedelta(hours=8)
+    quote_id, quote_start = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=first_start, area_id="market road")
+    created = client.post("/jobs", headers=owner_headers, json={
+        "title": "Reschedulable helper", "category": "General", "duration_type": "2 hours", "location": "Market Road",
+        "booking_type": "PRE_BOOKING", "quote_id": quote_id, "service_start_at": quote_start,
+    })
+    assert created.status_code == 200, created.text
+    job = created.json()
+    new_start = first_start + timedelta(days=1)
+    new_quote, new_quote_start = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=new_start, area_id="market road")
+    updated = client.patch(f"/jobs/{job['id']}/reschedule", headers=owner_headers,
+                           json={"quote_id": new_quote, "service_start_at": new_quote_start})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["prebooking_schedule_version"] == job["prebooking_schedule_version"] + 1
+    assert datetime.fromisoformat(updated.json()["dispatch_at"]) == new_start - timedelta(hours=4)
+    cancelled = client.patch(f"/jobs/{job['id']}/status?new_status=cancelled", headers=owner_headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["prebooking_dispatch_status"] == "CANCELLED"
+    assert client.patch(f"/jobs/{job['id']}/reschedule", headers=owner_headers,
+                        json={"quote_id": quote_id, "service_start_at": quote_start}).status_code == 409
+
+
+def test_prebooking_rejects_past_start_and_late_creation_dispatches_now(mobile_client, monkeypatch):
+    client, factory = mobile_client
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
+    worker_headers, worker_id = onboard(client, "worker", "worker")
+    fixed_now = datetime.now(timezone.utc)
+    monkeypatch.setattr(jobs, "utc_now", lambda: fixed_now)
+    past = fixed_now - timedelta(minutes=1)
+    past_quote, past_start = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=past, area_id="market road")
+    response = client.post("/jobs", headers=owner_headers, json={"title": "Past", "category": "General", "duration_type": "2 hours", "location": "Market Road", "booking_type": "PRE_BOOKING", "quote_id": past_quote, "service_start_at": past_start})
+    assert response.status_code == 422
+
+    with factory() as db:
+        db.add(PresenceSession(user_id=worker_id, session_identifier="late-prebook", expires_at=fixed_now + timedelta(days=2),
+                               is_foreground=True, availability_status="available"))
+        db.commit()
+    late_start = fixed_now + timedelta(hours=2)
+    late_quote, late_service_start = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=late_start, area_id="market road")
+    created = client.post("/jobs", headers=owner_headers, json={"title": "Late", "category": "General", "duration_type": "2 hours", "location": "Market Road", "booking_type": "PRE_BOOKING", "quote_id": late_quote, "service_start_at": late_service_start})
+    assert created.status_code == 200, created.text
+    assert created.json()["prebooking_dispatch_status"] == "DISPATCHED"
+    with factory() as db:
+        assert db.query(Notification).filter_by(recipient_user_id=worker_id, event_type="prebooking_worker_request").count() == 1
+
+
+def test_prebooking_no_eligible_workers_is_not_reported_as_dispatched(mobile_client, monkeypatch):
+    client, factory = mobile_client
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
+    start = datetime.now(timezone.utc) + timedelta(hours=6)
+    quote_id, quote_start = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=start, area_id="market road")
+    created = client.post("/jobs", headers=owner_headers, json={
+        "title": "No match booking", "category": "General", "duration_type": "2 hours", "location": "Market Road",
+        "booking_type": "PRE_BOOKING", "quote_id": quote_id, "service_start_at": quote_start,
+    })
+    assert created.status_code == 200, created.text
+    monkeypatch.setattr(prebooking_dispatcher, "SessionLocal", factory)
+    assert prebooking_dispatcher.dispatch_due_once(now=start - timedelta(hours=4), owner="no-worker")
+    with factory() as db:
+        saved = db.query(Job).filter_by(id=created.json()["id"]).one()
+        assert saved.prebooking_dispatch_status == "NO_ELIGIBLE_WORKERS"
+        assert saved.prebooking_dispatch_worker_count == 0
+        assert db.query(Notification).filter_by(event_type="prebooking_worker_request").count() == 0
+
+
+def test_prebooking_india_midnight_boundary_is_stored_as_utc_instant(mobile_client):
+    client, factory = mobile_client
+    owner_headers, owner_id = onboard(client, "owner", "shop_owner")
+    start = datetime(2030, 1, 1, 0, 30, tzinfo=ZoneInfo("Asia/Kolkata"))
+    quote_id, _ = insert_job_quote(factory, owner_id, duration_hours=2, service_start_at=start.astimezone(timezone.utc), area_id="market road")
+    quote_start = start.isoformat()
+    created = client.post("/jobs", headers=owner_headers, json={
+        "title": "Midnight boundary", "category": "General", "duration_type": "2 hours", "location": "Market Road",
+        "booking_type": "PRE_BOOKING", "quote_id": quote_id, "service_start_at": quote_start,
+    })
+    assert created.status_code == 200, created.text
+    assert datetime.fromisoformat(created.json()["scheduled_at"]) == start.astimezone(timezone.utc)
+    assert datetime.fromisoformat(created.json()["dispatch_at"]) == start.astimezone(timezone.utc) - timedelta(hours=4)
 
 
 def test_worker_application_history_pagination_and_pending_cancellation(mobile_client):

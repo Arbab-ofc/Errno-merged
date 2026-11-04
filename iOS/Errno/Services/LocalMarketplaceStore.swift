@@ -79,6 +79,17 @@ final class LocalMarketplaceStore {
             job.location = row.location ?? ""
             job.pickupLocation = row.pickup_location ?? ""
             job.dropLocation = row.drop_location ?? ""
+            job.bookingType = row.booking_type ?? "CURRENT"
+            job.dispatchStatus = row.prebooking_dispatch_status
+            job.dispatchWorkerCount = row.prebooking_dispatch_worker_count
+            if let dispatch = row.dispatch_at {
+                let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                job.dispatchAt = fractional.date(from: dispatch) ?? ISO8601DateFormatter().date(from: dispatch)
+            }
+            if let scheduled = row.scheduled_at {
+                let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                job.scheduledStartTime = fractional.date(from: scheduled) ?? ISO8601DateFormatter().date(from: scheduled)
+            }
             job.assignedWorkerId = row.assigned_worker_id.flatMap(UUID.init(uuidString:))
             return job
         }
