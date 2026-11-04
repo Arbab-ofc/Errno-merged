@@ -59,6 +59,28 @@ enum FirebaseGoogleAuth {
         return profile
     }
 
+#if DEBUG
+    /// Emulator-only credential sign-in for simulator verification. This uses Firebase Auth
+    /// emulator tokens and the normal verified FastAPI auth endpoint; it is absent from Release.
+    static func signInDevelopment(email: String, password: String, role: UserRole) async throws -> FirebaseUserProfile {
+        guard ProcessInfo.processInfo.environment["ERRNO_FIREBASE_AUTH_EMULATOR"] != nil else {
+            throw APIError.googleSignInConfiguration
+        }
+        let result = try await Auth.auth().signIn(withEmail: email, password: password)
+        let token = try await firebaseIDToken(for: result.user, forceRefresh: true)
+        let client = APIClient(configuration: try BackendConfiguration.bundled())
+        let login: FirebaseLoginResponse = try await client.send(BackendEndpoints.firebaseLogin(token: token))
+        var profile = login.user
+        if profile.role == nil {
+            let roleName = role == .worker ? "worker" : "shop_owner"
+            var endpoint = try APIEndpoint.json("PATCH", ["api", "v1", "users", "me"], body: RoleSelectionPayload(role: roleName))
+            endpoint.bearerToken = token
+            profile = try await client.send(endpoint, as: FirebaseUserProfile.self)
+        }
+        return profile
+    }
+#endif
+
     static func restore() async throws -> FirebaseUserProfile? {
         guard let user = Auth.auth().currentUser else { return nil }
         let token = try await firebaseIDToken(for: user, forceRefresh: true)

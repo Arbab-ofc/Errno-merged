@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Index, func, text, JSON, Integer, Numeric, Time, CheckConstraint, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Index, func, text, JSON, Integer, Numeric, Time, CheckConstraint, UniqueConstraint, Date
 from sqlalchemy.orm import relationship
 from db_base import Base
 
@@ -68,6 +68,8 @@ class Job(Base):
     duration_type = Column(String, nullable=False, default="Full Shift (8 hrs)", server_default=text("'Full Shift (8 hrs)'"))
     scheduled_date = Column(String, nullable=True, default="Today", server_default=text("'Today'"))
     location = Column(String, nullable=True, default="Okhla Market Area", server_default=text("'Okhla Market Area'"))
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     pickup_location = Column(String, nullable=True)
     drop_location = Column(String, nullable=True)
     is_delivery = Column(Boolean, nullable=False, default=False, server_default=text("false"))
@@ -680,6 +682,15 @@ class PresenceSession(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     __table_args__ = (UniqueConstraint("user_id", "session_identifier", name="uq_presence_user_session"),)
+
+
+class WorkerLocation(Base):
+    __tablename__ = "worker_live_locations"
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    job_id = Column(String, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=True, index=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(), index=True)
 
 
 class WhatsAppOTPChallenge(Base):

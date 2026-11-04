@@ -16,11 +16,11 @@ final class PostJobViewModel {
     var description: String = "Deliver parcel/products safely from shop to target location."
     
     // Step 2: Location
-    var latitude: Double = 28.5355
-    var longitude: Double = 77.2641
-    var location = "Okhla Market Area"
-    var pickupLocation = "Okhla Market Store #12"
-    var dropLocation = "Sector 18 Noida"
+    var latitude: Double?
+    var longitude: Double?
+    var location = ""
+    var pickupLocation = ""
+    var dropLocation = ""
     var packageType = "Parcel / Product Box"
     var selectedTime = 13
     let draftId = UUID()
@@ -176,9 +176,9 @@ final class PostJobViewModel {
             longitude: longitude,
             scheduledStartTime: Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
         )
-        newJob.location = location.isEmpty ? "Okhla Market Area" : location
-        newJob.pickupLocation = pickupLocation.isEmpty ? "Pickup Store" : pickupLocation
-        newJob.dropLocation = dropLocation.isEmpty ? "Drop Address" : dropLocation
+        newJob.location = location
+        newJob.pickupLocation = pickupLocation
+        newJob.dropLocation = dropLocation
         newJob.packageType = packageType
         return newJob
     }

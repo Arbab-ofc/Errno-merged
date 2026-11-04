@@ -9,12 +9,12 @@ struct PostJobLocationView: View {
                 Text(viewModel.category.isDelivery ? "Delivery Route Locations" : "Shop / Work Address")
                     .font(.system(size: 16, weight: .bold))
                 if viewModel.category.isDelivery {
-                    ManualAddressField(title: "Pickup Location", text: $viewModel.pickupLocation)
                     ManualAddressField(title: "Customer Drop Location", text: $viewModel.dropLocation)
+                    MapLocationPicker(address: $viewModel.pickupLocation, latitude: $viewModel.latitude, longitude: $viewModel.longitude)
                 } else {
-                    ManualAddressField(title: "Shop / Work Address", text: $viewModel.location)
+                    MapLocationPicker(address: $viewModel.location, latitude: $viewModel.latitude, longitude: $viewModel.longitude)
                 }
-                Text("Enter a complete address. Address suggestions and GPS pin placement are unavailable because ERRNO has no configured geocoder or location permission flow.")
+                Text("Search across India, select or drag the job location pin, or enter an address manually. Location access is requested only when you tap the location button.")
                     .font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary)
                 if !viewModel.isLocationValid {
                     Text(viewModel.category.isDelivery ? "Pickup and drop-off locations are required." : "Work address is required.")

@@ -32,6 +32,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.ui.components.GoogleSignInButton
+import com.erno.app.ui.components.DevelopmentFirebaseLogin
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoLime
 import com.erno.app.ui.theme.ErnoTextSecondary
@@ -44,9 +45,13 @@ fun ShopkeeperLoginScreen(
     onTermsClick: () -> Unit = {},
     onPrivacyClick: () -> Unit = {},
     onGoogleSignInClick: () -> Unit = {},
-    isGoogleLoading: Boolean = false
+    isGoogleLoading: Boolean = false,
+    developmentAuthEnabled: Boolean = false,
+    onDevelopmentSignIn: (String, String) -> Unit = { _, _ -> }
 ) {
     var phoneNumber by remember { mutableStateOf("") }
+    var developmentEmail by remember { mutableStateOf("") }
+    var developmentPassword by remember { mutableStateOf("") }
     val darkLinkColor = Color(0xFF11382A)
     val scrollState = rememberScrollState()
 
@@ -306,6 +311,11 @@ fun ShopkeeperLoginScreen(
                             text = "Sign in with Google",
                             isLoading = isGoogleLoading,
                             onClick = onGoogleSignInClick
+                        )
+                        DevelopmentFirebaseLogin(
+                            enabled = developmentAuthEnabled, email = developmentEmail, password = developmentPassword,
+                            onEmailChange = { developmentEmail = it }, onPasswordChange = { developmentPassword = it },
+                            loading = isGoogleLoading, onSignIn = { onDevelopmentSignIn(developmentEmail, developmentPassword) },
                         )
                     }
                 }

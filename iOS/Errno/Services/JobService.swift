@@ -81,7 +81,7 @@ final class BackendJobService: JobServiceProtocol {
         if let expiration = ISO8601DateFormatter().date(from: quote.expires_at), expiration <= Date() { throw APIError.validation }
         let body = CreateJobRequest(title: job.title, category: job.category.rawValue, description: job.description,
                                     pay_amount: NSDecimalNumber(decimal: quote.final_service_charge).doubleValue, duration_type: "\(Int(hours)) hours",
-                                    scheduled_date: job.scheduleLabel, location: job.location,
+                                    scheduled_date: job.scheduleLabel, location: job.location, latitude: job.latitude, longitude: job.longitude,
                                     pickup_location: job.pickupLocation, drop_location: job.dropLocation, is_delivery: job.isDelivery,
                                     quote_id: quote.quote_id, service_start_at: quote.service_start_at)
         let row = try await repository.createJob(body)

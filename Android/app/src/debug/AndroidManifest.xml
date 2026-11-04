@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Local development backend and Firebase Auth emulator use HTTP/WS. This
+         manifest is merged into debug variants only; release builds stay TLS-only. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>

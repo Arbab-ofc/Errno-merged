@@ -20,7 +20,7 @@ struct WorkerJobDetailsView: View {
                         Label("\(job.locationLabel) • \(job.distance)", systemImage: "mappin.and.ellipse").font(.system(size: 13)).foregroundStyle(.gray)
                         Text(job.description).font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
                         Text("Work Location & Route").font(.system(size: 14, weight: .bold))
-                        WorkerLocationMapView(locationName: job.locationLabel, distanceText: job.distance, mapHeight: 110)
+                        WorkerLocationMapView(locationName: job.locationLabel, distanceText: job.distance, mapHeight: 180, latitude: job.latitude, longitude: job.longitude)
                         Text("Choose Duration & Pay").font(.system(size: 16, weight: .bold))
                         Text("Select the time you can work").font(.system(size: 12)).foregroundStyle(.gray)
                         Text("Scheduled: \(job.scheduleLabel)").font(.system(size: 12)).foregroundStyle(.gray)

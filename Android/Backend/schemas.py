@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -88,11 +88,19 @@ class JobCreateRequest(BaseModel):
     duration_type: str = Field(default="Full Shift (8 hrs)", min_length=1, max_length=80)
     scheduled_date: Optional[str] = Field(default=None, max_length=100)
     location: Optional[str] = Field(default=None, max_length=500)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     pickup_location: Optional[str] = None
     drop_location: Optional[str] = None
     is_delivery: bool = False
     quote_id: str = Field(..., min_length=1, max_length=64)
     service_start_at: datetime
+
+    @model_validator(mode="after")
+    def coordinates_are_a_pair(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
 
 class JobResponse(BaseModel):
     id: str
@@ -104,6 +112,8 @@ class JobResponse(BaseModel):
     duration_type: str
     scheduled_date: Optional[str] = None
     location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     pickup_location: Optional[str] = None
     drop_location: Optional[str] = None
     is_delivery: bool

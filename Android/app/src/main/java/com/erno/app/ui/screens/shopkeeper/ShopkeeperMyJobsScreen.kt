@@ -19,6 +19,26 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Slider
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.unit.IntSize
+import com.erno.app.data.model.MapCoordinate
+import com.erno.app.data.model.NearbyWorker
+import com.erno.app.data.model.ApproximateRoute
+import com.erno.app.data.repository.ErrnoMobileApi
+import com.erno.app.ui.components.WorkerLocationMapView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import org.json.JSONObject
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -465,6 +485,8 @@ fun ShopkeeperJobManageCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+            if (job.status == "Active" && job.latitude != null && job.longitude != null) NearbyWorkersPanel(job)
+            if (job.status in setOf("Worker Assigned", "In Progress")) AssignedWorkerTrackingPanel(job)
 
             // ASSIGNED WORKER PROFILE CARD BANNER
             if (isWorkerAssigned) {
@@ -600,5 +622,82 @@ fun ShopkeeperJobManageCard(
                 Text("Payment is collected after completion is confirmed.", fontSize = 11.sp, color = Color.Gray)
             }
         }
+    }
+}
+
+
+@Composable
+private fun NearbyWorkersPanel(job: JobPost) {
+    var radius by remember(job.id) { mutableFloatStateOf(5f) }
+    var workers by remember(job.id) { mutableStateOf(emptyList<NearbyWorker>()) }
+    var loading by remember(job.id) { mutableStateOf(false) }
+    var error by remember(job.id) { mutableStateOf<String?>(null) }
+    val scope=rememberCoroutineScope()
+    fun refresh() { scope.launch { loading=true; error=null; try { workers=ErrnoMobileApi.nearbyWorkers(job.id,radius.toDouble()) } catch(e:Exception) { error=e.localizedMessage ?: "Nearby search unavailable" } finally { loading=false } } }
+    Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+        Text("Nearby available workers · ${radius.toInt()} km",fontWeight=FontWeight.Bold,fontSize=13.sp)
+        Slider(value=radius,onValueChange={radius=it},valueRange=1f..25f,steps=23)
+        if(loading) CircularProgressIndicator(modifier=Modifier.size(20.dp),strokeWidth=2.dp,color=ErnoGreen)
+        else if(error!=null) Text(error!!,fontSize=12.sp,color=Color(0xFFB3261E))
+        else if(workers.isEmpty()) Text("No recently active available workers in this radius.",fontSize=12.sp,color=Color.Gray)
+        else Text("${workers.size} eligible worker${if(workers.size==1)"" else "s"} · approximate locations",fontSize=12.sp,color=Color.Gray)
+        WorkerLocationMapView(job.location,latitude=job.latitude,longitude=job.longitude,nearbyWorkers=workers)
+        TextButton(onClick={refresh()}) { Text("Refresh nearby workers",color=ErnoGreen) }
+    }
+    LaunchedEffect(job.id,radius) { refresh() }
+}
+
+@Composable
+private fun AssignedWorkerTrackingPanel(job: JobPost) {
+    var coordinate by remember(job.id) { mutableStateOf<MapCoordinate?>(null) }
+    var route by remember(job.id) { mutableStateOf<ApproximateRoute?>(null) }
+    var state by remember(job.id) { mutableStateOf("connecting") }
+    var updated by remember(job.id) { mutableStateOf<String?>(null) }
+    var lastUpdateMillis by remember(job.id) { mutableStateOf(0L) }
+    var error by remember(job.id) { mutableStateOf<String?>(null) }
+    val scope=rememberCoroutineScope(); val lastRouteAt=remember(job.id){AtomicLong(0)}
+    var lastRouted by remember(job.id) { mutableStateOf<MapCoordinate?>(null) }
+    LaunchedEffect(job.id,job.status) {
+        var backoff=1_000L; var terminal=false
+        while(kotlinx.coroutines.currentCoroutineContext().isActive && !terminal) {
+            val alive=AtomicBoolean(true); val ended=AtomicBoolean(false); var socket:WebSocket?=null
+            try {
+                socket=ErrnoMobileApi.openTrackingSocket(job.id,object:WebSocketListener(){
+                    override fun onOpen(webSocket:WebSocket,response:okhttp3.Response){webSocket.send("heartbeat")}
+                    override fun onMessage(webSocket:WebSocket,text:String){
+                        val json=runCatching{JSONObject(text)}.getOrNull()?:return
+                        scope.launch {
+                            state=json.optString("state",state)
+                            if(state=="ended")ended.set(true)
+                            if(json.optString("type")=="heartbeat_ping" && lastUpdateMillis>0 && System.currentTimeMillis()-lastUpdateMillis>120_000) state="stale"
+                            if(json.has("latitude")&&json.has("longitude")){
+                                val next=MapCoordinate(json.getDouble("latitude"),json.getDouble("longitude")); coordinate=next; updated=json.optString("updated_at"); lastUpdateMillis=System.currentTimeMillis()
+                                val previous=lastRouted
+                                val distance=if(previous==null)Double.POSITIVE_INFINITY else FloatArray(1).also { android.location.Location.distanceBetween(previous.latitude,previous.longitude,next.latitude,next.longitude,it) }[0].toDouble()
+                                val now=System.currentTimeMillis(); val last=lastRouteAt.get()
+                                if(distance>=100 && now-last>30_000 && lastRouteAt.compareAndSet(last,now)) {
+                                    lastRouted=next
+                                    try { route=ErrnoMobileApi.trackingRoute(job.id) } catch(_:Exception) { route=null }
+                                }
+                            }
+                        }
+                    }
+                    override fun onClosed(webSocket:WebSocket,code:Int,reason:String){alive.set(false)}
+                    override fun onFailure(webSocket:WebSocket,t:Throwable,response:okhttp3.Response?){alive.set(false);scope.launch{state="disconnected";error="Tracking connection interrupted. Reconnecting…"}}
+                })
+                backoff=1_000L
+                while(kotlinx.coroutines.currentCoroutineContext().isActive && alive.get() && !ended.get()) { delay(15_000); if(alive.get() && !socket.send("heartbeat")) alive.set(false) }
+                terminal=ended.get()
+            } catch(e:Exception){state="disconnected";error=e.localizedMessage ?: "Tracking unavailable";alive.set(false)}
+            finally { socket?.close(1000,"tracking reconnect") }
+            if(!terminal && kotlinx.coroutines.currentCoroutineContext().isActive){delay(backoff);backoff=(backoff*2).coerceAtMost(30_000L)}
+        }
+    }
+    Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+        Text("Live worker tracking",fontWeight=FontWeight.Bold,fontSize=13.sp)
+        Text("${state.replaceFirstChar { it.uppercase() }}${updated?.let { " · Updated $it" } ?: ""}",fontSize=11.sp,color=if(state=="online") ErnoGreen else Color.Gray)
+        error?.let { Text(it,fontSize=11.sp,color=Color(0xFFB3261E)) }
+        WorkerLocationMapView(job.location,latitude=job.latitude,longitude=job.longitude,workerLocation=coordinate,route=route)
+        route?.let { Text("${it.distanceKm} km · about ${it.durationMinutes} min · approximate, no live traffic",fontSize=11.sp,color=Color.Gray) }
     }
 }

@@ -13,6 +13,8 @@ struct LoginView: View {
     @State private var viewModel = AuthViewModel()
     @State private var isGoogleLoading = false
     @State private var googleError: String?
+    @State private var developmentEmail = ""
+    @State private var developmentPassword = ""
     @FocusState private var isPhoneFocused: Bool
 
     var body: some View {
@@ -218,6 +220,23 @@ struct LoginView: View {
                         .padding(.horizontal, Spacing.lg)
                     }
 
+#if DEBUG
+                    if ProcessInfo.processInfo.environment["ERRNO_FIREBASE_AUTH_EMULATOR"] != nil {
+                        VStack(spacing: 10) {
+                            Text("Local Firebase Auth Emulator").font(.caption.weight(.semibold)).foregroundStyle(Color.errnoTextSecondary)
+                            TextField("Emulator test account email", text: $developmentEmail)
+                                .textInputAutocapitalization(.never).keyboardType(.emailAddress).autocorrectionDisabled()
+                                .textFieldStyle(.roundedBorder).accessibilityIdentifier("devAuthEmail")
+                            SecureField("Emulator test password", text: $developmentPassword)
+                                .textFieldStyle(.roundedBorder).accessibilityIdentifier("devAuthPassword")
+                            Button("Sign in to local test account") { signInDevelopmentAccount() }
+                                .font(.system(size: 14, weight: .bold)).frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(Color.errnoLime, in: RoundedRectangle(cornerRadius: 10))
+                                .disabled(isGoogleLoading || developmentEmail.isEmpty || developmentPassword.isEmpty)
+                        }.padding(.horizontal, Spacing.lg)
+                    }
+#endif
+
                     if let googleError {
                         Text(googleError)
                             .font(.system(size: 12, weight: .medium))
@@ -264,4 +283,23 @@ struct LoginView: View {
             }
         }
     }
+
+#if DEBUG
+    private func signInDevelopmentAccount() {
+        guard !isGoogleLoading else { return }
+        isGoogleLoading = true; googleError = nil
+        Task {
+            defer { isGoogleLoading = false }
+            do {
+                let profile = try await FirebaseGoogleAuth.signInDevelopment(email: developmentEmail, password: developmentPassword, role: role)
+                router.marketplace.signIn(profile: profile)
+                switch profile.role {
+                case "worker": router.navigateToHome(role: .worker)
+                case "shop_owner", "shopkeeper": router.navigateToHome(role: .shopkeeper)
+                default: googleError = "Choose your ERRNO role to continue."
+                }
+            } catch { googleError = error.localizedDescription }
+        }
+    }
+#endif
 }

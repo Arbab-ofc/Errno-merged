@@ -31,6 +31,7 @@ struct BackendJobsView: View {
                         }
                     })).tint(.errnoGreen).disabled(availabilityLoading || availabilitySaving)
                         .overlay(alignment: .trailing) { if availabilitySaving { ProgressView().padding(.trailing, 34) } }
+                    if available { WorkerForegroundLocationPublisher(available: true) }
                     if availabilityLoading { ProgressView("Loading availability…").font(.footnote) }
                     if let availabilityError {
                         HStack { Text(availabilityError).font(.system(size: 12)).foregroundStyle(Color.errnoError)
@@ -127,6 +128,9 @@ struct BackendJobDetailsView: View {
         }.marketplacePage(dark: true).toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let job {
+                        if ["assigned", "in_progress"].contains(job.status.lowercased()) {
+                            WorkerForegroundLocationPublisher(jobID: job.id)
+                        }
                     VStack(spacing: 8) {
                         HStack {
                             Text(job.duration_type)

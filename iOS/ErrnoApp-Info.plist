@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ERRNO_PHOTON_ENDPOINT</key><string>https://photon.komoot.io</string>
+	<key>ERRNO_TILE_ENDPOINT</key><string>https://tiles.openfreemap.org/planet</string>
+	<key>ERRNO_MAP_STYLE_URL</key><string>https://tiles.openfreemap.org/styles/liberty</string>
+	<key>ERRNO_OSRM_ENDPOINT</key><string>https://router.project-osrm.org/route/v1/driving</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ERRNO uses your location only when you ask to place the job map pin.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -84,9 +84,11 @@ data class ShopkeeperState(
     // Draft job for creation
     val draftTitle: String = "Loading & Unloading",
     val draftCategory: String = "Loading & Unloading",
-    val draftLocation: String = "Okhla Market Area",
-    val draftPickupLocation: String = "Okhla Market Store #12",
-    val draftDropLocation: String = "Sector 18 Noida",
+    val draftLocation: String = "",
+    val draftLatitude: Double? = null,
+    val draftLongitude: Double? = null,
+    val draftPickupLocation: String = "",
+    val draftDropLocation: String = "",
     val draftPackageType: String = "Parcel / Product Box",
     val draftIsDelivery: Boolean = false,
     val draftWorkerCount: Int = 1,
@@ -137,7 +139,15 @@ class ShopkeeperViewModel : ViewModel() {
     }
 
     fun updateLocation(location: String) {
-        _uiState.update { it.copy(draftLocation = location, pricingQuote = emptyMap()) }
+        _uiState.update { it.copy(draftLocation = location, draftLatitude = null, draftLongitude = null, pricingQuote = emptyMap()) }
+    }
+
+    fun updateMapLocation(address: String, latitude: Double, longitude: Double) {
+        _uiState.update { it.copy(draftLocation = address, draftLatitude = latitude, draftLongitude = longitude, pricingQuote = emptyMap()) }
+    }
+
+    fun updatePickupMapLocation(address: String, latitude: Double, longitude: Double) {
+        _uiState.update { it.copy(draftPickupLocation = address, draftLatitude = latitude, draftLongitude = longitude, pricingQuote = emptyMap()) }
     }
 
     fun updatePickupLocation(pickup: String) {
@@ -266,9 +276,10 @@ class ShopkeeperViewModel : ViewModel() {
             it.copy(
                 draftTitle = initialCategory,
                 draftCategory = initialCategory,
-                draftLocation = "Okhla Market Area",
-                draftPickupLocation = "Okhla Market Store #12",
-                draftDropLocation = "Sector 18 Noida",
+                draftLocation = "",
+                draftLatitude = null, draftLongitude = null,
+                draftPickupLocation = "",
+                draftDropLocation = "",
                 draftPackageType = "Parcel / Product Box",
                 draftIsDelivery = false,
                 draftWorkerCount = 1,
@@ -366,7 +377,8 @@ class ShopkeeperViewModel : ViewModel() {
     suspend fun refreshQuote() {
         val state = _uiState.value
         val hours = state.draftPayStructure.firstOrNull()?.hours ?: error("Select a configured duration first.")
-        val area = if (state.draftIsDelivery) state.draftPickupLocation.ifBlank { "Pickup Store" } else state.draftLocation.ifBlank { "Okhla Market Area" }
+        val area = if (state.draftIsDelivery) state.draftPickupLocation else state.draftLocation
+        require(area.isNotBlank()) { "Enter or select the job address before requesting a quote." }
         val date = runCatching { java.time.LocalDate.parse(state.draftScheduledDate) }
             .getOrElse { error("Choose a valid service date before requesting a quote.") }
         val time = if (state.draftWorkingRequirementType == "IMMEDIATE") {
@@ -413,10 +425,16 @@ class ShopkeeperViewModel : ViewModel() {
         val chosen = state.draftPayStructure.firstOrNull() ?: error("Select a configured duration.")
         require(state.pricingOptions.any { it.hours == chosen.hours && it.price == chosen.price }) { "Selected price is no longer configured. Refresh pricing." }
         val suggestion = getCategorySuggestion(state.draftCategory)
-        val location = if (state.draftIsDelivery) "${state.draftPickupLocation.ifBlank { "Pickup Store" }} -> ${state.draftDropLocation.ifBlank { "Drop Address" }}" else state.draftLocation.ifBlank { "Okhla Market Area" }
+        val location = if (state.draftIsDelivery) {
+            require(state.draftPickupLocation.isNotBlank() && state.draftDropLocation.isNotBlank()) { "Enter both pickup and drop-off addresses." }
+            "${state.draftPickupLocation} -> ${state.draftDropLocation}"
+        } else {
+            require(state.draftLocation.isNotBlank()) { "Enter or select a job address." }
+            state.draftLocation
+        }
         val draft = JobPost(
             id = System.currentTimeMillis().toString(), title = state.draftCategory.ifBlank { "Loading & Unloading" },
-            category = state.draftCategory.ifBlank { "Loading & Unloading" }, location = location,
+            category = state.draftCategory.ifBlank { "Loading & Unloading" }, location = location, latitude = state.draftLatitude, longitude = state.draftLongitude,
             description = state.draftDescription.ifBlank { suggestion.description },
             requirements = state.draftRequirements.ifBlank { suggestion.requirements }, payStructure = listOf(chosen),
             status = "Active", isDeliveryJob = state.draftIsDelivery,

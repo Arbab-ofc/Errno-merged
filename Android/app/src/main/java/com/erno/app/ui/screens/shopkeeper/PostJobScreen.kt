@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.data.model.DurationPay
 import com.erno.app.ui.components.WorkerLocationMapView
+import com.erno.app.ui.components.MapLocationPicker
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
 import java.util.Calendar
@@ -45,6 +46,7 @@ fun PostJobScreen(
     onBackClick: () -> Unit,
     onCategoryChange: (String) -> Unit,
     onLocationChange: (String) -> Unit,
+    onMapLocationChange: (String, Double, Double) -> Unit = { _, _, _ -> },
     onScheduledDateChange: (String) -> Unit = {},
     onScheduledTimeChange: (String) -> Unit = {},
     onWorkingRequirementTypeChange: (String) -> Unit = {},
@@ -1008,10 +1010,10 @@ fun PostJobScreen(
                                     }
                                 }
 
-                                WorkerLocationMapView(
-                                    locationName = state.draftLocation.ifBlank { "Okhla Market Area" },
-                                    distanceText = "Shop Location Map Pin",
-                                    isDarkTheme = false
+                                MapLocationPicker(
+                                    address = state.draftLocation,
+                                    onSelection = onMapLocationChange,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }

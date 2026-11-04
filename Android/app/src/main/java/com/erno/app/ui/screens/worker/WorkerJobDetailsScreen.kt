@@ -190,7 +190,6 @@ fun WorkerJobDetailsScreen(
                                 Text("Settlement status: Not provided by the payment service", color = Color.White.copy(alpha = .65f), fontSize = 11.sp)
                             }
                         }
-                        }
 
                         Spacer(modifier = Modifier.height(20.dp))
 
@@ -273,3 +272,4 @@ fun WorkerJobDetailsScreen(
             }
         }
     }
+}

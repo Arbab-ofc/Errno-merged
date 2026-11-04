@@ -75,7 +75,7 @@ final class LocalMarketplaceStore {
             var job = Job(id: id, shopOwnerId: owner, category: JobCategory(rawValue: row.category ?? "") ?? .other,
                           title: row.title, description: row.description ?? "", payType: .fixed,
                           payAmount: row.pay_amount, estimatedDurationHours: Double(row.duration_type.filter(\.isNumber)) ?? 1,
-                          latitude: 0, longitude: 0, status: status)
+                          latitude: row.latitude, longitude: row.longitude, status: status)
             job.location = row.location ?? ""
             job.pickupLocation = row.pickup_location ?? ""
             job.dropLocation = row.drop_location ?? ""
