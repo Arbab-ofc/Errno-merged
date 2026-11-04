@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
@@ -28,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.data.model.DurationPay
@@ -59,9 +57,6 @@ fun PostJobScreen(
 ) {
     var currentStep by remember { mutableIntStateOf(1) } // Step 1: Details, Step 2: Duration, Step 3: Location
     var categoryExpanded by remember { mutableStateOf(false) }
-    var showCustomDurationDialog by remember { mutableStateOf(false) }
-    var customHoursInput by remember { mutableStateOf("5") }
-    var customPayInput by remember { mutableStateOf("550") }
 
     val context = LocalContext.current
 
@@ -103,19 +98,8 @@ fun PostJobScreen(
     }
 
     // Combined duration list containing standard options + any custom user-added duration option
-    val allDurationOptions = remember(state.draftPayStructure) {
-        val standard = listOf(
-            DurationPay(1, 149),
-            DurationPay(2, 249),
-            DurationPay(3, 349),
-            DurationPay(4, 449),
-            DurationPay(6, 649),
-            DurationPay(8, 849)
-        )
-        val customItems = state.draftPayStructure.filter { customItem ->
-            standard.none { it.hours == customItem.hours }
-        }
-        (standard + customItems).sortedBy { it.hours }
+    val allDurationOptions = remember(state.pricingOptions) {
+        state.pricingOptions.sortedBy { it.hours }
     }
 
     val isStep1Valid = if (state.draftBookingType == "CURRENT") {
@@ -879,35 +863,22 @@ fun PostJobScreen(
                             }
                         }
 
-                        // Add Custom Hour Button (Opens Custom Duration & Price Dialog)
+                        // Pricing duration options are approved and published by the backend.
                         item {
                             Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showCustomDurationDialog = true },
+                                modifier = Modifier.fillMaxWidth().clickable(onClick = onAddMoreDurationClick),
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color.White,
                                 border = BorderStroke(1.dp, ErnoGreen)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = null,
-                                        tint = ErnoGreen,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "+ Set Custom Duration & Price",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ErnoGreen
-                                    )
-                                }
+                                Text(
+                                    text = "View approved price options",
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ErnoGreen,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
                             }
                         }
                     }
@@ -981,87 +952,8 @@ fun PostJobScreen(
         }
     }
 
-    // CUSTOM DURATION & PRICE DIALOG
-    if (showCustomDurationDialog) {
-        AlertDialog(
-            onDismissRequest = { showCustomDurationDialog = false },
-            containerColor = Color.White,
-            titleContentColor = Color.Black,
-            textContentColor = Color.Black,
-            title = {
-                Text(
-                    text = "Set Custom Duration & Pay",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = Color.Black
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Enter custom shift time duration (hours) and total pay rate for the worker:",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-
-                    OutlinedTextField(
-                        value = customHoursInput,
-                        onValueChange = { if (it.all { char -> char.isDigit() }) customHoursInput = it },
-                        label = { Text("Duration Hours (e.g. 5 or 10)", color = Color.Gray) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black,
-                            focusedBorderColor = ErnoGreen,
-                            unfocusedBorderColor = Color(0xFFD0D0D0)
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = customPayInput,
-                        onValueChange = { if (it.all { char -> char.isDigit() }) customPayInput = it },
-                        label = { Text("Pay Rate Amount (₹)", color = Color.Gray) },
-                        prefix = { Text("₹ ", color = Color.Black, fontWeight = FontWeight.Bold) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black,
-                            focusedBorderColor = ErnoGreen,
-                            unfocusedBorderColor = Color(0xFFD0D0D0)
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val hours = customHoursInput.toIntOrNull() ?: 5
-                        val price = customPayInput.toIntOrNull() ?: 550
-                        onToggleDuration(hours, price)
-                        showCustomDurationDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Set Duration Option", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCustomDurationDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            }
-        )
-    }
 }
 
-// ABSOLUTE BEGINNER-FRIENDLY LOCATION INPUT WITH REAL-TIME AUTO-SUGGESTIONS
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimpleBeginnerLocationInput(

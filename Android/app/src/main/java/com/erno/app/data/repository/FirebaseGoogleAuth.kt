@@ -21,6 +21,9 @@ data class ErrnoIdentity(val id: String, val role: String?, val onboardingComple
 /** Google Credential Manager -> Firebase -> verified Firebase ID token -> ERRNO API. */
 object FirebaseGoogleAuth {
     suspend fun signIn(activity: Activity, selectedRole: String): ErrnoIdentity {
+        runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.unregisterCurrent() }
+        runCatching { WhatsAppAuthApi.logout() }
+        ErrnoSessionStore.clear()
         val clientIdName = "default_web_client_id"
         val resourceId = activity.resources.getIdentifier(clientIdName, "string", activity.packageName)
         check(resourceId != 0) { "Google OAuth web client is missing. Configure OAuth in Firebase and download google-services.json again." }
@@ -40,25 +43,45 @@ object FirebaseGoogleAuth {
             ?: error("Firebase sign-in did not return a user.")
         try {
             val firebaseToken = user.getIdToken(true).await().token ?: error("Firebase did not return an ID token.")
-            return syncWithBackend(firebaseToken, selectedRole)
+            val identity = syncWithBackend(firebaseToken, selectedRole)
+            runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.registerCurrent() }
+            return identity
         } catch (error: Exception) {
             FirebaseAuth.getInstance().signOut()
             throw error
         }
     }
 
-    suspend fun restore(): ErrnoIdentity? = withContext(Dispatchers.IO) {
+    suspend fun restore(): ErrnoIdentity? {
+        if (ErrnoSessionStore.hasToken()) {
+            val sessionIdentity = runCatching {
+                val profile = ErrnoMobileApi.profile()
+                ErrnoIdentity(profile.getString("id"), profile.optString("role").takeUnless { it.isBlank() || it == "null" }, profile.optBoolean("onboarding_completed"))
+            }.getOrNull()
+        if (sessionIdentity != null) {
+            runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.registerCurrent() }
+            return sessionIdentity
+        }
+            ErrnoSessionStore.clear()
+        }
+        return withContext(Dispatchers.IO) {
         val user = FirebaseAuth.getInstance().currentUser ?: return@withContext null
         val token = user.getIdToken(true).await().token ?: error("Firebase did not return an ID token.")
-        syncWithBackend(token, null)
+        syncWithBackend(token, null).also { runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.registerCurrent() } }
+        }
     }
 
     suspend fun logout() {
+        runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.unregisterCurrent() }
+        runCatching { ErrnoMobileApi.presenceOffline() }
+        runCatching { WhatsAppAuthApi.logout() }
+        runCatching { WhatsAppAuthApi.logout() }
         val user = FirebaseAuth.getInstance().currentUser
         if (user != null && BuildConfig.ERRNO_API_BASE_URL.isNotBlank()) {
             runCatching {
                 val token = user.getIdToken(false).await().token ?: return@runCatching
-                request("POST", "/api/v1/auth/logout", token)
+                request("POST", "/api/v1/auth/logout", token,
+                    JSONObject().put("deviceId", com.erno.app.notifications.ErrnoNotificationDeviceSync.installIdentifier()))
             }
         }
         FirebaseAuth.getInstance().signOut()

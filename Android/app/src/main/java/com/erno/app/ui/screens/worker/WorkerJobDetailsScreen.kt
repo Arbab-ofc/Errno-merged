@@ -26,6 +26,7 @@ fun WorkerJobDetailsScreen(
     state: WorkerState,
     onBackClick: () -> Unit,
     onDurationSelect: (hours: Int, pay: Int) -> Unit,
+    onStartJobClick: () -> Unit = {},
     onAcceptJobClick: () -> Unit
 ) {
     val job = state.selectedJob ?: state.availableJobs.first()
@@ -62,7 +63,7 @@ fun WorkerJobDetailsScreen(
                 tonalElevation = 8.dp
             ) {
                 Box(modifier = Modifier.padding(16.dp)) {
-                    if (!isAlreadyAccepted) {
+                    if (job.status == "Available" || job.status.isBlank()) {
                         Button(
                             onClick = onAcceptJobClick,
                             modifier = Modifier
@@ -72,7 +73,24 @@ fun WorkerJobDetailsScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
-                                text = "Accept Job",
+                                text = "Apply / Accept Job",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    } else if (job.status == "Upcoming") {
+                        Button(
+                            onClick = onStartJobClick,
+                            enabled = !state.lifecycleActionLoading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = if (state.lifecycleActionLoading) "Starting…" else "Start Job",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -119,6 +137,11 @@ fun WorkerJobDetailsScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (state.jobLoadError != null) {
+                item {
+                    Text(text = state.jobLoadError.orEmpty(), color = Color(0xFFFF8A80))
+                }
+            }
             // Main Details Container
             item {
                 Surface(

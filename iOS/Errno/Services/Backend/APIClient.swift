@@ -61,6 +61,7 @@ nonisolated struct APIEndpoint: Sendable {
     var query: [URLQueryItem] = []
     var body: Data? = nil
     var bearerToken: String? = nil
+    var contentType: String? = nil
 
     // Snake case is explicit in DTOs; no global key conversion can silently rename IDs.
     static func json<T: Encodable>(_ method: String, _ path: [String], body: T) throws -> Self {
@@ -121,7 +122,7 @@ nonisolated struct APIClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body = endpoint.body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(endpoint.contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
         }
         if let token = endpoint.bearerToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         return request

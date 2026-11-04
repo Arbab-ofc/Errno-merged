@@ -143,12 +143,16 @@ struct RegisterView: View {
                     errorMessage = nil
 
                     registrationTask = Task {
-                        do { try await Task.sleep(for: .milliseconds(600)) } catch { isLoading = false; return }
-                        guard !Task.isCancelled else { return }
-                        await MainActor.run {
+                        do {
+                            let challenge = try await AppDependencies.authService().sendOTP(to: phoneNumber, role: selectedRole)
+                            try Task.checkCancellation()
+                            await MainActor.run {
                             isLoading = false
                             router.registrationName = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
-                            router.navigateToOTP(phone: phoneNumber, role: selectedRole)
+                            router.navigateToOTP(phone: phoneNumber, role: selectedRole, challenge: challenge)
+                            }
+                        } catch {
+                            await MainActor.run { isLoading = false; errorMessage = error.localizedDescription }
                         }
                     }
                 } label: {
@@ -178,6 +182,7 @@ struct RegisterView: View {
                         defer { isLoading = false }
                         do {
                             let profile = try await FirebaseGoogleAuth.signIn(role: selectedRole)
+                            router.marketplace.signIn(profile: profile)
                             router.registrationName = profile.name ?? fullName
                             switch profile.role {
                             case "worker": router.navigateToHome(role: .worker)

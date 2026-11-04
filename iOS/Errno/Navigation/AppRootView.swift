@@ -9,6 +9,7 @@ import SwiftUI
 struct AppRootView: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var router = router
@@ -33,8 +34,8 @@ struct AppRootView: View {
                                 LoginView(role: role)
                             case .register(let role):
                                 RegisterView(initialRole: role)
-                            case .verifyOTP(let phone, let role):
-                                VerifyOTPView(phone: phone, role: role)
+                            case .verifyOTP(let phone, let role, let requestID, let expiresIn, let resendAfter):
+                                VerifyOTPView(phone: phone, role: role, requestID: requestID, expiresIn: expiresIn, resendAfter: resendAfter)
                             }
                         }
                 }
@@ -55,6 +56,10 @@ struct AppRootView: View {
             }
         }
         .task { await router.restoreSession() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { router.startPresenceTracking() }
+            else { router.stopPresenceTracking() }
+        }
         .animation(reduceMotion ? nil : ErrnoAnimation.smoothSlow, value: router.appState)
     }
 }

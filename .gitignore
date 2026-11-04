@@ -118,3 +118,16 @@ DerivedData-*/
 **/*verification_report*.md
 **/*INSPECTION_REPORT*.md
 **/*inspection_report*.md
+
+# Internal implementation reports are retained locally but not tracked.
+/ADMIN_INTEGRATION_REPORT.md
+/ADMIN_PHASE_1_2_IMPLEMENTATION_REPORT.md
+/MOBILE_BACKEND_IMPLEMENTATION_REPORT.md
+/PHASE_3A_3B_IMPLEMENTATION_REPORT.md
+
+/Android/gradle.properties.local
+/iOS/Local.xcconfig
+/Admin/.env.local
+/Admin/.env.*.local
+/Admin/node_modules/
+/Admin/dist/

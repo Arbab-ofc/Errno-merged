@@ -15,9 +15,6 @@ interface AuthRepository {
     fun register(fullName: String, phoneNumber: String, role: String): Flow<Result<AuthResponse>>
 }
 
-/** Used only while the Android UI is running without a configured auth API. */
-const val DEMO_OTP_CODE = "123456"
-
 class AuthRepositoryImpl(
     private val apiService: ErnoApiService? = null
 ) : AuthRepository {
@@ -27,10 +24,7 @@ class AuthRepositoryImpl(
             if (apiService != null) {
                 val response = apiService.sendOtp(SendOtpRequest(phoneNumber, role))
                 emit(Result.success(response))
-            } else {
-                // Default local simulation if API service is not yet initialized
-                emit(Result.success(SendOtpResponse(success = true, message = "OTP sent successfully")))
-            }
+            } else emit(Result.failure(IllegalStateException("Phone OTP is unavailable. Sign in with Google.")))
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
@@ -41,22 +35,7 @@ class AuthRepositoryImpl(
             if (apiService != null) {
                 val response = apiService.verifyOtp(VerifyOtpRequest(phoneNumber, otpCode))
                 emit(Result.success(response))
-            } else {
-                // Match the explicit local demo contract; never treat any six digits as verified.
-                if (otpCode == DEMO_OTP_CODE) {
-                    emit(
-                        Result.success(
-                            AuthResponse(
-                                success = true,
-                                token = "demo_jwt_token",
-                                message = "OTP Verified Successfully"
-                            )
-                        )
-                    )
-                } else {
-                    emit(Result.failure(IllegalArgumentException("Incorrect code. Please try again.")))
-                }
-            }
+            } else emit(Result.failure(IllegalStateException("Phone OTP is unavailable. Sign in with Google.")))
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
@@ -67,16 +46,7 @@ class AuthRepositoryImpl(
             if (apiService != null) {
                 val response = apiService.register(RegisterRequest(fullName, phoneNumber, role))
                 emit(Result.success(response))
-            } else {
-                emit(
-                    Result.success(
-                        AuthResponse(
-                            success = true,
-                            message = "Account created successfully"
-                        )
-                    )
-                )
-            }
+            } else emit(Result.failure(IllegalStateException("Registration requires verified Firebase authentication.")))
         } catch (e: Exception) {
             emit(Result.failure(e))
         }

@@ -8,8 +8,9 @@ import Foundation
 // MARK: — Protocol
 
 protocol AuthServiceProtocol: Sendable {
-    func sendOTP(to phone: String) async throws
-    func verifyOTP(_ otp: String, phone: String) async throws -> Bool
+    func sendOTP(to phone: String, role: UserRole) async throws -> WhatsAppOTPChallenge
+    func resendOTP(to phone: String, role: UserRole, requestID: String) async throws -> WhatsAppOTPChallenge
+    func verifyOTP(_ otp: String, phone: String, role: UserRole, requestID: String, fullName: String?) async throws -> FirebaseUserProfile
 }
 
 // MARK: — Errors
@@ -30,19 +31,21 @@ enum AuthError: LocalizedError {
 
 // MARK: — Mock Implementation
 
-/// Simulates backend auth with realistic network delays.
-/// Mock OTP is always **123456** for any phone number.
+/// Demo mode does not authenticate with a static or synthetic OTP.
 struct MockAuthService: AuthServiceProtocol {
     nonisolated init() {}
 
-    func sendOTP(to phone: String) async throws {
+    func sendOTP(to phone: String, role: UserRole) async throws -> WhatsAppOTPChallenge {
         // Simulate 1.5 s network round-trip
         try await Task.sleep(for: .milliseconds(1500))
+        throw APIError.unsupportedFeature
     }
 
-    func verifyOTP(_ otp: String, phone: String) async throws -> Bool {
-        // Simulate 1 s verification round-trip
-        try await Task.sleep(for: .milliseconds(1000))
-        return otp == "123456"
+    func resendOTP(to phone: String, role: UserRole, requestID: String) async throws -> WhatsAppOTPChallenge {
+        throw APIError.unsupportedFeature
+    }
+
+    func verifyOTP(_ otp: String, phone: String, role: UserRole, requestID: String, fullName: String?) async throws -> FirebaseUserProfile {
+        throw APIError.unsupportedFeature
     }
 }

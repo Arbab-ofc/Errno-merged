@@ -15,7 +15,11 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,8 +42,11 @@ fun ShopkeeperDashboardScreen(
     state: ShopkeeperState,
     onPostNewJobClick: () -> Unit,
     onViewAllClick: () -> Unit,
-    onNavigateTab: (ShopkeeperTab) -> Unit
+    onNavigateTab: (ShopkeeperTab) -> Unit,
+    onNotifications: () -> Unit = {}
 ) {
+    var unreadNotifications by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { unreadNotifications = runCatching { com.erno.app.data.repository.ErrnoMobileApi.notificationUnreadCount() }.getOrDefault(0) }
     Scaffold(
         bottomBar = {
             ShopkeeperBottomNavigation(
@@ -65,16 +72,14 @@ fun ShopkeeperDashboardScreen(
                 ) {
                     ErnoLogo(modifier = Modifier.height(28.dp))
                     IconButton(
-                        onClick = { },
+                        onClick = onNotifications,
                         modifier = Modifier
                             .size(40.dp)
                             .background(Color.White, CircleShape)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.NotificationsNone,
-                            contentDescription = "Notifications",
-                            tint = Color.Black
-                        )
+                        BadgedBox(badge={ if(unreadNotifications>0) Badge { Text(if(unreadNotifications>99) "99+" else unreadNotifications.toString()) } }) {
+                            Icon(imageVector = Icons.Default.NotificationsNone, contentDescription = "Notifications", tint = Color.Black)
+                        }
                     }
                 }
             }
@@ -241,7 +246,16 @@ fun ShopkeeperDashboardScreen(
             }
 
             // Recent Jobs List OR Empty State with True Grey Company Logo
-            if (state.recentJobs.isEmpty()) {
+                if (state.isLoading && state.recentJobs.isEmpty()) {
+                    item { CircularProgressIndicator(color = ErnoGreen, modifier = Modifier.padding(24.dp)) }
+                } else if (state.errorMessage != null) {
+                    item {
+                        Column {
+                            Text(state.errorMessage.orEmpty(), color = Color.White)
+                            TextButton(onClick = onViewAllClick) { Text("View jobs / retry", color = ErnoGreen) }
+                        }
+                    }
+                } else if (state.recentJobs.isEmpty()) {
                 item {
                     val monochromeMatrix = remember { ColorMatrix().apply { setToSaturation(0f) } }
 

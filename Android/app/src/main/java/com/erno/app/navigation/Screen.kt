@@ -24,6 +24,7 @@ sealed class Screen(val route: String) {
     object PreviewJob : Screen("preview_job")
     object JobSuccess : Screen("job_success")
     object ShopkeeperMyJobs : Screen("shopkeeper_my_jobs")
+    object PaymentCheckout : Screen("payment_checkout/{bookingId}") { fun createRoute(bookingId: String) = "payment_checkout/$bookingId" }
     object ShopkeeperApplications : Screen("shopkeeper_applications")
     object ShopkeeperProfile : Screen("shopkeeper_profile")
 
@@ -34,6 +35,7 @@ sealed class Screen(val route: String) {
     object WorkerMyJobs : Screen("worker_my_jobs")
     object WorkerEarnings : Screen("worker_earnings")
     object WorkerProfile : Screen("worker_profile")
+    object Notifications : Screen("notifications")
 
     // Verification Routes
     object DigiLockerVerification : Screen("digilocker_verification")

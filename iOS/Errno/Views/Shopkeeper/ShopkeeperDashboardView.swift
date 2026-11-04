@@ -94,6 +94,9 @@ struct ShopkeeperDashboardView: View {
                                 ProgressView()
                                     .frame(maxWidth: .infinity, alignment: .center)
                                     .padding()
+                            } else if let error = viewModel.errorMessage {
+                                MarketplaceEmptyState(title: "Unable to load jobs", message: error)
+                                Button("Retry") { Task { await viewModel.fetchJobs() } }.foregroundStyle(Color.errnoGreen)
                             } else if viewModel.jobs.isEmpty {
                                 MarketplaceEmptyState(title: "No Jobs Posted Yet", message: "Post your first job to start hiring workers nearby.")
                             } else {
@@ -120,9 +123,7 @@ struct ShopkeeperDashboardView: View {
                     PostJobView(store: viewModel.store)
                 }
             }
-            .onAppear {
-                viewModel.fetchJobs()
-            }
+            .task { await viewModel.fetchJobs() }
         }
         .alert("Notifications", isPresented: $notifications) { Button("OK", role: .cancel) {} }
         message: { Text("No notifications. Live notifications are not enabled in this local demo.") }

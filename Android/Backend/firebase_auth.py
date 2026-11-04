@@ -1,5 +1,7 @@
 """Firebase Admin initialization and verified bearer identity dependencies."""
 import os
+import hashlib
+import hmac
 from functools import lru_cache
 
 import firebase_admin
@@ -8,7 +10,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User
+from models import AdminPermission, User
 
 PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "errno-pvt-ltd")
 _bearer = HTTPBearer(auto_error=False)
@@ -48,10 +50,28 @@ def verified_claims(credentials_: HTTPAuthorizationCredentials | None = Depends(
 
 
 def authenticated_user(
-    claims: dict = Depends(verified_claims),
+    credentials_: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> User:
-    user = db.query(User).filter(User.firebase_uid == claims["uid"]).first()
+    if credentials_ is None or credentials_.scheme.lower() != "bearer" or not credentials_.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication token")
+    token = credentials_.credentials
+    if token.startswith("errno_"):
+        from models import BackendAuthSession
+        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        session = db.query(BackendAuthSession).filter(
+            BackendAuthSession.token_digest == digest,
+            BackendAuthSession.revoked_at.is_(None),
+            BackendAuthSession.expires_at > now,
+        ).first()
+        if session is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+        session.last_used_at = now
+        user = db.query(User).filter(User.id == session.user_id).first()
+    else:
+        claims = verify_firebase_token(token)
+        user = db.query(User).filter(User.firebase_uid == claims["uid"]).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
     if not user.is_active:
@@ -62,3 +82,23 @@ def authenticated_user(
 def require_role(user: User, *roles: str) -> None:
     if user.role not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This action is not available for your role")
+
+
+def require_admin(permission: str | None = None):
+    """Return a dependency enforcing persisted, operator-controlled admin access."""
+    def dependency(
+        claims: dict = Depends(verified_claims),
+        db: Session = Depends(get_db),
+    ) -> AdminPermission:
+        admin = db.query(AdminPermission).filter(
+            AdminPermission.firebase_uid == claims["uid"],
+        ).first()
+        if admin is None or not admin.active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
+        account = db.query(User).filter(User.firebase_uid == claims["uid"]).first()
+        if account is not None and not account.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator account is disabled")
+        if permission is not None and permission not in (admin.permissions or []):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator permission required")
+        return admin
+    return dependency

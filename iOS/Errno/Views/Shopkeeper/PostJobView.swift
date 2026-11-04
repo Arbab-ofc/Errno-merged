@@ -8,7 +8,7 @@ import SwiftUI
 struct PostJobView: View {
     @State private var viewModel: PostJobViewModel
     init(store: LocalMarketplaceStore) {
-        _viewModel = State(initialValue: PostJobViewModel(jobService: MockJobService(store: store), currentUser: store.shopkeeper))
+        _viewModel = State(initialValue: PostJobViewModel(jobService: BackendJobService(store: store), currentUser: store.shopkeeper))
     }
     @Environment(\.dismiss) private var dismiss
     

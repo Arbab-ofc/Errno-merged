@@ -21,20 +21,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.ui.theme.ErnoGreen
-import kotlinx.coroutines.delay
 
 @Composable
 fun WorkerAcceptingJobScreen(
     state: WorkerState,
     onViewJobInfoClick: () -> Unit
 ) {
-    var isAccepted by remember { mutableStateOf(false) }
-    val job = state.selectedJob ?: state.availableJobs.first()
-
-    LaunchedEffect(Unit) {
-        delay(2000) // 2-second simulation of shop owner notification
-        isAccepted = true
-    }
+    var isAccepted by remember { mutableStateOf(true) }
+    val job = state.selectedJob ?: state.availableJobs.firstOrNull() ?: return
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -122,7 +116,7 @@ fun WorkerAcceptingJobScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Text(
-                        text = "Job Accepted!",
+                        text = "Application Submitted",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -131,7 +125,7 @@ fun WorkerAcceptingJobScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Get ready to start your work.",
+                        text = "The shop owner will review your application.",
                         fontSize = 14.sp,
                         color = Color.White.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center

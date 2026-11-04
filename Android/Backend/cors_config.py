@@ -1,0 +1,16 @@
+"""Explicit browser-origin policy for the FastAPI service."""
+import os
+
+
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://admin.errno.in",
+)
+
+
+def allowed_origins() -> list[str]:
+    configured = os.getenv("ERRNO_CORS_ALLOWED_ORIGINS")
+    if not configured:
+        return list(DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in configured.split(",") if origin.strip()]
