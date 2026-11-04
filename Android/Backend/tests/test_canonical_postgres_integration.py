@@ -25,7 +25,9 @@ from routers.firebase import router as firebase_router  # noqa: E402
 from routers.jobs import router as jobs_router  # noqa: E402
 from routers.shops import router as shops_router  # noqa: E402
 from routers.pricing import router as pricing_router  # noqa: E402
-from models import DurationPricing, PricingSettings  # noqa: E402
+from models import (DurationPricing, PricingSettings, Job, Shop, User, PresenceSession,
+                    Notification, NotificationOutbox)  # noqa: E402
+from services import prebooking_dispatcher  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -76,7 +78,7 @@ def migrated_postgres_client():
     app.include_router(pricing_router)
     app.dependency_overrides[get_db] = get_test_db
     with engine.begin() as connection:
-        assert connection.execute(text("select version_num from public.alembic_version")).scalar_one() == "eb72a31c4890"
+        assert connection.execute(text("select version_num from public.alembic_version")).scalar_one() == "fb4a6c90d112"
         connection.execute(text("DELETE FROM pricing_quotes"))
         connection.execute(text("DELETE FROM applications"))
         connection.execute(text("DELETE FROM jobs"))
@@ -170,3 +172,46 @@ def test_postgres_quote_cannot_be_consumed_twice_concurrently(migrated_postgres_
         assert db.query(Job).filter_by(title="Concurrent quote race").count()==1
         quote_row=db.query(PricingQuote).filter_by(id=request["quote_id"]).one()
         assert quote_row.status=="consumed" and quote_row.job_id is not None
+
+
+def test_prebooking_dispatch_postgres_concurrency_and_expired_lease_recovery(migrated_postgres_client, monkeypatch):
+    _, factory = migrated_postgres_client
+    now = datetime.now(timezone.utc)
+    owner = User(full_name="Dispatch owner", role="shop_owner", is_active=True)
+    worker = User(full_name="Dispatch worker", role="worker", is_active=True)
+    with factory() as db:
+        db.add_all([owner, worker]); db.flush()
+        shop = Shop(owner_id=owner.id, shop_name="Dispatch integration shop")
+        db.add(shop); db.flush()
+        db.add(PresenceSession(user_id=worker.id, session_identifier="dispatch-integration",
+                               expires_at=now + timedelta(hours=12), is_foreground=True,
+                               availability_status="available"))
+        due = Job(shop_id=shop.id, title="Concurrent pre-booking", category="General", pay_amount=100,
+                  duration_type="2 hours", scheduled_date="tomorrow", location="No map location",
+                  status="open", booking_type="PRE_BOOKING", scheduled_at=now + timedelta(hours=8),
+                  dispatch_at=now - timedelta(seconds=1), prebooking_dispatch_status="SCHEDULED",
+                  prebooking_schedule_version=1, prebooking_dispatch_attempts=0,
+                  prebooking_next_attempt_at=now - timedelta(seconds=1))
+        recover = Job(shop_id=shop.id, title="Restart recovery pre-booking", category="General", pay_amount=100,
+                      duration_type="2 hours", scheduled_date="tomorrow", location="No map location",
+                      status="open", booking_type="PRE_BOOKING", scheduled_at=now + timedelta(hours=9),
+                      dispatch_at=now + timedelta(minutes=1), prebooking_dispatch_status="DISPATCHING",
+                      prebooking_schedule_version=1, prebooking_dispatch_attempts=1,
+                      prebooking_dispatch_lease_owner="dead-process", prebooking_dispatch_lease_until=now - timedelta(seconds=1))
+        db.add_all([due, recover]); db.commit()
+        due_id, recover_id, worker_id = due.id, recover.id, worker.id
+
+    monkeypatch.setattr(prebooking_dispatcher, "SessionLocal", factory)
+    def run(instance: int) -> bool:
+        return prebooking_dispatcher.dispatch_due_once(now=now, owner=f"dispatcher-{instance}")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(run, (1, 2)))
+    assert sorted(results) == [False, True]
+    assert prebooking_dispatcher.dispatch_due_once(now=now + timedelta(minutes=2), owner="restart-process")
+    with factory() as db:
+        assert db.query(Job).filter_by(id=due_id).one().prebooking_dispatch_status == "DISPATCHED"
+        assert db.query(Job).filter_by(id=recover_id).one().prebooking_dispatch_status == "DISPATCHED"
+        assert db.query(Notification).filter_by(recipient_user_id=worker_id, event_type="prebooking_worker_request").count() == 2
+        assert db.query(NotificationOutbox).join(Notification, Notification.id == NotificationOutbox.notification_id).filter(
+            Notification.recipient_user_id == worker_id, Notification.event_type == "prebooking_worker_request"
+        ).count() == 2

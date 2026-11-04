@@ -33,7 +33,8 @@ final class PostJobViewModel {
     var pricingOptions: [(hours: Int, maximum: Decimal)] = []
     var pricingQuote: PricingQuoteResponse?
     var isLoadingQuote = false
-    var isScheduled: Bool = false
+    // The existing iOS form always collected a future date/time, so preserve that default.
+    var isScheduled: Bool = true
     var scheduledStartTime: Date = Date()
     
     // API State
@@ -41,9 +42,16 @@ final class PostJobViewModel {
     var errorMessage: String? = nil
     var isSuccess: Bool = false
     private var quoteRequestID = UUID()
+    private var pricingQuoteExpectedStart: Date?
     
     private let jobService: JobServiceProtocol
     private let currentUser: User
+
+    private var bookingCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Kolkata") ?? .current
+        return calendar
+    }
     
     init(jobService: JobServiceProtocol, currentUser: User) {
         self.jobService = jobService
@@ -52,14 +60,14 @@ final class PostJobViewModel {
     
     var isStep1Valid: Bool {
         let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let start = Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
-        let dayStart = Calendar.current.startOfDay(for: Date())
-        let latest = Calendar.current.date(byAdding: .day, value: 6, to: dayStart) ?? Date()
+        let start = bookingCalendar.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
+        let dayStart = bookingCalendar.startOfDay(for: Date())
+        let latest = bookingCalendar.date(byAdding: .day, value: 6, to: dayStart) ?? Date()
         return !category.rawValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !trimmedDescription.isEmpty && trimmedDescription.count <= 250
-            && (9...20).contains(selectedTime)
-            && scheduledStartTime >= dayStart && scheduledStartTime <= latest
-            && (start ?? .distantPast) > Date()
+            && (!isScheduled || ((9...20).contains(selectedTime)
+                && scheduledStartTime >= dayStart && scheduledStartTime <= latest
+                && (start ?? .distantPast) > Date()))
     }
     
     var isStep3Valid: Bool {
@@ -90,7 +98,7 @@ final class PostJobViewModel {
         guard let pricingQuote else { return !jobService.requiresAuthoritativeQuote }
         guard let expires = Self.parseISODate(pricingQuote.expires_at),
               let quoteStart = Self.parseISODate(pricingQuote.service_start_at),
-              let expectedStart = Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime) else { return false }
+              let expectedStart = pricingQuoteExpectedStart else { return false }
         return expires > Date() && abs(quoteStart.timeIntervalSince(expectedStart)) < 1
             && pricingQuote.final_service_charge > 0
             && pricingQuote.final_service_charge >= pricingQuote.base_price
@@ -102,18 +110,22 @@ final class PostJobViewModel {
         guard isStep3Valid else { errorMessage = "Choose a configured duration."; return }
         let requestID = UUID()
         quoteRequestID = requestID
+        let draft = makeDraftJob()
+        let expectedStart = draft.scheduledStartTime ?? Date()
         isLoadingQuote = true; errorMessage = nil
         defer { if quoteRequestID == requestID { isLoadingQuote = false } }
         do {
-            let quote = try await jobService.requestQuote(for: makeDraftJob())
+            let quote = try await jobService.requestQuote(for: draft)
             guard quoteRequestID == requestID else { return }
             pricingQuote = quote
+            pricingQuoteExpectedStart = expectedStart
             if jobService.requiresAuthoritativeQuote && pricingQuote == nil {
                 errorMessage = "The backend did not return a valid pricing quote."
             }
         } catch {
             guard quoteRequestID == requestID else { return }
             pricingQuote = nil
+            pricingQuoteExpectedStart = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -174,8 +186,11 @@ final class PostJobViewModel {
             estimatedDurationHours: estimatedDurationHours,
             latitude: latitude,
             longitude: longitude,
-            scheduledStartTime: Calendar.current.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
+            scheduledStartTime: isScheduled
+                ? bookingCalendar.date(bySettingHour: selectedTime, minute: 0, second: 0, of: scheduledStartTime)
+                : Date()
         )
+        newJob.bookingType = isScheduled ? "PRE_BOOKING" : "CURRENT"
         newJob.location = location
         newJob.pickupLocation = pickupLocation
         newJob.dropLocation = dropLocation

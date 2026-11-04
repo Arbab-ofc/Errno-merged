@@ -25,6 +25,10 @@ data class JobPost(
     val workerCount: Int = 1,
     val scheduledDate: String = "Today",
     val bookingType: String = "CURRENT", // "CURRENT" or "PRE_BOOKING"
+    val dispatchAt: String = "",
+    val dispatchStatus: String = "",
+    val scheduleVersion: Int = 1,
+    val dispatchWorkerCount: Int? = null,
     val workingRequirementType: String = "IMMEDIATE", // "IMMEDIATE" or "DYNAMIC_TIME"
     val scheduledTime: String = "Immediate",
     val createdAt: Long = System.currentTimeMillis(),
@@ -60,6 +64,9 @@ data class WorkerJob(
     val workerCount: Int = 1,
     val scheduledDate: String = "Today",
     val bookingType: String = "CURRENT", // "CURRENT" or "PRE_BOOKING"
+    val dispatchAt: String = "",
+    val dispatchStatus: String = "",
+    val dispatchWorkerCount: Int? = null,
     val workingRequirementType: String = "IMMEDIATE", // "IMMEDIATE" or "DYNAMIC_TIME"
     val scheduledTime: String = "Immediate",
     val workerRating: Float = 0f,

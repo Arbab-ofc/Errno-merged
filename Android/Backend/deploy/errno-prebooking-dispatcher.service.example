@@ -1,0 +1,23 @@
+[Unit]
+Description=ERRNO durable pre-booking dispatch worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=errno
+Group=errno
+WorkingDirectory=/opt/errno/Android/Backend
+EnvironmentFile=/etc/errno/backend.env
+ExecStart=/opt/errno/venv/bin/python -m services.prebooking_dispatcher
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

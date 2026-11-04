@@ -345,6 +345,16 @@ class ShopkeeperViewModel : ViewModel() {
         }
     }
 
+    suspend fun reschedulePrebooking(job: JobPost, scheduleLabel: String) {
+        val hours = job.payStructure.firstOrNull()?.hours ?: error("Booking duration is unavailable")
+        val area = if (job.isDeliveryJob) job.pickupLocation else job.location
+        val quote = ErrnoMobileApi.requestPricingQuote(hours, scheduleLabel, area)
+        val quoteId = quote.optString("quote_id").takeIf(String::isNotBlank) ?: error("Unable to quote the new booking time")
+        val serviceStart = quote.optString("service_start_at").takeIf(String::isNotBlank) ?: error("Quote has no service time")
+        ErrnoMobileApi.rescheduleJob(job.id, quoteId, serviceStart)
+        refreshJobs()
+    }
+
     suspend fun refreshProfile() {
         try {
             val profile = ErrnoMobileApi.profile()

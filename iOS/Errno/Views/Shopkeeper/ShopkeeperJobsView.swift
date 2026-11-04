@@ -57,6 +57,8 @@ struct ShopkeeperJobDetailView: View {
     @Environment(LocalMarketplaceStore.self) private var store
     @State private var rating = false
     @State private var completion = false
+    @State private var reschedule = false
+    @State private var newSchedule = Date().addingTimeInterval(86_400)
     @State private var error: String?
     var body: some View {
         ScrollView {
@@ -66,6 +68,15 @@ struct ShopkeeperJobDetailView: View {
                     StatusBadge(text: job.displayStatus)
                     Text(job.description).font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
                     Text("\(job.durationLabel) • \(job.payLabel) total • \(job.scheduleLabel)").font(.system(size: 13, weight: .bold))
+                    if job.bookingType == "PRE_BOOKING" {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(dispatchLabel(job)).font(.system(size: 13, weight: .semibold))
+                            if let dispatchAt = job.dispatchAt, job.dispatchStatus == "SCHEDULED" {
+                                Text("Worker requests expected: \(indiaTime(dispatchAt)) India time")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(12).background(Color.errnoGreenLight, in: RoundedRectangle(cornerRadius: 12))
+                    }
                     WorkerLocationMapView(locationName: job.locationLabel, distanceText: "Shop Location", isDarkTheme: false, latitude: job.latitude, longitude: job.longitude)
                     if job.status == .open, let lat = job.latitude, let lng = job.longitude {
                         NearbyWorkersPanel(jobID: job.id.uuidString, latitude: lat, longitude: lng)
@@ -86,6 +97,9 @@ struct ShopkeeperJobDetailView: View {
                     }
                     NavigationLink("View Job Applications") { ApplicationsView(job: job) }
                     if job.status == .open || job.status == .assigned {
+                        if job.bookingType == "PRE_BOOKING", ["SCHEDULED", "NO_ELIGIBLE_WORKERS", "FAILED_RETRYABLE", "DISPATCHING"].contains(job.dispatchStatus ?? "") {
+                            PrimaryButton(title: "Reschedule", style: .secondary) { reschedule = true }
+                        }
                         PrimaryButton(title: "Cancel Job", style: .secondary) { completion = true }
                     }
                     if job.status == .inProgress {
@@ -111,12 +125,50 @@ struct ShopkeeperJobDetailView: View {
                 Button("Keep job", role: .cancel) {}
             }
             .sheet(isPresented: $rating) { RatingDialog(title: "Rate Hired Worker", target: "Worker") { stars, comment in store.rate(jobId: jobId, role: .shopkeeper, stars: stars, comment: comment) } }
+            .sheet(isPresented: $reschedule) {
+                NavigationStack {
+                    Form {
+                        Section("New scheduled time (India time)") {
+                            DatePicker("Date and time", selection: $newSchedule, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                                .environment(\.timeZone, TimeZone(identifier: "Asia/Kolkata") ?? .current)
+                            Text("Worker requests will be sent four hours before the new start time.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .navigationTitle("Reschedule")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { reschedule = false } }
+                        ToolbarItem(placement: .confirmationAction) { Button("Save") { Task { await performReschedule() } } }
+                    }
+                }
+            }
     }
 
     private var jobActionTitle: String {
         store.job(id: jobId)?.status == .inProgress ? "Confirm this work is complete?" : "Cancel this job?"
     }
     private var jobActionIsCompletion: Bool { store.job(id: jobId)?.status == .inProgress }
+
+    private func dispatchLabel(_ job: Job) -> String {
+        switch job.dispatchStatus {
+        case "SCHEDULED": return "Scheduled · awaiting four-hour dispatch"
+        case "DISPATCHING": return "Worker requests are being queued"
+        case "DISPATCHED": return "Requests sent to \(job.dispatchWorkerCount ?? 0) eligible workers · applications open"
+        case "NO_ELIGIBLE_WORKERS": return "No eligible workers yet · automatic retry pending"
+        case "FAILED_RETRYABLE": return "Dispatch issue · automatic retry pending"
+        case "CANCELLED": return "Pre-booking dispatch cancelled"
+        case "FAILED": return "Dispatch could not be completed"
+        default: return "Pre-booking scheduled"
+        }
+    }
+
+    private func indiaTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_IN")
+        formatter.timeZone = TimeZone(identifier: "Asia/Kolkata")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 
     @MainActor private func performLifecycleAction(_ action: String) async {
         do {
@@ -126,6 +178,20 @@ struct ShopkeeperJobDetailView: View {
                 : try await repository.cancelJob(jobID: jobId.uuidString)
             store.updateLifecycle(updated)
         } catch let requestError { error = requestError.localizedDescription }
+    }
+
+    @MainActor private func performReschedule() async {
+        do {
+            guard let job = store.job(id: jobId), let hours = job.estimatedDurationHours else { throw APIError.invalidInput }
+            let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let start = formatter.string(from: newSchedule)
+            let area = job.isDelivery ? job.pickupLocation : job.location
+            let repository = try AppDependencies.backendRepository()
+            let quote = try await repository.pricingQuote(PricingQuoteRequest(duration_hours: Int(hours), service_start_at: start, area_id: area))
+            let updated = try await repository.rescheduleJob(jobID: jobId.uuidString, quoteID: quote.quote_id, serviceStartAt: quote.service_start_at)
+            store.updateLifecycle(updated)
+            reschedule = false
+        } catch { self.error = error.localizedDescription }
     }
 }
 

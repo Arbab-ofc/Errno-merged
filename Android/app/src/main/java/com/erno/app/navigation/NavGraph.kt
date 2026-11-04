@@ -436,6 +436,10 @@ fun NavGraph(navController: NavHostController) {
                     try { shopkeeperViewModel.updateJobLifecycle(jobId, action) }
                     catch (error: Exception) { Toast.makeText(context, error.localizedMessage ?: "Unable to update job", Toast.LENGTH_LONG).show() }
                 } },
+                onReschedule = { job, schedule -> scope.launch {
+                    try { shopkeeperViewModel.reschedulePrebooking(job, schedule) }
+                    catch (error: Exception) { Toast.makeText(context, error.localizedMessage ?: "Unable to reschedule booking", Toast.LENGTH_LONG).show() }
+                } },
                 onPayJob = { bookingId -> navController.navigate(Screen.PaymentCheckout.createRoute(bookingId)) },
                 onNavigateTab = { tab ->
                     when (tab) {

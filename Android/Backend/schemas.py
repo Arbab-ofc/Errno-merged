@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_serializer
 from typing import Optional, List
 from datetime import datetime
 
@@ -93,6 +93,7 @@ class JobCreateRequest(BaseModel):
     pickup_location: Optional[str] = None
     drop_location: Optional[str] = None
     is_delivery: bool = False
+    booking_type: str = Field(default="CURRENT", pattern="^(CURRENT|PRE_BOOKING)$")
     quote_id: str = Field(..., min_length=1, max_length=64)
     service_start_at: datetime
 
@@ -123,9 +124,32 @@ class JobResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
+    booking_type: str = "CURRENT"
+    scheduled_at: Optional[datetime] = None
+    dispatch_at: Optional[datetime] = None
+    prebooking_dispatch_status: Optional[str] = None
+    prebooking_schedule_version: int = 1
+    prebooking_dispatch_attempts: int = 0
+    prebooking_dispatch_completed_at: Optional[datetime] = None
+    prebooking_dispatch_worker_count: Optional[int] = None
+    prebooking_dispatch_failure_code: Optional[str] = None
+
+    @field_serializer("scheduled_at", "dispatch_at", "prebooking_dispatch_completed_at")
+    def serialize_utc_datetimes(self, value):
+        if value is None:
+            return None
+        from datetime import timezone
+        value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+        return value.isoformat()
 
     class Config:
         from_attributes = True
+
+
+class JobRescheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    quote_id: str = Field(..., min_length=1, max_length=64)
+    service_start_at: datetime
 
 # Application Schemas
 class ApplicationResponse(BaseModel):

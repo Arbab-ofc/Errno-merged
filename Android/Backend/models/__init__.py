@@ -74,6 +74,22 @@ class Job(Base):
     drop_location = Column(String, nullable=True)
     is_delivery = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     status = Column(String, nullable=False, default="open", server_default=text("'open'"))  # open, assigned, completed
+    # Pre-booking distribution is orthogonal to the existing assignment/job status.
+    # A NULL dispatch status identifies legacy/current bookings with no scheduled dispatch.
+    booking_type = Column(String(20), nullable=False, default="CURRENT", server_default=text("'CURRENT'"))
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    dispatch_at = Column(DateTime(timezone=True), nullable=True)
+    prebooking_dispatch_status = Column(String(32), nullable=True)
+    prebooking_schedule_version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    prebooking_dispatch_attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    prebooking_next_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    prebooking_dispatch_started_at = Column(DateTime(timezone=True), nullable=True)
+    prebooking_dispatch_completed_at = Column(DateTime(timezone=True), nullable=True)
+    prebooking_dispatch_lease_owner = Column(String(120), nullable=True)
+    prebooking_dispatch_lease_until = Column(DateTime(timezone=True), nullable=True)
+    prebooking_dispatch_worker_count = Column(Integer, nullable=True)
+    prebooking_dispatch_failure_code = Column(String(80), nullable=True)
+    prebooking_dispatch_failure_detail = Column(String(500), nullable=True)
     assigned_worker_id = Column(
         String,
         ForeignKey("users.id", name="fk_jobs_assigned_worker_id_users"),
@@ -87,6 +103,12 @@ class Job(Base):
     __table_args__ = (
         Index("ix_jobs_created_at", created_at.desc()),
         Index("ix_jobs_status_created_at", "status", created_at.desc()),
+        Index("ix_jobs_prebooking_dispatch", "prebooking_dispatch_status", "prebooking_next_attempt_at", "dispatch_at"),
+        CheckConstraint("booking_type IN ('CURRENT','PRE_BOOKING')", name="ck_jobs_booking_type"),
+        CheckConstraint("prebooking_schedule_version >= 1", name="ck_jobs_prebooking_schedule_version"),
+        CheckConstraint("prebooking_dispatch_attempts >= 0", name="ck_jobs_prebooking_dispatch_attempts"),
+        CheckConstraint("prebooking_dispatch_worker_count IS NULL OR prebooking_dispatch_worker_count >= 0", name="ck_jobs_prebooking_worker_count"),
+        CheckConstraint("prebooking_dispatch_status IS NULL OR prebooking_dispatch_status IN ('SCHEDULED','DISPATCHING','DISPATCHED','NO_ELIGIBLE_WORKERS','FAILED_RETRYABLE','FAILED','CANCELLED')", name="ck_jobs_prebooking_dispatch_status"),
     )
 
     shop = relationship("Shop", back_populates="jobs")

@@ -94,6 +94,11 @@ nonisolated struct CreateJobRequest: Codable, Sendable {
     let pickup_location: String?
     let drop_location: String?
     let is_delivery: Bool
+    let booking_type: String
+    let quote_id: String
+    let service_start_at: String
+}
+nonisolated struct RescheduleJobRequest: Codable, Sendable {
     let quote_id: String
     let service_start_at: String
 }
@@ -283,6 +288,13 @@ nonisolated struct BackendJob: Codable, Sendable, Identifiable {
     let started_at: String?
     let completed_at: String?
     let cancelled_at: String?
+    var booking_type: String? = nil
+    var scheduled_at: String? = nil
+    var dispatch_at: String? = nil
+    var prebooking_dispatch_status: String? = nil
+    var prebooking_schedule_version: Int? = nil
+    var prebooking_dispatch_worker_count: Int? = nil
+    var prebooking_dispatch_failure_code: String? = nil
     var shop_name: String? = nil
 }
 nonisolated struct BackendApplication: Codable, Sendable {
@@ -385,6 +397,11 @@ nonisolated enum BackendEndpoints {
     static func completeJob(jobID: String, token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["jobs", jobID, "complete"], bearerToken: token) }
     static func cancelJob(jobID: String, token: String) -> APIEndpoint {
         APIEndpoint(method: "PATCH", path: ["jobs", jobID, "status"], query: [URLQueryItem(name: "new_status", value: "cancelled")], bearerToken: token)
+    }
+    static func rescheduleJob(jobID: String, body: RescheduleJobRequest, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("PATCH", ["jobs", jobID, "reschedule"], body: body)
+        endpoint.bearerToken = token
+        return endpoint
     }
     static func ownerApplications(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["jobs", "applications", "owner"], bearerToken: token) }
     static func jobApplications(id: String, token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["jobs", id, "applications"], bearerToken: token) }
@@ -515,6 +532,9 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func startJob(jobID: String) async throws -> BackendJob { try await client.send(BackendEndpoints.startJob(jobID: jobID, token: try await token())) }
     func completeJob(jobID: String) async throws -> BackendJob { try await client.send(BackendEndpoints.completeJob(jobID: jobID, token: try await token())) }
     func cancelJob(jobID: String) async throws -> BackendJob { try await client.send(BackendEndpoints.cancelJob(jobID: jobID, token: try await token())) }
+    func rescheduleJob(jobID: String, quoteID: String, serviceStartAt: String) async throws -> BackendJob {
+        try await client.send(BackendEndpoints.rescheduleJob(jobID: jobID, body: RescheduleJobRequest(quote_id: quoteID, service_start_at: serviceStartAt), token: try await token()))
+    }
     func ownerApplications() async throws -> [BackendOwnerApplication] { try await client.send(BackendEndpoints.ownerApplications(token: try await token())) }
     func applications(jobID: String) async throws -> [BackendApplication] { try await client.send(BackendEndpoints.jobApplications(id: jobID, token: try await token())) }
     func decide(jobID: String, applicationID: String, decision: String) async throws -> BackendApplication {

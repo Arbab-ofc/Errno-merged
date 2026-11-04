@@ -11,6 +11,12 @@ struct PostJobView: View {
         _viewModel = State(initialValue: PostJobViewModel(jobService: BackendJobService(store: store), currentUser: store.shopkeeper))
     }
     @Environment(\.dismiss) private var dismiss
+
+    private var bookingCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Kolkata") ?? .current
+        return calendar
+    }
     
     
     var body: some View {
@@ -90,18 +96,26 @@ struct PostJobView: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Select Schedule Date & Time (Calendar)").font(.system(size: 15, weight: .bold))
-                            Text("Current Month Calendar • Maximum 6-Day Pre-Booking Limit").font(.system(size: 11)).foregroundStyle(.gray)
-                            DatePicker("Work Date (Calendar)", selection: $viewModel.scheduledStartTime,
-                                       in: Calendar.current.startOfDay(for: Date())...(Calendar.current.date(byAdding: .day, value: 6, to: Calendar.current.startOfDay(for: Date())) ?? Date()),
-                                       displayedComponents: .date)
-                            Picker("Start Time", selection: $viewModel.selectedTime) {
-                                ForEach(9...20, id: \.self) { hour in
-                                    Text(String(format: "%02d:00 %@", hour > 12 ? hour - 12 : hour, hour >= 12 ? "PM" : "AM")).tag(hour)
-                                }
-                            }.pickerStyle(.menu)
-                            Text("Scheduled Work: \(viewModel.scheduledStartTime.formatted(date: .abbreviated, time: .omitted)) at \(viewModel.selectedTime):00")
-                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.errnoGreen)
+                            Text("Booking type").font(.system(size: 15, weight: .bold))
+                            Picker("Booking type", selection: $viewModel.isScheduled) {
+                                Text("Instant").tag(false)
+                                Text("Pre-Booking").tag(true)
+                            }.pickerStyle(.segmented)
+                            if viewModel.isScheduled {
+                                Text("Worker requests are sent four hours before the scheduled start.").font(.system(size: 11)).foregroundStyle(.secondary)
+                                DatePicker("Work date", selection: $viewModel.scheduledStartTime,
+                                           in: bookingCalendar.startOfDay(for: Date())...(bookingCalendar.date(byAdding: .day, value: 6, to: bookingCalendar.startOfDay(for: Date())) ?? Date()),
+                                           displayedComponents: .date)
+                                Picker("Start time", selection: $viewModel.selectedTime) {
+                                    ForEach(9...20, id: \.self) { hour in
+                                        Text(String(format: "%02d:00 %@", hour > 12 ? hour - 12 : hour, hour >= 12 ? "PM" : "AM")).tag(hour)
+                                    }
+                                }.pickerStyle(.menu)
+                                Text("Scheduled Work: \(viewModel.scheduledStartTime.formatted(date: .abbreviated, time: .omitted)) at \(viewModel.selectedTime):00")
+                                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.errnoGreen)
+                            } else {
+                                Text("Instant booking requests are available immediately.").font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
                         }.marketplaceCard(radius: 14)
 
                         // Job Description
@@ -152,6 +166,7 @@ struct PostJobView: View {
             }.padding(16).background(.white)
         }
         .navigationBarHidden(true)
+        .environment(\.timeZone, TimeZone(identifier: "Asia/Kolkata") ?? .current)
     }
     
 

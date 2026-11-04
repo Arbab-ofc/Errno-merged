@@ -83,14 +83,26 @@ final class BackendJobService: JobServiceProtocol {
                                     pay_amount: NSDecimalNumber(decimal: quote.final_service_charge).doubleValue, duration_type: "\(Int(hours)) hours",
                                     scheduled_date: job.scheduleLabel, location: job.location, latitude: job.latitude, longitude: job.longitude,
                                     pickup_location: job.pickupLocation, drop_location: job.dropLocation, is_delivery: job.isDelivery,
+                                    booking_type: job.bookingType,
                                     quote_id: quote.quote_id, service_start_at: quote.service_start_at)
         let row = try await repository.createJob(body)
         guard let id = UUID(uuidString: row.id) else { throw APIError.decoding }
-        let persisted = Job(id: id, shopOwnerId: job.shopOwnerId, category: JobCategory(rawValue: row.category ?? "") ?? .other,
+        var persisted = Job(id: id, shopOwnerId: job.shopOwnerId, category: JobCategory(rawValue: row.category ?? "") ?? .other,
                             title: row.title, description: row.description ?? "", payType: .fixed, payAmount: row.pay_amount,
-                            estimatedDurationHours: job.estimatedDurationHours, latitude: job.latitude, longitude: job.longitude)
+                            estimatedDurationHours: job.estimatedDurationHours, latitude: job.latitude, longitude: job.longitude,
+                            scheduledStartTime: Self.parseBackendDate(row.scheduled_at))
+        persisted.bookingType = row.booking_type ?? job.bookingType
+        persisted.dispatchStatus = row.prebooking_dispatch_status
+        persisted.dispatchWorkerCount = row.prebooking_dispatch_worker_count
+        persisted.dispatchAt = Self.parseBackendDate(row.dispatch_at)
         store.installBackendJobs([row], ownerID: job.shopOwnerId)
         return persisted
+    }
+
+    private static func parseBackendDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
     func fetchApplications(for jobId: UUID) async throws -> [Application] {
         guard let repository else { throw APIError.configuration }

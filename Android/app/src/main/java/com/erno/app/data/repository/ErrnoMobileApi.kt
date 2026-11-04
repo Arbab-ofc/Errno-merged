@@ -14,6 +14,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.LocalDateTime
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -175,7 +176,7 @@ object ErrnoMobileApi {
         val parsed = runCatching {
             LocalDateTime.parse(scheduledDate, DateTimeFormatter.ofPattern("dd MMM yyyy 'at' hh:mm a", Locale.ENGLISH))
         }.getOrElse { error("Select a service date and time before requesting a price quote.") }
-        val start = parsed.atZone(ZoneId.systemDefault()).toOffsetDateTime().toString()
+        val start = parsed.atZone(ZoneId.of("Asia/Kolkata")).toOffsetDateTime().toString()
         return JSONObject(request("POST", "/api/v1/pricing/quotes", JSONObject()
             .put("duration_hours", hours).put("service_start_at", start).put("area_id", areaKey ?: JSONObject.NULL)))
     }
@@ -187,9 +188,13 @@ object ErrnoMobileApi {
             .put("duration_type", "${pay.hours} hours").put("scheduled_date", job.scheduledDate)
             .put("location", job.location).put("latitude", job.latitude ?: JSONObject.NULL).put("longitude", job.longitude ?: JSONObject.NULL).put("pickup_location", job.pickupLocation)
             .put("drop_location", job.dropLocation).put("is_delivery", job.isDeliveryJob)
-            .put("quote_id", quoteId).put("service_start_at", serviceStartAt)
+            .put("booking_type", job.bookingType).put("quote_id", quoteId).put("service_start_at", serviceStartAt)
         return JSONObject(request("POST", "/jobs", body)).toShopkeeperJob()
     }
+
+    suspend fun rescheduleJob(jobId: String, quoteId: String, serviceStartAt: String): JobPost = JSONObject(request(
+        "PATCH", "/jobs/$jobId/reschedule", JSONObject().put("quote_id", quoteId).put("service_start_at", serviceStartAt)
+    )).toShopkeeperJob()
 
     suspend fun pricingDurations(): List<DurationPay> {
         val rows = JSONArray(request("GET", "/api/v1/pricing/durations"))
@@ -234,7 +239,11 @@ object ErrnoMobileApi {
             location = optString("location"), latitude = if (has("latitude") && !isNull("latitude")) optDouble("latitude") else null, longitude = if (has("longitude") && !isNull("longitude")) optDouble("longitude") else null, description = optString("description"), payStructure = listOf(DurationPay(hours, amount)),
             status = when (optString("status")) { "assigned" -> "Worker Assigned"; "in_progress" -> "In Progress"; "completed" -> "Completed"; "cancelled" -> "Cancelled"; else -> "Active" },
             isDeliveryJob = optBoolean("is_delivery"), pickupLocation = optString("pickup_location"),
-            dropLocation = optString("drop_location"), scheduledDate = optString("scheduled_date"), isWorkerAssigned = optString("assigned_worker_id").isNotBlank())
+            dropLocation = optString("drop_location"), scheduledDate = formatIndiaTimestamp(optString("scheduled_at").ifBlank { optString("scheduled_date") }),
+            bookingType = optString("booking_type", "CURRENT"), dispatchAt = formatIndiaTimestamp(optString("dispatch_at")),
+            dispatchStatus = optString("prebooking_dispatch_status"), scheduleVersion = optInt("prebooking_schedule_version", 1),
+            dispatchWorkerCount = if (has("prebooking_dispatch_worker_count") && !isNull("prebooking_dispatch_worker_count")) optInt("prebooking_dispatch_worker_count") else null,
+            isWorkerAssigned = optString("assigned_worker_id").isNotBlank())
     }
 
     private fun JSONObject.toWorkerJob(): WorkerJob {
@@ -251,8 +260,16 @@ object ErrnoMobileApi {
         return WorkerJob(id = getString("id"), title = getString("title"), location = optString("location"), distance = "",
             latitude = if (has("latitude") && !isNull("latitude")) optDouble("latitude") else null, longitude = if (has("longitude") && !isNull("longitude")) optDouble("longitude") else null, description = optString("description"), payStructure = listOf(DurationPay(hours, amount)), selectedHours = hours,
             selectedPay = amount, status = displayStatus, isDeliveryJob = optBoolean("is_delivery"), pickupLocation = optString("pickup_location"),
-            dropLocation = optString("drop_location"), scheduledDate = optString("scheduled_date"))
+            dropLocation = optString("drop_location"), scheduledDate = formatIndiaTimestamp(optString("scheduled_at").ifBlank { optString("scheduled_date") }),
+            bookingType = optString("booking_type", "CURRENT"), dispatchAt = formatIndiaTimestamp(optString("dispatch_at")),
+            dispatchStatus = optString("prebooking_dispatch_status"),
+            dispatchWorkerCount = if (has("prebooking_dispatch_worker_count") && !isNull("prebooking_dispatch_worker_count")) optInt("prebooking_dispatch_worker_count") else null)
     }
+
+    private fun formatIndiaTimestamp(value: String): String = runCatching {
+        Instant.parse(value).atZone(ZoneId.of("Asia/Kolkata"))
+            .format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH))
+    }.getOrDefault(value)
 
     fun parseWorkerApplication(json: JSONObject): WorkerApplication {
         val application = json
