@@ -218,9 +218,15 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onVerifyClick = { otp ->
                     if (otp == DEMO_OTP_CODE) {
-                        val targetRoute = if (role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
-                        navController.navigate(targetRoute) {
-                            popUpTo(Screen.RoleSelection.route) { inclusive = true }
+                        if (role == "worker") {
+                            workerViewModel.triggerDigiLockerPopup(true)
+                            navController.navigate(Screen.WorkerHome.route) {
+                                popUpTo(Screen.RoleSelection.route) { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate(Screen.ShopkeeperHome.route) {
+                                popUpTo(Screen.RoleSelection.route) { inclusive = true }
+                            }
                         }
                         true
                     } else {
@@ -403,6 +409,10 @@ fun NavGraph(navController: NavHostController) {
                     navController.navigate(Screen.WorkerJobDetails.route)
                 },
                 onToggleOnlineStatus = workerViewModel::toggleOnlineStatus,
+                onDigiLockerPopupDismiss = workerViewModel::triggerDigiLockerPopup,
+                onVerifyDigiLockerClick = {
+                    navController.navigate(Screen.DigiLockerVerification.route)
+                },
                 onNavigateTab = { tab ->
                     when (tab) {
                         WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)

@@ -1,5 +1,7 @@
 package com.erno.app.ui.screens.worker
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,8 +16,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,8 +39,63 @@ fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
     onToggleOnlineStatus: (Boolean) -> Unit,
+    onDigiLockerPopupDismiss: (Boolean) -> Unit,
+    onVerifyDigiLockerClick: () -> Unit,
     onNavigateTab: (WorkerTab) -> Unit
 ) {
+    // DigiLocker Verification Popup for First-Time Workers
+    if (state.showDigiLockerPopup && !state.isDigiLockerVerified) {
+        AlertDialog(
+            onDismissRequest = { onDigiLockerPopupDismiss(false) },
+            containerColor = Color.White,
+            titleContentColor = Color.Black,
+            textContentColor = Color.Black,
+            title = {
+                Text(
+                    text = "DigiLocker Aadhaar Verification",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color.Black
+                )
+            },
+            text = {
+                Text(
+                    text = "Welcome! First-time workers require Aadhaar verification via DigiLocker to start accepting shifts and receiving secure payouts.",
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDigiLockerPopupDismiss(false)
+                        onVerifyDigiLockerClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Verify Now via DigiLocker", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onDigiLockerPopupDismiss(false) }) {
+                    Text("Remind Me Later", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    val animatedCardBg by animateColorAsState(
+        targetValue = if (state.isOnline) Color(0xFF132A1D) else Color(0xFF121824),
+        animationSpec = tween(durationMillis = 500),
+        label = "cardBg"
+    )
+    val animatedBorderColor by animateColorAsState(
+        targetValue = if (state.isOnline) ErnoGreen else Color(0xFF2E3D52),
+        animationSpec = tween(durationMillis = 500),
+        label = "borderColor"
+    )
+
     Scaffold(
         bottomBar = {
             WorkerBottomNavigation(
@@ -100,12 +156,12 @@ fun WorkerHomeScreen(
                     }
                 }
 
-                // Active / Inactive (Online / Offline) Status Toggle Card
+                // Active / Inactive (Online / Offline) Status Toggle Card with Smooth Animation
                 item {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF131D2A),
-                        border = BorderStroke(1.dp, if (state.isOnline) ErnoGreen.copy(alpha = 0.5f) else Color(0xFF2E3D52)),
+                        color = animatedCardBg,
+                        border = BorderStroke(1.dp, animatedBorderColor),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -117,7 +173,7 @@ fun WorkerHomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
-                                        .background(if (state.isOnline) ErnoGreen else Color.Gray, CircleShape)
+                                        .background(if (state.isOnline) ErnoGreen else Color(0xFF64748B), CircleShape)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
@@ -125,7 +181,7 @@ fun WorkerHomeScreen(
                                         text = if (state.isOnline) "Active (Online)" else "Inactive (Offline)",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = if (state.isOnline) Color.White else Color(0xFF94A3B8)
                                     )
                                     Text(
                                         text = if (state.isOnline) "Receiving job requests nearby" else "Not receiving shift requests",
