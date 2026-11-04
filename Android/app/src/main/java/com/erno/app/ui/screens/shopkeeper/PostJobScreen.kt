@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -25,7 +24,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -566,7 +564,7 @@ fun PostJobScreen(
                             }
                         }
 
-                        // 3. WORKING REQUIREMENT (Start Time) - RESTRICTED FOR PRE-BOOKING
+                        // 3. WORKING REQUIREMENT (Start Time)
                         item {
                             val isPreBooking = state.draftBookingType == "PRE_BOOKING"
                             LaunchedEffect(isPreBooking) {
@@ -885,132 +883,65 @@ fun PostJobScreen(
                         }
                     }
 
-                    // STEP 3: LOCATION & MAP PIN WITH AUTOCOMPLETE RECOMMENDATIONS
+                    // STEP 3: BEGINNER-FRIENDLY LOCATION & MAP SELECTION WITH AUTO-SUGGEST
                     if (currentStep == 3) {
                         item {
-                            Text(
-                                text = if (state.draftIsDelivery) "Delivery Route Locations" else "Shop Location & Map Pin",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = if (state.draftIsDelivery) "Where is the pickup & drop location?" else "Where is your shop located?",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+                                Text(
+                                    text = "Tap the green button below or type to get automatic location suggestions.",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray
+                                )
+                            }
                         }
 
                         if (state.draftIsDelivery) {
-                            // Delivery Job: ONLY 2 address fields (Pickup Location & Drop Location)
                             item {
-                                LocationAutocompleteTextField(
+                                SimpleBeginnerLocationInput(
                                     value = state.draftPickupLocation,
                                     onValueChange = onPickupLocationChange,
-                                    label = "Pickup Location",
-                                    placeholder = "Pickup Store Address",
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.LocationOn,
-                                            contentDescription = null,
-                                            tint = Color.Gray
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
+                                    label = "Pickup Store Address",
+                                    placeholder = "Type store address for suggestions..."
                                 )
                             }
 
                             item {
-                                LocationAutocompleteTextField(
+                                SimpleBeginnerLocationInput(
                                     value = state.draftDropLocation,
                                     onValueChange = onDropLocationChange,
-                                    label = "Customer Drop Location",
-                                    placeholder = "Delivery Address",
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.LocationOn,
-                                            contentDescription = null,
-                                            tint = Color.Gray
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
+                                    label = "Customer Drop Address",
+                                    placeholder = "Type delivery address for suggestions..."
                                 )
                             }
                         } else {
-                            // Non-Delivery Job: ONLY 1 address field (Shop / Work Address)
                             item {
-                                LocationAutocompleteTextField(
+                                SimpleBeginnerLocationInput(
                                     value = state.draftLocation,
                                     onValueChange = onLocationChange,
                                     label = "Shop / Work Address",
-                                    placeholder = "e.g. Shop #12, Okhla Market Area",
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.LocationOn,
-                                            contentDescription = null,
-                                            tint = Color.Gray
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
+                                    placeholder = "Type shop address (e.g. Okhla, Noida)..."
                                 )
                             }
                         }
 
                         item {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Interactive Location Map Pin:",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.Black
-                                    )
-                                    Text(
-                                        text = "Tap map to preview",
-                                        fontSize = 11.sp,
-                                        color = ErnoGreen,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // Quick Map Pin Presets
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                ) {
-                                    val mapPresets = listOf(
-                                        "Shop Main Gate, Okhla",
-                                        "Store Delivery Bay, Block B",
-                                        "Okhla Metro Exit 2",
-                                        "Central Market Hub"
-                                    )
-                                    items(mapPresets) { preset ->
-                                        Surface(
-                                            onClick = {
-                                                if (state.draftIsDelivery) {
-                                                    onPickupLocationChange(preset)
-                                                } else {
-                                                    onLocationChange(preset)
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(20.dp),
-                                            color = Color(0xFFEAF5D8),
-                                            border = BorderStroke(1.dp, ErnoGreen.copy(alpha = 0.6f))
-                                        ) {
-                                            Text(
-                                                text = preset,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ErnoGreen,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "Map Preview (Leaflet API)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
 
                                 WorkerLocationMapView(
                                     locationName = state.draftLocation.ifBlank { "Okhla Market Area" },
-                                    distanceText = "Shop Location Map Pin",
+                                    distanceText = "Selected Location Pin",
                                     isDarkTheme = false
                                 )
                             }
@@ -1022,18 +953,16 @@ fun PostJobScreen(
     }
 
 }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LocationAutocompleteTextField(
+fun SimpleBeginnerLocationInput(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    placeholder: String,
-    leadingIcon: @Composable (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    placeholder: String
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var hasFocus by remember { mutableStateOf(false) }
 
     val allLocations = listOf(
         "Okhla Market Store #12, Block B, New Delhi",
@@ -1054,57 +983,113 @@ fun LocationAutocompleteTextField(
     )
 
     val suggestions = remember(value) {
-        if (value.isBlank() || value.length < 2) {
+        if (value.isBlank()) {
             emptyList()
         } else {
             allLocations.filter { it.contains(value, ignoreCase = true) }
         }
     }
 
-    val showSuggestions = expanded && hasFocus && suggestions.isNotEmpty()
-
-    Column(modifier = modifier) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = label,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
             color = Color.Black
         )
-        Spacer(modifier = Modifier.height(4.dp))
 
+        // 1-Tap Big Friendly GPS Location Button
+        Button(
+            onClick = { onValueChange("Okhla Market Store #12, New Delhi") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.MyLocation,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "📍 Tap Here to Use My Current Location",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+
+        // Popular Area One-Tap Cards
+        Text(
+            text = "Or tap a popular area below:",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.Gray
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val areas = listOf("Okhla Market", "Sector 18 Noida", "Lajpat Nagar", "Connaught Place")
+            areas.forEach { area ->
+                val isSelected = value.contains(area, ignoreCase = true)
+                Surface(
+                    onClick = { onValueChange("$area Store, New Delhi") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) Color(0xFFEAF5D8) else Color.White,
+                    border = BorderStroke(1.dp, if (isSelected) ErnoGreen else Color(0xFFD0D0D0))
+                ) {
+                    Box(
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = area,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) ErnoGreen else Color.Black
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // Simple Plain Text Box with Automatic Suggestion Dropdown
         ExposedDropdownMenuBox(
-            expanded = showSuggestions,
+            expanded = expanded && suggestions.isNotEmpty(),
             onExpandedChange = { expanded = !expanded }
         ) {
             OutlinedTextField(
                 value = value,
                 onValueChange = {
                     onValueChange(it)
-                    expanded = it.length >= 2
+                    expanded = true
                 },
                 placeholder = { Text(placeholder, color = Color.Gray) },
-                textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                leadingIcon = leadingIcon,
-                trailingIcon = {
-                    if (value.isNotEmpty()) {
-                        IconButton(onClick = { onValueChange("") }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        }
-                    }
+                textStyle = LocalTextStyle.current.copy(color = Color.Black, fontSize = 14.sp),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = ErnoGreen
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor()
-                    .onFocusChanged {
-                        hasFocus = it.isFocused
-                        if (!it.isFocused) expanded = false
-                    },
-                shape = RoundedCornerShape(10.dp),
+                    .menuAnchor(),
+                shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.Black,
                     unfocusedTextColor = Color.Black,
                     focusedBorderColor = ErnoGreen,
-                    unfocusedBorderColor = Color(0xFFE0E0E0),
+                    unfocusedBorderColor = Color(0xFFD0D0D0),
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White
                 ),
@@ -1112,11 +1097,9 @@ fun LocationAutocompleteTextField(
             )
 
             ExposedDropdownMenu(
-                expanded = showSuggestions,
+                expanded = expanded && suggestions.isNotEmpty(),
                 onDismissRequest = { expanded = false },
-                modifier = Modifier
-                    .background(Color.White)
-                    .widthIn(max = 500.dp)
+                modifier = Modifier.background(Color.White)
             ) {
                 suggestions.forEach { suggestion ->
                     DropdownMenuItem(
@@ -1143,90 +1126,6 @@ fun LocationAutocompleteTextField(
                         },
                         modifier = Modifier.background(Color.White)
                     )
-                }
-            }
-        }
-
-        // 1-TAP GPS LOCATION DETECT BUTTON & POPULAR NEARBY CHIPS
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                onClick = { onValueChange("Okhla Market Store #12, Block B, New Delhi") },
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFFEAF5D8),
-                border = BorderStroke(1.dp, ErnoGreen.copy(alpha = 0.5f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MyLocation,
-                        contentDescription = null,
-                        tint = ErnoGreen,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Use Current GPS Location",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ErnoGreen
-                    )
-                }
-            }
-
-            Text(
-                text = "Type or select below",
-                fontSize = 10.sp,
-                color = Color.Gray
-            )
-        }
-
-        // QUICK POPULAR CHIPS
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val quickChips = listOf(
-                "Okhla Market #12",
-                "Sector 18 Noida",
-                "Nehru Place Hub",
-                "Connaught Place",
-                "Lajpat Nagar Market"
-            )
-            items(quickChips) { chip ->
-                Surface(
-                    onClick = { onValueChange("$chip, Delhi NCR") },
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFF8FAFC),
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = ErnoGreen,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = chip,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF334155)
-                        )
-                    }
                 }
             }
         }

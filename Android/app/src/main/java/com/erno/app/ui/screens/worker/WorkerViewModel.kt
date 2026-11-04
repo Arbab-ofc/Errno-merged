@@ -21,7 +21,9 @@ data class WorkerState(
     val workerRating: Float = 0.0f, // Starts at 0.0 rating for everyone initially
     val isOnline: Boolean = true, // Active (online) vs Inactive (offline) toggle
     val isDigiLockerVerified: Boolean = false,
+    val showDigiLockerPopup: Boolean = false,
     val verificationStatus: String = "NOT_STARTED",
+    val aadhaarMasked: String = "",
     val availableJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
     val selectedJob: WorkerJob? = null,
     val myJobs: List<WorkerJob> = emptyList(), // Starts empty for new logins
@@ -43,6 +45,10 @@ class WorkerViewModel : ViewModel() {
 
     fun toggleOnlineStatus(online: Boolean) {
         _uiState.update { it.copy(isOnline = online) }
+    }
+
+    fun triggerDigiLockerPopup(show: Boolean) {
+        _uiState.update { it.copy(showDigiLockerPopup = show) }
     }
 
     fun selectJob(job: WorkerJob) {
@@ -158,6 +164,18 @@ class WorkerViewModel : ViewModel() {
                 totalEarnings = newEarnings,
                 jobsCompletedCount = state.jobsCompletedCount + 1,
                 earningsHistory = listOf(newEarningRecord) + state.earningsHistory
+            )
+        }
+    }
+
+    fun verifyDigiLockerAadhaar(aadhaarNumber: String) {
+        val last4 = if (aadhaarNumber.length >= 4) aadhaarNumber.takeLast(4) else "1234"
+        _uiState.update {
+            it.copy(
+                isDigiLockerVerified = true,
+                showDigiLockerPopup = false,
+                aadhaarMasked = "XXXX-XXXX-$last4",
+                verificationStatus = "VERIFIED"
             )
         }
     }

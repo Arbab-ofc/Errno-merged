@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.sp
 import com.erno.app.ui.components.WorkerLocationMapView
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
-import com.erno.app.data.repository.ErrnoMobileApi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,26 +26,13 @@ fun WorkerJobDetailsScreen(
     state: WorkerState,
     onBackClick: () -> Unit,
     onDurationSelect: (hours: Int, pay: Int) -> Unit,
-    onAcceptJobClick: () -> Unit,
-    onStartJobClick: () -> Unit = {}
+    onStartJobClick: () -> Unit = {},
+    onAcceptJobClick: () -> Unit
 ) {
-    val job = state.selectedJob ?: state.availableJobs.firstOrNull()
-    if (job == null) {
-        Scaffold(containerColor = Color(0xFF0B121F)) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Job unavailable. Refresh the marketplace and try again.", color = Color.White)
-            }
-        }
-        return
-    }
+    val job = state.selectedJob ?: state.availableJobs.first()
     var selectedHours by remember { mutableIntStateOf(job.selectedHours) }
-    var payoutText by remember(job.id) { mutableStateOf<String?>(null) }
-    var payoutError by remember(job.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(job.id) {
-        runCatching { ErrnoMobileApi.workerPayout(job.id) }
-            .onSuccess { payoutText = it.optString("worker_payout_amount").takeIf(String::isNotBlank) }
-            .onFailure { payoutError = it.localizedMessage ?: "Worker payout is unavailable for this legacy job." }
-    }
+
+    val isAlreadyAccepted = job.status == "Ongoing" || job.status == "Accepted" || job.status == "Upcoming" || job.status == "Completed"
 
     Scaffold(
         topBar = {
@@ -72,30 +58,73 @@ fun WorkerJobDetailsScreen(
             )
         },
         bottomBar = {
-            if (job.status == "Available") Surface(
+            Surface(
                 color = Color(0xFF0B121F),
                 tonalElevation = 8.dp
             ) {
                 Box(modifier = Modifier.padding(16.dp)) {
-                    Button(
-                        onClick = onAcceptJobClick,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = "Apply for Job",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                    if (job.status == "Available" || job.status.isBlank()) {
+                        Button(
+                            onClick = onAcceptJobClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "Apply / Accept Job",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    } else if (job.status == "Upcoming") {
+                        Button(
+                            onClick = onStartJobClick,
+                            enabled = !state.lifecycleActionLoading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = if (state.lifecycleActionLoading) "Starting…" else "Start Job",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    } else {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = when (job.status) {
+                                "Ongoing" -> Color(0xFF1B4D3E)
+                                "Completed" -> Color(0xFF263238)
+                                else -> Color(0xFF1E293B)
+                            }
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = when (job.status) {
+                                        "Ongoing" -> "Active Shift (Job Ongoing)"
+                                        "Completed" -> "Shift Completed"
+                                        else -> "Job Already Accepted"
+                                    },
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (job.status == "Ongoing") ErnoGreen else Color.White
+                                )
+                            }
+                        }
                     }
-                }
-            } else if (job.status == "Upcoming") Surface(color = Color(0xFF0B121F)) {
-                Button(onClick = onStartJobClick, enabled = !state.lifecycleActionLoading, modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)) {
-                    Text(if (state.lifecycleActionLoading) "Starting…" else "Start Job", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         },
@@ -108,7 +137,11 @@ fun WorkerJobDetailsScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (state.jobLoadError != null) item { Text(state.jobLoadError.orEmpty(), color = Color(0xFFFF8A80)) }
+            if (state.jobLoadError != null) {
+                item {
+                    Text(text = state.jobLoadError.orEmpty(), color = Color(0xFFFF8A80))
+                }
+            }
             // Main Details Container
             item {
                 Surface(
@@ -117,13 +150,41 @@ fun WorkerJobDetailsScreen(
                     color = Color.White
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = job.title,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
-                        Text("Status: ${job.status}", fontSize = 12.sp, color = ErnoGreen, fontWeight = FontWeight.SemiBold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = job.title,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+
+                            if (isAlreadyAccepted) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = when (job.status) {
+                                        "Ongoing" -> Color(0xFFFFF3E0)
+                                        "Completed" -> Color(0xFFE8F5E9)
+                                        else -> Color(0xFFEAF5D8)
+                                    }
+                                ) {
+                                    Text(
+                                        text = job.status,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when (job.status) {
+                                            "Ongoing" -> Color(0xFFE65100)
+                                            "Completed" -> Color(0xFF2E7D32)
+                                            else -> ErnoGreen
+                                        },
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(4.dp))
 
@@ -176,20 +237,19 @@ fun WorkerJobDetailsScreen(
 
                         if (job.requirements.isNotBlank()) {
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Job Requirements:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            Text(
+                                text = "Job Requirements:",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text(job.requirements, fontSize = 14.sp, color = ErnoTextSecondary, lineHeight = 20.sp)
-                        }
-
-                        Surface(color = Color(0xFF182436), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("Expected earnings", color = Color.White, fontWeight = FontWeight.Bold)
-                                Text("Duration: ${job.selectedHours} hour(s)", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
-                                Text("Customer service charge: ₹${job.selectedPay}", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
-                                Text("Worker payout: ${payoutText?.let { "₹$it" } ?: payoutError ?: "Loading…"}", color = ErnoGreen, fontWeight = FontWeight.Bold)
-                                Text("Settlement status: Not provided by the payment service", color = Color.White.copy(alpha = .65f), fontSize = 11.sp)
-                            }
-                        }
+                            Text(
+                                text = job.requirements,
+                                fontSize = 14.sp,
+                                color = ErnoTextSecondary,
+                                lineHeight = 20.sp
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -234,8 +294,10 @@ fun WorkerJobDetailsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        selectedHours = option.hours
-                                        onDurationSelect(option.hours, option.price)
+                                        if (!isAlreadyAccepted) {
+                                            selectedHours = option.hours
+                                            onDurationSelect(option.hours, option.price)
+                                        }
                                     }
                                     .padding(vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -259,10 +321,13 @@ fun WorkerJobDetailsScreen(
                                     RadioButton(
                                         selected = isSelected,
                                         onClick = {
-                                            selectedHours = option.hours
-                                            onDurationSelect(option.hours, option.price)
+                                            if (!isAlreadyAccepted) {
+                                                selectedHours = option.hours
+                                                onDurationSelect(option.hours, option.price)
+                                            }
                                         },
-                                        colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen)
+                                        colors = RadioButtonDefaults.colors(selectedColor = ErnoGreen),
+                                        enabled = !isAlreadyAccepted
                                     )
                                 }
                             }
@@ -273,3 +338,4 @@ fun WorkerJobDetailsScreen(
             }
         }
     }
+}

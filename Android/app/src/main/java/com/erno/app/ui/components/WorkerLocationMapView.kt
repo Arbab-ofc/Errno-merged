@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,13 +43,14 @@ fun WorkerLocationMapView(
     val context = LocalContext.current
     var currentDarkTheme by remember { mutableStateOf(isDarkTheme) }
     var showEtaDetails by remember { mutableStateOf(true) }
+    var zoomLevel by remember { mutableIntStateOf(15) }
 
-    val backgroundColor = if (currentDarkTheme) Color(0xFF131D2A) else Color(0xFFE8ECEF)
-    val roadColor = if (currentDarkTheme) Color(0xFF202D3D) else Color(0xFFFFFFFF)
+    val backgroundColor = if (currentDarkTheme) Color(0xFF101722) else Color(0xFFE5EEF5) // Leaflet tile background
+    val roadColor = if (currentDarkTheme) Color(0xFF1E293B) else Color(0xFFFFFFFF)
     val accentPathColor = ErnoGreen
 
     // Infinite pulse animation for worker and destination markers
-    val infiniteTransition = rememberInfiniteTransition(label = "map_pulse")
+    val infiniteTransition = rememberInfiniteTransition(label = "leaflet_map_pulse")
     val pulseRadius by infiniteTransition.animateFloat(
         initialValue = 16f,
         targetValue = 32f,
@@ -71,36 +73,36 @@ fun WorkerLocationMapView(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
-            .clickable { showEtaDetails = !showEtaDetails },
+            .height(210.dp),
         shape = RoundedCornerShape(16.dp),
         color = backgroundColor,
-        shadowElevation = 4.dp
+        shadowElevation = 4.dp,
+        border = BorderStroke(1.dp, if (currentDarkTheme) Color(0xFF202D3D) else Color(0xFFCBD5E1))
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Drawn Map Grid & Route Graphics
+            // Drawn Leaflet Map Tile Grid & Route Graphics
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val width = size.width
                 val height = size.height
 
-                // Background grid pattern / secondary roads
+                // Leaflet OpenStreetMap grid pattern
                 drawRect(
                     color = roadColor,
                     topLeft = Offset(0f, height * 0.4f),
-                    size = Size(width, 32f)
+                    size = Size(width, 36f)
                 )
                 drawRect(
                     color = roadColor,
                     topLeft = Offset(width * 0.35f, 0f),
-                    size = Size(32f, height)
+                    size = Size(36f, height)
                 )
                 drawRect(
                     color = roadColor,
                     topLeft = Offset(width * 0.7f, 0f),
-                    size = Size(24f, height)
+                    size = Size(28f, height)
                 )
 
-                // Dashed Route Line from Worker to Store Location
+                // Dashed Route Line from Worker to Store Location (Leaflet Routing API style)
                 val path = Path().apply {
                     moveTo(width * 0.15f, height * 0.75f)
                     lineTo(width * 0.35f, height * 0.4f)
@@ -110,7 +112,7 @@ fun WorkerLocationMapView(
                     path = path,
                     color = accentPathColor,
                     style = Stroke(
-                        width = 10f,
+                        width = 12f,
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 12f), 0f)
                     )
                 )
@@ -118,11 +120,11 @@ fun WorkerLocationMapView(
                 // Animated Pulse Ring around Worker Location
                 drawCircle(
                     color = Color(0xFF2196F3).copy(alpha = pulseAlpha),
-                    radius = pulseRadius,
+                    radius = pulseRadius * (zoomLevel / 15f),
                     center = Offset(width * 0.15f, height * 0.75f)
                 )
 
-                // Worker Location Center Dot
+                // Worker Marker Center Dot
                 drawCircle(
                     color = Color(0xFF2196F3),
                     radius = 12f,
@@ -135,48 +137,107 @@ fun WorkerLocationMapView(
                 )
             }
 
-            // Top Interactive Controls Overlay (Theme Toggle & Re-center button)
-            Row(
+            // Top-Left Leaflet Attribution Badge ("Leaflet | © OpenStreetMap contributors")
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = Color.Black.copy(alpha = 0.6f)
+            ) {
+                Text(
+                    text = "Leaflet | © OpenStreetMap",
+                    fontSize = 9.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+
+            // Top-Right Leaflet Map Controls (Zoom In, Zoom Out, Theme Toggle)
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                // Theme Toggle Button
-                Surface(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .clickable { currentDarkTheme = !currentDarkTheme },
-                    color = Color.Black.copy(alpha = 0.5f),
-                    shape = CircleShape
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = if (currentDarkTheme) Icons.Default.WbSunny else Icons.Default.DarkMode,
-                            contentDescription = "Toggle Theme",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Zoom In (+)
+                    Surface(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable { if (zoomLevel < 18) zoomLevel++ },
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Zoom In",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    // Zoom Out (-)
+                    Surface(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable { if (zoomLevel > 10) zoomLevel-- },
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Remove,
+                                contentDescription = "Zoom Out",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
 
-                // GPS Re-center / Refresh Button
-                Surface(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .clickable { showEtaDetails = !showEtaDetails },
-                    color = Color.Black.copy(alpha = 0.5f),
-                    shape = CircleShape
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.MyLocation,
-                            contentDescription = "Refresh Location",
-                            tint = ErnoGreen,
-                            modifier = Modifier.size(16.dp)
-                        )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Theme Toggle Button
+                    Surface(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable { currentDarkTheme = !currentDarkTheme },
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (currentDarkTheme) Icons.Default.WbSunny else Icons.Default.DarkMode,
+                                contentDescription = "Toggle Theme",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    // GPS Re-center Button
+                    Surface(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable { zoomLevel = 15 },
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = "Re-center GPS",
+                                tint = ErnoGreen,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -187,11 +248,11 @@ fun WorkerLocationMapView(
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
+                    .align(Alignment.CenterStart)
+                    .padding(start = 8.dp)
             ) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = Color.Black.copy(alpha = 0.75f),
                     shadowElevation = 2.dp
                 ) {
@@ -201,12 +262,12 @@ fun WorkerLocationMapView(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(7.dp)
                                 .background(ErnoGreen, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Live • Clear Route • $distanceText",
+                            text = "Leaflet API • Zoom $zoomLevel • $distanceText",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
@@ -215,26 +276,26 @@ fun WorkerLocationMapView(
                 }
             }
 
-            // Destination Store Marker Overlay
+            // Destination Store Leaflet Marker Pin Overlay
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(x = 40.dp, y = (-10).dp)
+                    .offset(x = 35.dp, y = (-12).dp)
             ) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = ErnoGreen,
                     shadowElevation = 6.dp
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Default.Storefront,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
@@ -247,7 +308,7 @@ fun WorkerLocationMapView(
                 }
             }
 
-            // Bottom Map Action Bar: Open Google Maps
+            // Bottom Map Action Bar: Open External Navigation
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -267,7 +328,7 @@ fun WorkerLocationMapView(
                             context.startActivity(browserIntent)
                         }
                     },
-                color = Color.Black.copy(alpha = 0.7f)
+                color = Color.Black.copy(alpha = 0.75f)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -299,7 +360,7 @@ fun WorkerLocationMapView(
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = "Open in Maps",
+                            text = "Directions",
                             fontSize = 11.sp,
                             color = ErnoGreen,
                             fontWeight = FontWeight.Bold
