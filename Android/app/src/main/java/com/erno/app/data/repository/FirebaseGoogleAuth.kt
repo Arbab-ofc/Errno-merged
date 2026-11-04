@@ -20,6 +20,20 @@ data class ErrnoIdentity(val id: String, val role: String?, val onboardingComple
 
 /** Google Credential Manager -> Firebase -> verified Firebase ID token -> ERRNO API. */
 object FirebaseGoogleAuth {
+    suspend fun signInDevelopment(email: String, password: String, selectedRole: String): ErrnoIdentity {
+        check(BuildConfig.DEBUG && BuildConfig.ERRNO_FIREBASE_AUTH_EMULATOR_HOST.isNotBlank()) {
+            "Development sign-in is available only with the Firebase Auth emulator in a debug build."
+        }
+        val user = FirebaseAuth.getInstance().signInWithEmailAndPassword(email, password).await().user
+            ?: error("Firebase emulator did not return a user.")
+        return try {
+            val token = user.getIdToken(true).await().token ?: error("Firebase emulator did not return an ID token.")
+            syncWithBackend(token, selectedRole)
+        } catch (error: Exception) {
+            FirebaseAuth.getInstance().signOut()
+            throw error
+        }
+    }
     suspend fun signIn(activity: Activity, selectedRole: String): ErrnoIdentity {
         runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.unregisterCurrent() }
         runCatching { WhatsAppAuthApi.logout() }

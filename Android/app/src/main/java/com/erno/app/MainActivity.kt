@@ -29,6 +29,12 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
     private var pendingPaymentBookingId: String? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG && BuildConfig.ERRNO_FIREBASE_AUTH_EMULATOR_HOST.isNotBlank()) {
+            val endpoint = BuildConfig.ERRNO_FIREBASE_AUTH_EMULATOR_HOST
+            val separator = endpoint.lastIndexOf(':')
+            require(separator > 0) { "Firebase Auth emulator must be host:port." }
+            FirebaseAuth.getInstance().useEmulator(endpoint.substring(0, separator), endpoint.substring(separator + 1).toInt())
+        }
         com.erno.app.notifications.ErrnoNotificationChannels.create(this)
         enableEdgeToEdge()
         Checkout.preload(applicationContext)

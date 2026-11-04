@@ -76,7 +76,7 @@ def migrated_postgres_client():
     app.include_router(pricing_router)
     app.dependency_overrides[get_db] = get_test_db
     with engine.begin() as connection:
-        assert connection.execute(text("select version_num from public.alembic_version")).scalar_one() == "3b7280d1c6a4"
+        assert connection.execute(text("select version_num from public.alembic_version")).scalar_one() == "eb72a31c4890"
         connection.execute(text("DELETE FROM pricing_quotes"))
         connection.execute(text("DELETE FROM applications"))
         connection.execute(text("DELETE FROM jobs"))
@@ -112,6 +112,7 @@ def test_firebase_profile_roles_and_shop_job_application_fks(migrated_postgres_c
         duration=db.query(DurationPricing).filter_by(duration_hours=8).one()
         duration.base_price=100; duration.maximum_price=830; duration.enabled=True
         duration.approval_status="approved"; duration.effective_from=datetime.now(timezone.utc)-timedelta(days=1)
+        duration.effective_until=None
         db.commit()
     service_start="2030-01-01T10:00:00+05:30"
     quote=client.post("/api/v1/pricing/quotes",headers=owner_headers,json={
@@ -152,6 +153,7 @@ def test_postgres_quote_cannot_be_consumed_twice_concurrently(migrated_postgres_
         duration=db.query(DurationPricing).filter_by(duration_hours=1).one()
         duration.base_price=120; duration.maximum_price=160; duration.enabled=True
         duration.approval_status="approved"; duration.effective_from=datetime.now(timezone.utc)-timedelta(days=1)
+        duration.effective_until=None
         db.commit()
     service="2030-01-01T06:30:00+00:00"
     quote_response=client.post("/api/v1/pricing/quotes",headers=owner_headers,json={"duration_hours":1,"service_start_at":service})

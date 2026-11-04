@@ -7,6 +7,7 @@
 
 import SwiftUI
 import FirebaseCore
+import FirebaseAuth
 import GoogleSignIn
 
 @main
@@ -18,6 +19,14 @@ struct ErrnoApp: App {
 
     init() {
         if FirebaseApp.app() == nil { FirebaseApp.configure() }
+#if DEBUG
+        if let emulator = ProcessInfo.processInfo.environment["ERRNO_FIREBASE_AUTH_EMULATOR"],
+           let split = emulator.split(separator: ":", omittingEmptySubsequences: false).last,
+           let port = Int(split), let colon = emulator.lastIndex(of: ":") {
+            let host = String(emulator[..<colon])
+            if !host.isEmpty { Auth.auth().useEmulator(withHost: host, port: port) }
+        }
+#endif
     }
 
     var body: some Scene {

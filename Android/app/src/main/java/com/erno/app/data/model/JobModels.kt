@@ -10,6 +10,8 @@ data class JobPost(
     val title: String,
     val category: String,
     val location: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val description: String,
     val requirements: String = "",
     val payStructure: List<DurationPay>,
@@ -49,8 +51,8 @@ data class WorkerJob(
     val selectedHours: Int = 2,
     val selectedPay: Int = 189,
     val status: String = "Available", // "Available", "Accepting", "Accepted", "Upcoming", "Ongoing", "Completed"
-    val latitude: Double = 28.5355,
-    val longitude: Double = 77.2641,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val isDeliveryJob: Boolean = false,
     val pickupLocation: String = "Okhla Shop Store",
     val dropLocation: String = "Sector 15 Noida",
@@ -86,3 +88,8 @@ data class EarningRecord(
     val date: String,
     val amount: Int
 )
+
+
+data class MapCoordinate(val latitude: Double, val longitude: Double)
+data class NearbyWorker(val id: String, val latitude: Double, val longitude: Double, val distanceKm: Double, val updatedAt: String)
+data class ApproximateRoute(val coordinates: List<MapCoordinate>, val distanceKm: Double, val durationMinutes: Int, val label: String)

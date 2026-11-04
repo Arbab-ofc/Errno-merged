@@ -94,6 +94,25 @@ fun NavGraph(navController: NavHostController) {
             }
         }
     }
+    fun developmentFirebaseSignIn(email: String, password: String, selectedRole: String) {
+        if (!com.erno.app.BuildConfig.DEBUG || com.erno.app.BuildConfig.ERRNO_FIREBASE_AUTH_EMULATOR_HOST.isBlank() || googleLoading) return
+        googleLoading = true
+        scope.launch {
+            try {
+                val identity = FirebaseGoogleAuth.signInDevelopment(email, password, selectedRole)
+                val route = when (identity.role) {
+                    "worker" -> Screen.WorkerHome.route
+                    "shopkeeper", "shop_owner" -> Screen.ShopkeeperHome.route
+                    else -> Screen.RoleSelection.route
+                }
+                navController.navigate(route) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
+                openPendingNotification()
+                (context as? com.erno.app.MainActivity)?.startPresenceTracking()
+            } catch (error: Exception) {
+                Toast.makeText(context, error.localizedMessage ?: "Emulator sign-in failed.", Toast.LENGTH_LONG).show()
+            } finally { googleLoading = false }
+        }
+    }
     fun sendPhoneOtp(phone: String, selectedRole: String, fullName: String? = null) {
         if (otpSending) return
         otpSending = true
@@ -168,6 +187,8 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onGoogleSignInClick = { googleSignIn("shop_owner") },
                 isGoogleLoading = googleLoading,
+                developmentAuthEnabled = com.erno.app.BuildConfig.DEBUG && com.erno.app.BuildConfig.ERRNO_FIREBASE_AUTH_EMULATOR_HOST.isNotBlank(),
+                onDevelopmentSignIn = { email, password -> developmentFirebaseSignIn(email, password, "shop_owner") },
                 onCreateAccount = {
                     navController.navigate(Screen.TermsConsent.createRoute(Screen.Register.route))
                 },
@@ -190,6 +211,8 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onGoogleSignInClick = { googleSignIn("worker") },
                 isGoogleLoading = googleLoading,
+                developmentAuthEnabled = com.erno.app.BuildConfig.DEBUG && com.erno.app.BuildConfig.ERRNO_FIREBASE_AUTH_EMULATOR_HOST.isNotBlank(),
+                onDevelopmentSignIn = { email, password -> developmentFirebaseSignIn(email, password, "worker") },
                 onCreateAccount = {
                     navController.navigate(Screen.TermsConsent.createRoute(Screen.Register.route))
                 },
@@ -313,6 +336,10 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onCategoryChange = shopkeeperViewModel::updateCategory,
                 onLocationChange = shopkeeperViewModel::updateLocation,
+                onMapLocationChange = { address, lat, lng ->
+                    if (shopkeeperState.draftIsDelivery) shopkeeperViewModel.updatePickupMapLocation(address, lat, lng)
+                    else shopkeeperViewModel.updateMapLocation(address, lat, lng)
+                },
                 onScheduledDateChange = shopkeeperViewModel::updateScheduledDate,
                 onScheduledTimeChange = shopkeeperViewModel::updateScheduledTime,
                 onWorkingRequirementTypeChange = shopkeeperViewModel::updateWorkingRequirementType,
@@ -477,6 +504,7 @@ fun NavGraph(navController: NavHostController) {
         // Worker Flow Routes
         composable(Screen.WorkerHome.route) {
             LaunchedEffect(Unit) { workerViewModel.refreshBackendJobs(); workerViewModel.refreshAvailability() }
+            com.erno.app.ui.components.WorkerLocationUpdates(available = workerState.isAvailableForWork, activeJobId = null)
             WorkerHomeScreen(
                 state = workerState,
                 onJobSelect = { job ->
@@ -503,6 +531,7 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.WorkerJobDetails.route) {
+            com.erno.app.ui.components.WorkerLocationUpdates(available = false, activeJobId = workerState.myJobs.firstOrNull { it.status == "Ongoing" }?.id)
             WorkerJobDetailsScreen(
                 state = workerState,
                 onBackClick = {
@@ -535,6 +564,7 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.WorkerMyJobs.route) {
+            com.erno.app.ui.components.WorkerLocationUpdates(available = false, activeJobId = workerState.myJobs.firstOrNull { it.status == "Ongoing" }?.id)
             LaunchedEffect(Unit) {
                 workerViewModel.refreshBackendJobs()
                 workerViewModel.refreshApplications()
@@ -580,15 +610,21 @@ fun NavGraph(navController: NavHostController) {
         }
 
         composable(Screen.WorkerProfile.route) {
-            LaunchedEffect(Unit) { workerViewModel.refreshKycStatus() }
+            LaunchedEffect(Unit) { workerViewModel.refreshProfile(); workerViewModel.refreshKycStatus() }
             WorkerProfileScreen(
                 state = workerState,
+                onSaveProfile = { workerViewModel.updateProfile(it) },
+                onSaveSkills = { skills ->
+                    ErrnoMobileApi.updateWorkerSkills(skills)
+                    workerViewModel.refreshProfile()
+                },
                 onBackClick = {
                     navController.popBackStack()
                 },
                 onLogoutClick = {
                     scope.launch {
                         runCatching { FirebaseGoogleAuth.logout() }
+                        workerViewModel.resetSession()
                         (context as? com.erno.app.MainActivity)?.stopPresenceTracking()
                         navController.navigate(Screen.RoleSelection.route) {
                             popUpTo(0)

@@ -28,7 +28,6 @@ struct PreviewJobView: View {
                 quoteBreakdown
                 Button(viewModel.isLoadingQuote ? "Refreshing quote…" : "Refresh price quote") { Task { await viewModel.refreshPricingQuote() } }
                     .disabled(viewModel.isLoadingQuote)
-                MockNotice(text: "Local demo • This post is visible only inside this app session.")
                 if let error = viewModel.errorMessage { Text(error).foregroundStyle(Color.errnoError) }
             }.marketplaceCard(padding: 20).padding(20).frame(maxWidth: 800).frame(maxWidth: .infinity)
         }.marketplacePage().navigationTitle("Preview Job").navigationBarTitleDisplayMode(.inline)

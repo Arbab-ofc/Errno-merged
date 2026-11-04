@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from firebase_auth import authenticated_user, require_admin, require_role
 from models import (DurationPricing, PricingSettings, PricingSettingsDraft, TimePricingRule, DemandPricingRule, AreaPricingRule,
-                    PricingQuote, PricingAudit, Job, Shop, PresenceSession, User)
+                    PricingQuote, PricingAudit, Job, Shop, PresenceSession, User, WorkerLocation)
 
 router = APIRouter(prefix="/api/v1", tags=["Pricing and presence"])
 D = Decimal
@@ -667,7 +667,9 @@ def heartbeat(body:HeartbeatBody,user:User=Depends(authenticated_user),db:Sessio
 @router.post("/presence/offline")
 def offline(body:HeartbeatBody,user:User=Depends(authenticated_user),db:Session=Depends(get_db)):
     row=db.query(PresenceSession).filter(PresenceSession.user_id==user.id,PresenceSession.session_identifier==body.session_identifier).first()
-    if row: row.is_foreground=False; row.availability_status="unavailable"; row.expires_at=datetime.now(timezone.utc); db.commit()
+    if row: row.is_foreground=False; row.availability_status="unavailable"; row.expires_at=datetime.now(timezone.utc)
+    if user.role == "worker": db.query(WorkerLocation).filter(WorkerLocation.user_id==user.id, WorkerLocation.job_id.is_(None)).delete(synchronize_session=False)
+    db.commit()
     return {"online":False}
 
 

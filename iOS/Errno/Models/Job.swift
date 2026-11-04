@@ -58,8 +58,8 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     var payType: PayType
     var payAmount: Double
     var estimatedDurationHours: Double?
-    var latitude: Double
-    var longitude: Double
+    var latitude: Double?
+    var longitude: Double?
     var status: JobStatus
     var createdAt: Date
     var scheduledStartTime: Date?
@@ -93,12 +93,13 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     }
     
     // Derived properties
-    var coordinate: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    var coordinate: CLLocationCoordinate2D? {
+        guard let latitude, let longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
     
     // MARK: - Initializer for Mock Data
-    init(id: UUID = UUID(), shopOwnerId: UUID, category: JobCategory, title: String, description: String, payType: PayType, payAmount: Double, estimatedDurationHours: Double? = nil, latitude: Double, longitude: Double, status: JobStatus = .open, createdAt: Date = Date(), scheduledStartTime: Date? = nil) {
+    init(id: UUID = UUID(), shopOwnerId: UUID, category: JobCategory, title: String, description: String, payType: PayType, payAmount: Double, estimatedDurationHours: Double? = nil, latitude: Double? = nil, longitude: Double? = nil, status: JobStatus = .open, createdAt: Date = Date(), scheduledStartTime: Date? = nil) {
         self.id = id
         self.shopOwnerId = shopOwnerId
         self.category = category

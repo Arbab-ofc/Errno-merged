@@ -122,6 +122,31 @@ object ErrnoMobileApi {
         request("PATCH", "/api/v1/workers/me/availability", JSONObject().put("available", available))
     }
     suspend fun workerAvailability(): Boolean = JSONObject(request("GET", "/api/v1/workers/me/availability")).optBoolean("available")
+
+    suspend fun updateAvailableLocation(latitude: Double, longitude: Double) {
+        request("PUT", "/api/v1/workers/me/location", JSONObject().put("latitude",latitude).put("longitude",longitude))
+    }
+    suspend fun updateAssignedLocation(jobId: String, latitude: Double, longitude: Double) {
+        request("PUT", "/jobs/${java.net.URLEncoder.encode(jobId,"UTF-8")}/tracking/location", JSONObject().put("latitude",latitude).put("longitude",longitude))
+    }
+    suspend fun nearbyWorkers(jobId: String, radiusKm: Double): List<com.erno.app.data.model.NearbyWorker> {
+        val json=JSONObject(request("GET","/jobs/${java.net.URLEncoder.encode(jobId,"UTF-8")}/nearby-workers?radius_km=$radiusKm"))
+        val rows=json.optJSONArray("workers") ?: JSONArray()
+        return (0 until rows.length()).map { i -> rows.getJSONObject(i).let { com.erno.app.data.model.NearbyWorker(it.optString("id"),it.getDouble("latitude"),it.getDouble("longitude"),it.optDouble("distance_km"),it.optString("updated_at")) } }
+    }
+    suspend fun trackingRoute(jobId: String): com.erno.app.data.model.ApproximateRoute {
+        val json=JSONObject(request("GET","/jobs/${java.net.URLEncoder.encode(jobId,"UTF-8")}/route"))
+        val coords=json.getJSONObject("geometry").getJSONArray("coordinates")
+        return com.erno.app.data.model.ApproximateRoute((0 until coords.length()).map { i -> coords.getJSONArray(i).let { com.erno.app.data.model.MapCoordinate(it.getDouble(1),it.getDouble(0)) } },json.getDouble("distance_km"),json.getInt("duration_minutes"),json.getString("label"))
+    }
+    suspend fun openTrackingSocket(jobId: String, listener: okhttp3.WebSocketListener): okhttp3.WebSocket = withContext(Dispatchers.IO) {
+        val sessionToken=ErrnoSessionStore.read(); val user=FirebaseAuth.getInstance().currentUser
+        val token=sessionToken ?: (user?.getIdToken(false)?.await()?.token) ?: error("Sign in to continue.")
+        val base=BuildConfig.ERRNO_API_BASE_URL.trimEnd('/'); val scheme=if(base.startsWith("https://")) "wss://" else "ws://"
+        val url=scheme+base.removePrefix("https://").removePrefix("http://")+"/ws/jobs/${java.net.URLEncoder.encode(jobId,"UTF-8")}/tracking"
+        okhttp3.OkHttpClient().newWebSocket(okhttp3.Request.Builder().url(url).header("Authorization","Bearer $token").build(),listener)
+    }
+
     suspend fun workerPayout(jobId: String): JSONObject = JSONObject(request("GET", "/api/v1/jobs/$jobId/worker-payout"))
     suspend fun workerWallet(): JSONObject = JSONObject(request("GET", "/api/v1/worker/wallet"))
     suspend fun payoutMethods(): JSONArray = JSONArray(request("GET", "/api/v1/worker/payout-methods"))
@@ -160,7 +185,7 @@ object ErrnoMobileApi {
         val body = JSONObject().put("title", job.title).put("category", job.category)
             .put("description", job.description).put("pay_amount", pay.price)
             .put("duration_type", "${pay.hours} hours").put("scheduled_date", job.scheduledDate)
-            .put("location", job.location).put("pickup_location", job.pickupLocation)
+            .put("location", job.location).put("latitude", job.latitude ?: JSONObject.NULL).put("longitude", job.longitude ?: JSONObject.NULL).put("pickup_location", job.pickupLocation)
             .put("drop_location", job.dropLocation).put("is_delivery", job.isDeliveryJob)
             .put("quote_id", quoteId).put("service_start_at", serviceStartAt)
         return JSONObject(request("POST", "/jobs", body)).toShopkeeperJob()
@@ -190,6 +215,9 @@ object ErrnoMobileApi {
 
     suspend fun profile(): JSONObject = JSONObject(request("GET", "/api/v1/users/me"))
     suspend fun updateProfile(name: String): JSONObject = JSONObject(request("PATCH", "/api/v1/users/me", JSONObject().put("name", name)))
+    suspend fun workerProfile(): JSONObject = JSONObject(request("GET", "/api/v1/workers/me/profile"))
+    suspend fun updateWorkerSkills(skills: List<String>): JSONObject = JSONObject(request("PATCH", "/api/v1/workers/me/profile", JSONObject().put("preferredSkills", JSONArray(skills))))
+    suspend fun addPayoutMethod(providerReference: String): JSONObject = JSONObject(request("POST", "/api/v1/worker/payout-methods", JSONObject().put("providerReference", providerReference)))
     suspend fun shop(): JSONObject? {
         val body = request("GET", "/shops/me")
         return if (body.trim() == "null") null else JSONObject(body)
@@ -203,7 +231,7 @@ object ErrnoMobileApi {
         val amount = optDouble("pay_amount", 0.0).toInt()
         val hours = optString("duration_type").filter { it.isDigit() }.toIntOrNull() ?: 1
         return JobPost(id = getString("id"), title = getString("title"), category = optString("category"),
-            location = optString("location"), description = optString("description"), payStructure = listOf(DurationPay(hours, amount)),
+            location = optString("location"), latitude = if (has("latitude") && !isNull("latitude")) optDouble("latitude") else null, longitude = if (has("longitude") && !isNull("longitude")) optDouble("longitude") else null, description = optString("description"), payStructure = listOf(DurationPay(hours, amount)),
             status = when (optString("status")) { "assigned" -> "Worker Assigned"; "in_progress" -> "In Progress"; "completed" -> "Completed"; "cancelled" -> "Cancelled"; else -> "Active" },
             isDeliveryJob = optBoolean("is_delivery"), pickupLocation = optString("pickup_location"),
             dropLocation = optString("drop_location"), scheduledDate = optString("scheduled_date"), isWorkerAssigned = optString("assigned_worker_id").isNotBlank())
@@ -221,7 +249,7 @@ object ErrnoMobileApi {
             else -> "Available"
         }
         return WorkerJob(id = getString("id"), title = getString("title"), location = optString("location"), distance = "",
-            description = optString("description"), payStructure = listOf(DurationPay(hours, amount)), selectedHours = hours,
+            latitude = if (has("latitude") && !isNull("latitude")) optDouble("latitude") else null, longitude = if (has("longitude") && !isNull("longitude")) optDouble("longitude") else null, description = optString("description"), payStructure = listOf(DurationPay(hours, amount)), selectedHours = hours,
             selectedPay = amount, status = displayStatus, isDeliveryJob = optBoolean("is_delivery"), pickupLocation = optString("pickup_location"),
             dropLocation = optString("drop_location"), scheduledDate = optString("scheduled_date"))
     }

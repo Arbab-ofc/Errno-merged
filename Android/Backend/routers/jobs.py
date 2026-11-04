@@ -1,22 +1,31 @@
 from datetime import datetime, timezone
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from database import get_db
-from models import Job, Application, User, Shop, PricingQuote
+from models import Job, Application, User, Shop, PricingQuote, WorkerLocation
 from schemas import (JobCreateRequest, JobResponse, ApplicationResponse, ApplicationDecisionRequest,
                      OwnerApplicationResponse, WorkerApplicationResponse, WorkerApplicationsPage,
                      ApplicationJobSummary, ApplicationShopSummary)
 from firebase_auth import authenticated_user, require_role
 from job_lifecycle import VALID_JOB_STATUSES, can_transition
+
+def _assignment_notification_event_id(job_id: str, worker_id: str) -> str:
+    """Keep the deterministic notification key within the PostgreSQL 64-char column."""
+    digest = hashlib.sha256(f"{job_id}:{worker_id}".encode()).hexdigest()[:48]
+    return f"job-assigned:{digest}"
 from services.notification_service import queue_notification, queue_admin_notifications
+from routers.maps import tracking_hub
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 @router.post("", response_model=JobResponse)
 def create_job(request: JobCreateRequest, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
     require_role(user, "shop_owner", "shopkeeper")
+    if (request.latitude is None) != (request.longitude is None):
+        raise HTTPException(status_code=422, detail="Latitude and longitude must be supplied together")
     quote = db.query(PricingQuote).filter(PricingQuote.id == request.quote_id).with_for_update().first()
     now = datetime.now(timezone.utc)
     if quote is None or quote.user_id != user.id:
@@ -61,6 +70,7 @@ def create_job(request: JobCreateRequest, user: User = Depends(authenticated_use
         duration_type=request.duration_type,
         scheduled_date=quoted_start.isoformat(),
         location=request.location,
+        latitude=request.latitude, longitude=request.longitude,
         pickup_location=request.pickup_location,
         drop_location=request.drop_location,
         is_delivery=request.is_delivery,
@@ -250,11 +260,11 @@ def decide_application(job_id: str, application_id: str, body: ApplicationDecisi
         if worker:
             queue_notification(db, recipient=worker, event_type="job_assigned", category="job",
                 title="Job assigned", body="You have been assigned a job. Open ERRNO to review details.",
-                data={"route":"job","job_id":job.id}, event_id=f"job:{job.id}:assigned:{worker.id}")
+                data={"route":"job","job_id":job.id}, event_id=_assignment_notification_event_id(job.id,worker.id))
         if owner:
             queue_notification(db, recipient=owner, event_type="worker_assigned", category="booking",
                 title="Worker assigned", body="A worker has accepted your booking.",
-                data={"route":"booking","job_id":job.id}, event_id=f"job:{job.id}:assigned:{worker.id}")
+                data={"route":"booking","job_id":job.id}, event_id=_assignment_notification_event_id(job.id,worker.id))
     else:
         application.status = "rejected"
     db.commit()
@@ -281,6 +291,8 @@ def update_job_status(
         raise HTTPException(status_code=409, detail="Invalid job status transition")
 
     job.status = new_status
+    if new_status in ("completed", "cancelled"):
+        db.query(WorkerLocation).filter(WorkerLocation.job_id == job.id).delete(synchronize_session=False)
     job.cancelled_at = datetime.now(timezone.utc)
     if new_status == "cancelled" and job.assigned_worker_id:
         worker = db.query(User).filter(User.id == job.assigned_worker_id).first()
@@ -291,6 +303,8 @@ def update_job_status(
 
     db.commit()
     db.refresh(job)
+    if new_status in ("completed", "cancelled"):
+        tracking_hub.publish(job.id,{"state":"ended"},close=True)
 
     return JobResponse.from_orm(job)
 
@@ -329,6 +343,7 @@ def confirm_job_completion(job_id: str, user: User = Depends(authenticated_user)
     if not job.assigned_worker_id:
         raise HTTPException(status_code=409, detail="An assigned worker is required before completion")
     job.status = "completed"
+    db.query(WorkerLocation).filter(WorkerLocation.job_id == job.id).delete(synchronize_session=False)
     job.completed_at = datetime.now(timezone.utc)
     worker = db.query(User).filter(User.id == job.assigned_worker_id).first()
     if worker:
@@ -337,4 +352,5 @@ def confirm_job_completion(job_id: str, user: User = Depends(authenticated_user)
             data={"route":"job","job_id":job.id}, event_id=f"job:{job.id}:completed")
     db.commit()
     db.refresh(job)
+    tracking_hub.publish(job.id,{"state":"ended"},close=True)
     return JobResponse.from_orm(job)

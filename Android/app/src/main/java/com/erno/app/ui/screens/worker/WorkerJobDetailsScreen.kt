@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.ui.components.WorkerLocationMapView
+import com.erno.app.data.repository.ErrnoMobileApi
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
 
@@ -29,8 +30,23 @@ fun WorkerJobDetailsScreen(
     onStartJobClick: () -> Unit = {},
     onAcceptJobClick: () -> Unit
 ) {
-    val job = state.selectedJob ?: state.availableJobs.first()
+    val job = state.selectedJob ?: state.availableJobs.firstOrNull()
+    if (job == null) {
+        Scaffold(containerColor = Color(0xFF0B121F)) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("Job unavailable. Refresh the marketplace and try again.", color = Color.White)
+            }
+        }
+        return
+    }
     var selectedHours by remember { mutableIntStateOf(job.selectedHours) }
+    var payoutText by remember(job.id) { mutableStateOf<String?>(null) }
+    var payoutError by remember(job.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(job.id) {
+        runCatching { ErrnoMobileApi.workerPayout(job.id) }
+            .onSuccess { payoutText = it.optString("worker_payout_amount").takeIf(String::isNotBlank) }
+            .onFailure { payoutError = it.localizedMessage ?: "Worker payout is unavailable for this legacy job." }
+    }
 
     val isAlreadyAccepted = job.status == "Ongoing" || job.status == "Accepted" || job.status == "Upcoming" || job.status == "Completed"
 
@@ -250,6 +266,16 @@ fun WorkerJobDetailsScreen(
                                 color = ErnoTextSecondary,
                                 lineHeight = 20.sp
                             )
+                        }
+
+                        Surface(color = Color(0xFF182436), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("Expected earnings", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Duration: ${job.selectedHours} hour(s)", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
+                                Text("Customer service charge: ₹${job.selectedPay}", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
+                                Text("Worker payout: ${payoutText?.let { "₹$it" } ?: payoutError ?: "Loading…"}", color = ErnoGreen, fontWeight = FontWeight.Bold)
+                                Text("Settlement status: Not provided by the payment service", color = Color.White.copy(alpha = .65f), fontSize = 11.sp)
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))

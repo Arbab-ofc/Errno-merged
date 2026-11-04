@@ -250,6 +250,8 @@ def test_admin_scopes_activation_safeguard_and_presence_lifecycle(pricing_client
     for sid in ("worker-device-0001","worker-device-0002"):
         assert client.post("/api/v1/presence/heartbeat",headers=worker_headers,json={"session_identifier":sid,"device_platform":"test"}).status_code==200
     assert client.patch("/api/v1/workers/me/availability",headers=worker_headers,json={"available":True}).json()["available"] is True
+    assert client.get("/api/v1/workers/me/availability",headers=worker_headers).json()["available"] is True
+    assert client.get("/api/v1/workers/me/availability",headers={"Authorization":"Bearer stale-worker-token"}).json()["available"] is False
     assert client.post("/api/v1/presence/heartbeat",headers=recruiter_headers,json={"session_identifier":"recruiter-device-0001"}).status_code==200
     with factory() as db:
         db.add(PresenceSession(user_id="stale-worker-id",session_identifier="stale-device-0001",

@@ -8,6 +8,7 @@ from routers import whatsapp_auth
 from routers import payments
 from routers import kyc
 from routers import notifications, devices, admin_notifications
+from routers import worker_profile, maps
 
 # Keep automatic schema creation limited to disposable/local SQLite development.
 # PostgreSQL schema changes are migration-only; startup must never mutate a deployed DB.
@@ -45,6 +46,8 @@ app.include_router(kyc.admin_router)
 app.include_router(notifications.router)
 app.include_router(devices.router)
 app.include_router(admin_notifications.router)
+app.include_router(worker_profile.router)
+app.include_router(maps.router)
 
 if __name__ == "__main__":
     import uvicorn

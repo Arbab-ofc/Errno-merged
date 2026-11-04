@@ -5,7 +5,10 @@ import UserNotifications
 import UIKit
 import SwiftUI
 
-extension Notification.Name { static let errnoNotificationTapped = Notification.Name("errno.notification.tapped") }
+extension Notification.Name {
+    static let errnoNotificationTapped = Notification.Name("errno.notification.tapped")
+    static let errnoNotificationInboxChanged = Notification.Name("errno.notification.inbox.changed")
+}
 
 struct InboxNotification: Decodable, Identifiable, Sendable {
     let id: String; let eventType: String; let title: String; let body: String; let category: String
@@ -65,9 +68,11 @@ struct InboxPage: Decodable, Sendable { let items: [InboxNotification]; let next
     }
     static func markRead(_ id: String) async throws {
         let _: [String:String] = try await send(path:"api/v1/notifications/\(id)/read", method:"PATCH", body:[:])
+        NotificationCenter.default.post(name: .errnoNotificationInboxChanged, object: nil)
     }
     static func markAllRead() async throws {
         let _: [String:Int] = try await send(path:"api/v1/notifications/read-all", method:"PATCH", body:[:])
+        NotificationCenter.default.post(name: .errnoNotificationInboxChanged, object: nil)
     }
     private static func send<T: Decodable>(path: String, method: String, body: [String:Any]? = nil) async throws -> T {
         guard let auth = await bearer(), let config = try? BackendConfiguration.bundled() else { throw APIError.unauthorized }

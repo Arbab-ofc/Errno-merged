@@ -79,14 +79,17 @@ def test_mobile_shop_job_application_persists_and_enforces_owner_scope(mobile_cl
     })
     assert shop_response.status_code == 200
     quote_id, service_start_at = insert_job_quote(factory, owner_id, duration_hours=2)
-    job_response = client.post("/jobs", headers=owner_headers, json={
+    job_body = {
         "title": "Delivery Partner", "category": "Delivery Partner", "description": "Deliver orders",
         "pay_amount": 249, "duration_type": "2 hours", "scheduled_date": "Tomorrow",
         "location": "Market Road", "is_delivery": True,
         "quote_id": quote_id, "service_start_at": service_start_at,
-    })
+    }
+    assert client.post("/jobs", headers=owner_headers, json={**job_body, "latitude": 28.6139}).status_code == 422
+    job_response = client.post("/jobs", headers=owner_headers, json={**job_body, "latitude": 28.6139, "longitude": 77.2090})
     assert job_response.status_code == 200
     job_id = job_response.json()["id"]
+    assert job_response.json()["latitude"] == 28.6139 and job_response.json()["longitude"] == 77.209
     assert client.get("/jobs/mine", headers=owner_headers).json()[0]["id"] == job_id
     assert client.get("/jobs/mine", headers=worker_headers).status_code == 403
     assert client.get("/jobs/applications/me", headers=owner_headers).status_code == 403

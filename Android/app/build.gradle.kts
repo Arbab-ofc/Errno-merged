@@ -20,9 +20,20 @@ android {
         val localApiProperties = Properties().apply {
             rootProject.file("gradle.properties.local").takeIf { it.isFile }?.inputStream()?.use { load(it) }
         }
-        val apiBaseUrl = localApiProperties.getProperty("ERRNO_API_BASE_URL")
-            ?: providers.gradleProperty("ERRNO_API_BASE_URL").orElse("").get()
+        val apiBaseUrl = providers.gradleProperty("ERRNO_API_BASE_URL")
+            .getOrElse(localApiProperties.getProperty("ERRNO_API_BASE_URL") ?: "")
+        val photonEndpoint = localApiProperties.getProperty("ERRNO_PHOTON_ENDPOINT") ?: providers.gradleProperty("ERRNO_PHOTON_ENDPOINT").orElse("https://photon.komoot.io").get()
+        val osrmEndpoint = localApiProperties.getProperty("ERRNO_OSRM_ENDPOINT") ?: providers.gradleProperty("ERRNO_OSRM_ENDPOINT").orElse("https://router.project-osrm.org/route/v1/driving").get()
+        val tileEndpoint = localApiProperties.getProperty("ERRNO_TILE_ENDPOINT") ?: providers.gradleProperty("ERRNO_TILE_ENDPOINT").orElse("https://tiles.openfreemap.org/planet").get()
+        val mapStyleUrl = localApiProperties.getProperty("ERRNO_MAP_STYLE_URL") ?: providers.gradleProperty("ERRNO_MAP_STYLE_URL").orElse("https://tiles.openfreemap.org/styles/liberty").get()
+        val authEmulatorHost = providers.gradleProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST")
+            .getOrElse(localApiProperties.getProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST") ?: "")
         buildConfigField("String", "ERRNO_API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "ERRNO_PHOTON_ENDPOINT", "\"$photonEndpoint\"")
+        buildConfigField("String", "ERRNO_OSRM_ENDPOINT", "\"$osrmEndpoint\"")
+        buildConfigField("String", "ERRNO_TILE_ENDPOINT", "\"$tileEndpoint\"")
+        buildConfigField("String", "ERRNO_MAP_STYLE_URL", "\"$mapStyleUrl\"")
+        buildConfigField("String", "ERRNO_FIREBASE_AUTH_EMULATOR_HOST", "\"$authEmulatorHost\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -53,6 +64,7 @@ dependencies {
 
     implementation("com.razorpay:checkout:1.6.40")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

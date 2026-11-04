@@ -56,7 +56,12 @@ struct PayStructureView: View {
                         Text("Select a configured duration. The final customer price is quoted for the scheduled service time.")
                             .errnoBodyMedium(color: .errnoTextSecondary)
                         
-                        if viewModel.pricingOptions.isEmpty { Text("Loading approved prices…").errnoBodyMedium(color: .errnoTextSecondary) }
+                        if viewModel.pricingOptions.isEmpty {
+                            if let error = viewModel.errorMessage {
+                                Text(error).font(.footnote).foregroundStyle(Color.errnoError)
+                                Button("Retry loading prices") { Task { await viewModel.loadPricingOptions() } }.tint(.errnoGreen)
+                            } else { Text("Loading approved prices…").errnoBodyMedium(color: .errnoTextSecondary) }
+                        }
                         VStack(spacing: Spacing.md) {
                             ForEach(viewModel.pricingOptions.sorted(by: { $0.hours < $1.hours }), id: \.hours) { option in
                                 DurationOptionCard(
@@ -103,7 +108,8 @@ struct PayStructureView: View {
                             .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: Radius.md))
                     }
-                    // Note: If you want to require a selection, add disabled check.
+                    .disabled(!viewModel.isStep3Valid || viewModel.pricingOptions.isEmpty)
+                    .opacity(viewModel.isStep3Valid && !viewModel.pricingOptions.isEmpty ? 1 : 0.55)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, Spacing.md)

@@ -89,6 +89,8 @@ nonisolated struct CreateJobRequest: Codable, Sendable {
     let duration_type: String
     let scheduled_date: String?
     let location: String?
+    let latitude: Double?
+    let longitude: Double?
     let pickup_location: String?
     let drop_location: String?
     let is_delivery: Bool
@@ -200,6 +202,15 @@ nonisolated struct PayoutMethodResponse: Decodable, Sendable, Identifiable {
     let status: String
     let kycVerified: Bool
 }
+nonisolated struct WorkerProfilePreferencesResponse: Decodable, Sendable {
+    let preferredSkills: [String]
+}
+nonisolated struct WorkerProfilePreferencesUpdate: Encodable, Sendable {
+    let preferredSkills: [String]
+}
+nonisolated struct PayoutMethodCreateRequest: Encodable, Sendable {
+    let providerReference: String
+}
 nonisolated struct WithdrawalRequestBody: Encodable, Sendable {
     let amountPaise: Int
     let payoutMethodId: String
@@ -209,6 +220,20 @@ nonisolated struct WithdrawalResponse: Decodable, Sendable {
     let withdrawalId: String
     let status: String
     let amountPaise: Int
+}
+nonisolated struct LocationAcceptedResponse: Decodable, Sendable { let accepted: Bool }
+nonisolated struct MapLocationUpdate: Encodable, Sendable { let latitude: Double; let longitude: Double }
+nonisolated struct NearbyWorkerLocation: Codable, Sendable, Identifiable {
+    let id: String; let latitude: Double; let longitude: Double; let distance_km: Double; let updated_at: String
+}
+nonisolated struct NearbyWorkersResponse: Decodable, Sendable { let radius_km: Double; let workers: [NearbyWorkerLocation] }
+nonisolated struct TrackingLocationResponse: Decodable, Sendable {
+    struct Location: Decodable, Sendable { let latitude: Double; let longitude: Double; let updated_at: String }
+    let state: String; let location: Location?
+}
+nonisolated struct OSRMRouteResponse: Decodable, Sendable {
+    struct Geometry: Decodable, Sendable { let coordinates: [[Double]] }
+    let geometry: Geometry; let distance_km: Double; let duration_minutes: Int; let label: String
 }
 nonisolated struct PresencePayload: Encodable, Sendable {
     let session_identifier: String
@@ -247,6 +272,8 @@ nonisolated struct BackendJob: Codable, Sendable, Identifiable {
     let duration_type: String
     let scheduled_date: String?
     let location: String?
+    let latitude: Double?
+    let longitude: Double?
     let pickup_location: String?
     let drop_location: String?
     let is_delivery: Bool
@@ -390,6 +417,13 @@ nonisolated enum BackendEndpoints {
     }
     static func workerWallet(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "wallet"], bearerToken: token) }
     static func workerPayoutMethods(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "payout-methods"], bearerToken: token) }
+    static func addWorkerPayoutMethod(_ body: PayoutMethodCreateRequest, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("POST", ["api", "v1", "worker", "payout-methods"], body: body); endpoint.bearerToken = token; return endpoint
+    }
+    static func workerProfilePreferences(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "workers", "me", "profile"], bearerToken: token) }
+    static func updateWorkerProfilePreferences(_ body: WorkerProfilePreferencesUpdate, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("PATCH", ["api", "v1", "workers", "me", "profile"], body: body); endpoint.bearerToken = token; return endpoint
+    }
     static func startCashCollection(bookingID: String, token: String) -> APIEndpoint { APIEndpoint(method: "POST", path: ["api", "v1", "bookings", bookingID, "cash-collection"], bearerToken: token) }
     static func workerCashCollections(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "cash-collections"], bearerToken: token) }
     static func companyPaymentQR(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "company-upi-qr"], bearerToken: token) }
@@ -411,6 +445,17 @@ nonisolated enum BackendEndpoints {
     static func workerAvailability(token: String) -> APIEndpoint {
         APIEndpoint(method: "GET", path: ["api", "v1", "workers", "me", "availability"], bearerToken: token)
     }
+    static func availableWorkerLocation(_ body: MapLocationUpdate, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("PUT", ["api","v1","workers","me","location"], body: body); endpoint.bearerToken=token; return endpoint
+    }
+    static func assignedWorkerLocation(jobID: String, _ body: MapLocationUpdate, token: String) throws -> APIEndpoint {
+        var endpoint = try APIEndpoint.json("PUT", ["jobs",jobID,"tracking","location"], body: body); endpoint.bearerToken=token; return endpoint
+    }
+    static func nearbyWorkers(jobID: String, radius: Double, token: String) -> APIEndpoint {
+        APIEndpoint(method:"GET",path:["jobs",jobID,"nearby-workers"],query:[URLQueryItem(name:"radius_km",value:String(radius))],bearerToken:token)
+    }
+    static func trackingLocation(jobID: String, token: String) -> APIEndpoint { APIEndpoint(method:"GET",path:["jobs",jobID,"tracking","location"],bearerToken:token) }
+    static func trackingRoute(jobID: String, token: String) -> APIEndpoint { APIEndpoint(method:"GET",path:["jobs",jobID,"route"],bearerToken:token) }
     static func currentShop(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["shops", "me"], bearerToken: token) }
     static func saveShop(_ body: UpdateShopRequest, token: String) throws -> APIEndpoint {
         var endpoint = try APIEndpoint.json("PUT", ["shops", "me"], body: body); endpoint.bearerToken = token; return endpoint
@@ -484,6 +529,17 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func bookingPaymentStatus(bookingID: String) async throws -> BookingPaymentStatus { try await client.send(BackendEndpoints.bookingPaymentStatus(bookingID: bookingID, token: try await token())) }
     func workerWallet() async throws -> WorkerWalletResponse { try await client.send(BackendEndpoints.workerWallet(token: try await token())) }
     func workerPayoutMethods() async throws -> [PayoutMethodResponse] { try await client.send(BackendEndpoints.workerPayoutMethods(token: try await token())) }
+    func addWorkerPayoutMethod(providerReference: String) async throws -> (id: String, message: String) {
+        struct Response: Decodable { let id: String; let message: String }
+        let response: Response = try await client.send(BackendEndpoints.addWorkerPayoutMethod(PayoutMethodCreateRequest(providerReference: providerReference), token: try await token()))
+        return (response.id, response.message)
+    }
+    func workerProfilePreferences() async throws -> WorkerProfilePreferencesResponse {
+        try await client.send(BackendEndpoints.workerProfilePreferences(token: try await token()))
+    }
+    func updateWorkerProfilePreferences(_ skills: [String]) async throws -> WorkerProfilePreferencesResponse {
+        try await client.send(BackendEndpoints.updateWorkerProfilePreferences(WorkerProfilePreferencesUpdate(preferredSkills: skills), token: try await token()))
+    }
     func startCashCollection(bookingID: String) async throws -> CashCollectionStartResponse { try await client.send(BackendEndpoints.startCashCollection(bookingID: bookingID, token: try await token())) }
     func workerCashCollections() async throws -> [CashCollectionRow] { try await client.send(BackendEndpoints.workerCashCollections(token: try await token())) }
     func companyPaymentQR() async throws -> CompanyPaymentQRResponse { try await client.send(BackendEndpoints.companyPaymentQR(token: try await token())) }
@@ -513,6 +569,24 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func updateStatus(jobID: String, status: String) async throws -> BackendJob {
         var endpoint = BackendEndpoints.status(jobID: jobID, status: status); endpoint.bearerToken = try await token()
         return try await client.send(endpoint)
+    }
+    func sendAvailableWorkerLocation(latitude: Double, longitude: Double) async throws {
+        guard (-90...90).contains(latitude),(-180...180).contains(longitude) else { throw APIError.invalidInput }
+        _ = try await client.send(BackendEndpoints.availableWorkerLocation(MapLocationUpdate(latitude:latitude,longitude:longitude),token:try await token()),as: LocationAcceptedResponse.self)
+    }
+    func sendAssignedWorkerLocation(jobID:String,latitude:Double,longitude:Double) async throws {
+        guard (-90...90).contains(latitude),(-180...180).contains(longitude) else { throw APIError.invalidInput }
+        _ = try await client.send(BackendEndpoints.assignedWorkerLocation(jobID:jobID,MapLocationUpdate(latitude:latitude,longitude:longitude),token:try await token()),as: LocationAcceptedResponse.self)
+    }
+    func nearbyWorkers(jobID:String,radius:Double) async throws -> NearbyWorkersResponse { try await client.send(BackendEndpoints.nearbyWorkers(jobID:jobID,radius:radius,token:try await token())) }
+    func trackingLocation(jobID:String) async throws -> TrackingLocationResponse { try await client.send(BackendEndpoints.trackingLocation(jobID:jobID,token:try await token())) }
+    func trackingRoute(jobID:String) async throws -> OSRMRouteResponse { try await client.send(BackendEndpoints.trackingRoute(jobID:jobID,token:try await token())) }
+    func trackingWebSocketRequest(jobID:String) async throws -> URLRequest {
+        guard !jobID.isEmpty,!jobID.contains("/"),!jobID.contains("%") else { throw APIError.invalidInput }
+        let token=try await token(); guard var components=URLComponents(url:client.configuration.baseURL,resolvingAgainstBaseURL:false) else { throw APIError.configuration }
+        components.scheme=components.scheme=="https" ? "wss":"ws"; components.path += "/ws/jobs/\(jobID)/tracking"
+        guard let url=components.url else { throw APIError.configuration }
+        var request=URLRequest(url:url); request.setValue("Bearer \(token)",forHTTPHeaderField:"Authorization"); return request
     }
     func profile() async throws -> FirebaseUserProfile { try await client.send(BackendEndpoints.currentUser(token: try await token())) }
     func updateProfile(name: String) async throws -> FirebaseUserProfile {
