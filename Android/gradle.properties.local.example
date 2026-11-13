@@ -1,9 +1,0 @@
-# Copy to Android/gradle.properties.local (ignored by Git).
-ERRNO_API_BASE_URL=https://api.example.com
-
-# Google Maps Android SDK key. Restrict this key to package com.erno.app and
-# the signing certificate SHA-1 fingerprints for each build you distribute.
-ERRNO_GOOGLE_MAPS_ANDROID_API_KEY=YOUR_ANDROID_MAPS_API_KEY
-
-# Photon is temporarily retained for address search only (no Google Places billing).
-ERRNO_PHOTON_ENDPOINT=https://photon.komoot.io
