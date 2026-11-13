@@ -8,7 +8,7 @@
 
 /* Begin PBXFileReference section */
 		821DCBB7305686FF0075DD41 /* Errno.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Errno.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F00000000000000000000025 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig.example; sourceTree = SOURCE_ROOT; };
+		F00000000000000000000025 /* NativeEnvironment.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = NativeEnvironment.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 			isa = PBXGroup;
 			children = (
 				821DCBB9305686FF0075DD41 /* Errno */,
-				F00000000000000000000025 /* Local.xcconfig.example */,
+				F00000000000000000000025 /* NativeEnvironment.xcconfig */,
 				821DCBB8305686FF0075DD41 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -286,7 +286,7 @@
 		};
 		821DCBC3305687010075DD41 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F00000000000000000000025 /* Local.xcconfig.example */;
+			baseConfigurationReference = F00000000000000000000025 /* NativeEnvironment.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -321,7 +321,7 @@
 		};
 		821DCBC4305687010075DD41 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F00000000000000000000025 /* Local.xcconfig.example */;
+			baseConfigurationReference = F00000000000000000000025 /* NativeEnvironment.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

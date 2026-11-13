@@ -6,7 +6,9 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from db_base import Base
 
+# Preserve component-local private settings; the shared root .env fills missing values.
 load_dotenv(Path(__file__).with_name(".env"))
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 

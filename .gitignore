@@ -112,7 +112,6 @@ DerivedData-*/
 /GIT_HYGIENE_AUDIT.md
 **/*AUDIT*.md
 **/*audit*.md
-!/docs/CONFIGURATION_AUDIT.md
 **/*RECOVERY_REPORT*.md
 **/*recovery_report*.md
 **/*VERIFICATION_REPORT*.md
