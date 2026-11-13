@@ -3,11 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>ERRNO_PHOTON_ENDPOINT</key><string>https://photon.komoot.io</string>
-	<key>ERRNO_TILE_ENDPOINT</key><string>https://tiles.openfreemap.org/planet</string>
-	<key>ERRNO_MAP_STYLE_URL</key><string>https://tiles.openfreemap.org/styles/liberty</string>
-	<key>ERRNO_OSRM_ENDPOINT</key><string>https://router.project-osrm.org/route/v1/driving</string>
+	<key>ERRNO_GOOGLE_MAPS_IOS_API_KEY</key><string>$(ERRNO_GOOGLE_MAPS_IOS_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>ERRNO uses your location only when you ask to place the job map pin.</string>
+	<string>ERRNO uses foreground location when you choose to place a job pin, view your position on a job map, or share your location for availability and an active assignment.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

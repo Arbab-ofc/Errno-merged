@@ -22,17 +22,13 @@ android {
         }
         val apiBaseUrl = providers.gradleProperty("ERRNO_API_BASE_URL")
             .getOrElse(localApiProperties.getProperty("ERRNO_API_BASE_URL") ?: "")
+        val mapsApiKey = localApiProperties.getProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY") ?: providers.gradleProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY").orElse("").get()
         val photonEndpoint = localApiProperties.getProperty("ERRNO_PHOTON_ENDPOINT") ?: providers.gradleProperty("ERRNO_PHOTON_ENDPOINT").orElse("https://photon.komoot.io").get()
-        val osrmEndpoint = localApiProperties.getProperty("ERRNO_OSRM_ENDPOINT") ?: providers.gradleProperty("ERRNO_OSRM_ENDPOINT").orElse("https://router.project-osrm.org/route/v1/driving").get()
-        val tileEndpoint = localApiProperties.getProperty("ERRNO_TILE_ENDPOINT") ?: providers.gradleProperty("ERRNO_TILE_ENDPOINT").orElse("https://tiles.openfreemap.org/planet").get()
-        val mapStyleUrl = localApiProperties.getProperty("ERRNO_MAP_STYLE_URL") ?: providers.gradleProperty("ERRNO_MAP_STYLE_URL").orElse("https://tiles.openfreemap.org/styles/liberty").get()
         val authEmulatorHost = providers.gradleProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST")
             .getOrElse(localApiProperties.getProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST") ?: "")
         buildConfigField("String", "ERRNO_API_BASE_URL", "\"$apiBaseUrl\"")
+        manifestPlaceholders["googleMapsApiKey"] = mapsApiKey
         buildConfigField("String", "ERRNO_PHOTON_ENDPOINT", "\"$photonEndpoint\"")
-        buildConfigField("String", "ERRNO_OSRM_ENDPOINT", "\"$osrmEndpoint\"")
-        buildConfigField("String", "ERRNO_TILE_ENDPOINT", "\"$tileEndpoint\"")
-        buildConfigField("String", "ERRNO_MAP_STYLE_URL", "\"$mapStyleUrl\"")
         buildConfigField("String", "ERRNO_FIREBASE_AUTH_EMULATOR_HOST", "\"$authEmulatorHost\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -77,6 +73,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.google.maps.compose)
     implementation(platform("com.google.firebase:firebase-bom:34.4.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-messaging")

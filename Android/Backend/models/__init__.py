@@ -114,6 +114,14 @@ class Job(Base):
     shop = relationship("Shop", back_populates="jobs")
     applications = relationship("Application", back_populates="job", cascade="all, delete-orphan")
 
+    @property
+    def shop_name(self):
+        return self.shop.shop_name if self.shop else None
+
+    @property
+    def shop_address(self):
+        return self.location or (self.shop.address if self.shop else None)
+
 class Application(Base):
     __tablename__ = "applications"
 

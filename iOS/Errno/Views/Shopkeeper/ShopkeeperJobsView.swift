@@ -227,17 +227,13 @@ private struct AssignedWorkerLiveTrackingPanel: View {
     @State private var state = "connecting"
     @State private var updatedAt: String?
     @State private var lastUpdateDate = Date.distantPast
-    @State private var route: OSRMRouteResponse?
     @State private var error: String?
-    @State private var lastRouted: CLLocationCoordinate2D?
-    @State private var lastRouteDate = Date.distantPast
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Live worker tracking").font(.headline)
             Text("\(state.capitalized)\(updatedAt.map { " · Updated \($0)" } ?? "")").font(.caption).foregroundStyle(state == "online" ? Color.errnoGreen : .secondary)
             if let error { Text(error).font(.caption).foregroundStyle(Color.errnoError) }
-            WorkerLocationMapView(locationName: locationName, mapHeight: 240, latitude: jobLatitude, longitude: jobLongitude, workerLatitude: coordinate?.latitude, workerLongitude: coordinate?.longitude, route: route)
-            if let route { Text("\(route.distance_km, specifier: "%.1f") km · about \(route.duration_minutes) min · approximate, no live traffic").font(.caption).foregroundStyle(.secondary) }
+            WorkerLocationMapView(locationName: locationName, mapHeight: 240, latitude: jobLatitude, longitude: jobLongitude, workerLatitude: coordinate?.latitude, workerLongitude: coordinate?.longitude)
         }.task(id: jobID) { await connect() }
     }
     @MainActor private func connect() async {
@@ -247,7 +243,7 @@ private struct AssignedWorkerLiveTrackingPanel: View {
             state = initial.state
             if let point = initial.location {
                 coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude); updatedAt = point.updated_at
-                lastUpdateDate = Date(); await updateRoute(from: coordinate!, api: api, force: true)
+                lastUpdateDate = Date()
             }
             var backoff = 1.0
             while !Task.isCancelled {
@@ -265,7 +261,6 @@ private struct AssignedWorkerLiveTrackingPanel: View {
                         if value["type"] as? String == "heartbeat_ping", Date().timeIntervalSince(lastUpdateDate) > 120 { state = "stale" }
                         if let lat = value["latitude"] as? Double, let lng = value["longitude"] as? Double {
                             let point = CLLocationCoordinate2D(latitude: lat, longitude: lng); coordinate = point; updatedAt = value["updated_at"] as? String; lastUpdateDate = Date()
-                            await updateRoute(from: point, api: api)
                         }
                         backoff = 1
                     }
@@ -277,15 +272,5 @@ private struct AssignedWorkerLiveTrackingPanel: View {
                 try? await Task.sleep(for: .seconds(backoff)); backoff = min(backoff * 2, 30)
             }
         } catch { self.error = error.localizedDescription; state = "disconnected" }
-    }
-    @MainActor private func updateRoute(from point: CLLocationCoordinate2D, api: BackendRepository, force: Bool = false) async {
-        if let lastRouted, !force {
-            let a = CLLocation(latitude: lastRouted.latitude, longitude: lastRouted.longitude)
-            let b = CLLocation(latitude: point.latitude, longitude: point.longitude)
-            guard a.distance(from: b) >= 100, Date().timeIntervalSince(lastRouteDate) >= 30 else { return }
-        }
-        lastRouted = point; lastRouteDate = Date()
-        do { route = try await api.trackingRoute(jobID: jobID); error = nil }
-        catch { route = nil; self.error = "Route unavailable. Approximate distance and duration cannot be shown." }
     }
 }

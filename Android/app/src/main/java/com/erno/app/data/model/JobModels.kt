@@ -67,6 +67,8 @@ data class WorkerJob(
     val dispatchAt: String = "",
     val dispatchStatus: String = "",
     val dispatchWorkerCount: Int? = null,
+    val shopName: String = "",
+    val shopAddress: String = "",
     val workingRequirementType: String = "IMMEDIATE", // "IMMEDIATE" or "DYNAMIC_TIME"
     val scheduledTime: String = "Immediate",
     val workerRating: Float = 0f,
@@ -99,4 +101,3 @@ data class EarningRecord(
 
 data class MapCoordinate(val latitude: Double, val longitude: Double)
 data class NearbyWorker(val id: String, val latitude: Double, val longitude: Double, val distanceKm: Double, val updatedAt: String)
-data class ApproximateRoute(val coordinates: List<MapCoordinate>, val distanceKm: Double, val durationMinutes: Int, val label: String)

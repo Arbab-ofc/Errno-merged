@@ -135,11 +135,6 @@ object ErrnoMobileApi {
         val rows=json.optJSONArray("workers") ?: JSONArray()
         return (0 until rows.length()).map { i -> rows.getJSONObject(i).let { com.erno.app.data.model.NearbyWorker(it.optString("id"),it.getDouble("latitude"),it.getDouble("longitude"),it.optDouble("distance_km"),it.optString("updated_at")) } }
     }
-    suspend fun trackingRoute(jobId: String): com.erno.app.data.model.ApproximateRoute {
-        val json=JSONObject(request("GET","/jobs/${java.net.URLEncoder.encode(jobId,"UTF-8")}/route"))
-        val coords=json.getJSONObject("geometry").getJSONArray("coordinates")
-        return com.erno.app.data.model.ApproximateRoute((0 until coords.length()).map { i -> coords.getJSONArray(i).let { com.erno.app.data.model.MapCoordinate(it.getDouble(1),it.getDouble(0)) } },json.getDouble("distance_km"),json.getInt("duration_minutes"),json.getString("label"))
-    }
     suspend fun openTrackingSocket(jobId: String, listener: okhttp3.WebSocketListener): okhttp3.WebSocket = withContext(Dispatchers.IO) {
         val sessionToken=ErrnoSessionStore.read(); val user=FirebaseAuth.getInstance().currentUser
         val token=sessionToken ?: (user?.getIdToken(false)?.await()?.token) ?: error("Sign in to continue.")
@@ -263,7 +258,8 @@ object ErrnoMobileApi {
             dropLocation = optString("drop_location"), scheduledDate = formatIndiaTimestamp(optString("scheduled_at").ifBlank { optString("scheduled_date") }),
             bookingType = optString("booking_type", "CURRENT"), dispatchAt = formatIndiaTimestamp(optString("dispatch_at")),
             dispatchStatus = optString("prebooking_dispatch_status"),
-            dispatchWorkerCount = if (has("prebooking_dispatch_worker_count") && !isNull("prebooking_dispatch_worker_count")) optInt("prebooking_dispatch_worker_count") else null)
+            dispatchWorkerCount = if (has("prebooking_dispatch_worker_count") && !isNull("prebooking_dispatch_worker_count")) optInt("prebooking_dispatch_worker_count") else null,
+            shopName = optString("shop_name"), shopAddress = optString("shop_address"))
     }
 
     private fun formatIndiaTimestamp(value: String): String = runCatching {

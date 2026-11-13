@@ -68,6 +68,8 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     var dispatchStatus: String? = nil
     var dispatchWorkerCount: Int? = nil
     var location = "Okhla Market Area"
+    var shopName: String? = nil
+    var shopAddress: String? = nil
     var pickupLocation = "Okhla Market Store #12"
     var dropLocation = "Sector 18 Noida"
     var packageType = "Parcel / Product Box"

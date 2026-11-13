@@ -106,6 +106,8 @@ class JobCreateRequest(BaseModel):
 class JobResponse(BaseModel):
     id: str
     shop_id: Optional[str] = None
+    shop_name: Optional[str] = None
+    shop_address: Optional[str] = None
     title: str
     category: Optional[str] = None
     description: Optional[str] = None
