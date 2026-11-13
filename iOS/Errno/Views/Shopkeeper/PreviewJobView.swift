@@ -24,7 +24,9 @@ struct PreviewJobView: View {
                         Text("📍 Drop: \(viewModel.dropLocation)")
                     }.font(.system(size: 13, weight: .bold)).padding(12).background(Color.errnoBackground, in: RoundedRectangle(cornerRadius: 10))
                 }
-                WorkerLocationMapView(locationName: viewModel.category.isDelivery ? viewModel.pickupLocation : viewModel.location, isDarkTheme: false)
+                WorkerLocationMapView(locationName: viewModel.category.isDelivery ? viewModel.pickupLocation : viewModel.location,
+                                      distanceText: viewModel.location, isDarkTheme: false,
+                                      latitude: viewModel.latitude, longitude: viewModel.longitude)
                 Text(verbatim: viewModel.description).font(.system(size: 14, weight: .regular, design: .default)).foregroundColor(Color.errnoTextSecondary)
                 Text("Fixed Time Options & Pay Structure").font(.system(size: 15, weight: .bold))
                 HStack { Text("\(Int(viewModel.estimatedDurationHours)) hour duration"); Spacer(); Text(payableText).bold() }.font(.system(size: 14))

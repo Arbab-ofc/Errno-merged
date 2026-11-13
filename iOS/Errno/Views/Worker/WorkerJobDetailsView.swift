@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct WorkerJobDetailsView: View {
     let jobId: UUID
@@ -17,10 +18,19 @@ struct WorkerJobDetailsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(job.title).font(.system(size: 20, weight: .bold))
                         StatusBadge(text: job.displayStatus)
-                        Label("\(job.locationLabel) • \(job.distance)", systemImage: "mappin.and.ellipse").font(.system(size: 13)).foregroundStyle(.gray)
+                        Text(job.shopName?.isEmpty == false ? job.shopName! : "Shop")
+                            .font(.system(size: 14, weight: .semibold))
+                        Label(job.shopAddress?.isEmpty == false ? job.shopAddress! : job.locationLabel, systemImage: "mappin.and.ellipse").font(.system(size: 13)).foregroundStyle(.gray)
                         Text(job.description).font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
                         Text("Work Location & Route").font(.system(size: 14, weight: .bold))
-                        WorkerLocationMapView(locationName: job.locationLabel, distanceText: job.distance, mapHeight: 180, latitude: job.latitude, longitude: job.longitude)
+                        WorkerLocationMapView(locationName: job.shopName?.isEmpty == false ? job.shopName! : "Shop", distanceText: job.shopAddress?.isEmpty == false ? job.shopAddress! : job.locationLabel, mapHeight: 180, latitude: job.latitude, longitude: job.longitude)
+                        if (job.status == .assigned || job.status == .inProgress), job.assignedWorkerId == store.worker.id {
+                            Button { openDirections(job) } label: {
+                                Label("Navigate", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                                    .font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 13)
+                            }.buttonStyle(.borderedProminent).tint(Color.errnoGreen)
+                                .disabled(Self.directionsURL(latitude: job.latitude, longitude: job.longitude) == nil)
+                        }
                         Text("Choose Duration & Pay").font(.system(size: 16, weight: .bold))
                         Text("Select the time you can work").font(.system(size: 12)).foregroundStyle(.gray)
                         Text("Scheduled: \(job.scheduleLabel)").font(.system(size: 12)).foregroundStyle(.gray)
@@ -81,5 +91,25 @@ struct WorkerJobDetailsView: View {
             let updated = try await AppDependencies.backendRepository().startJob(jobID: job.id.uuidString)
             store.updateLifecycle(updated, ownerID: store.shopkeeper.id)
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func openDirections(_ job: Job) {
+        guard let url = Self.directionsURL(latitude: job.latitude, longitude: job.longitude) else {
+            actionMessage = "Shop coordinates are unavailable. Use the saved shop address."
+            return
+        }
+        UIApplication.shared.open(url, options: [:]) { opened in
+            if !opened { DispatchQueue.main.async { actionMessage = "Could not open Google Maps or a browser. Use the saved shop address." } }
+        }
+    }
+
+    private static func directionsURL(latitude: Double?, longitude: Double?) -> URL? {
+        guard let latitude, let longitude, latitude.isFinite, longitude.isFinite,
+              (-90...90).contains(latitude), (-180...180).contains(longitude) else { return nil }
+        var components = URLComponents(string: "https://www.google.com/maps/dir/")
+        components?.queryItems = [URLQueryItem(name: "api", value: "1"),
+                                  URLQueryItem(name: "destination", value: "\(latitude),\(longitude)"),
+                                  URLQueryItem(name: "travelmode", value: "driving")]
+        return components?.url
     }
 }

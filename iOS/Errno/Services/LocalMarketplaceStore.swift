@@ -77,6 +77,8 @@ final class LocalMarketplaceStore {
                           payAmount: row.pay_amount, estimatedDurationHours: Double(row.duration_type.filter(\.isNumber)) ?? 1,
                           latitude: row.latitude, longitude: row.longitude, status: status)
             job.location = row.location ?? ""
+            job.shopName = row.shop_name ?? ""
+            job.shopAddress = row.shop_address ?? row.location ?? ""
             job.pickupLocation = row.pickup_location ?? ""
             job.dropLocation = row.drop_location ?? ""
             job.bookingType = row.booking_type ?? "CURRENT"

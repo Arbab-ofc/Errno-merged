@@ -934,7 +934,7 @@ fun PostJobScreen(
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    text = "Map Preview (Leaflet API)",
+                                    text = "Shop Location Pin",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.Black
@@ -942,6 +942,8 @@ fun PostJobScreen(
 
                                 MapLocationPicker(
                                     address = state.draftLocation,
+                                    latitude = state.draftLatitude,
+                                    longitude = state.draftLongitude,
                                     onSelection = onMapLocationChange,
                                     modifier = Modifier.fillMaxWidth()
                                 )

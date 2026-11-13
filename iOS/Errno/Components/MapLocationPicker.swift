@@ -1,109 +1,211 @@
 import SwiftUI
-import WebKit
+import GoogleMaps
 import CoreLocation
 
+enum GoogleMapsConfiguration {
+    static var apiKey: String? {
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "ERRNO_GOOGLE_MAPS_IOS_API_KEY") as? String,
+              !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !key.contains("YOUR_"), !key.contains("$(") else { return nil }
+        return key
+    }
+}
+
 struct PickedMapLocation { let address: String; let latitude: Double; let longitude: Double }
+
+private struct PhotonSearchResult: Identifiable {
+    let label: String; let latitude: Double; let longitude: Double
+    var id: String { "\(latitude),\(longitude),\(label)" }
+}
 
 struct MapLocationPicker: View {
     @Binding var address: String
     @Binding var latitude: Double?
     @Binding var longitude: Double?
     @State private var query = ""
-    @State private var results: [SearchResult] = []
-    @State private var webView: WKWebView?
+    @State private var results: [PhotonSearchResult] = []
     @State private var message: String?
+    @State private var searchTask: Task<Void, Never>?
+    @State private var reverseRequestID = 0
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Search address", text: $query).textFieldStyle(.roundedBorder).onChange(of: query) { _, q in
-                webView?.evaluateJavaScript("window.ErrnoMapAPI&&ErrnoMapAPI.search(\(Self.js(q)))")
+            TextField("Search address", text: $query).textFieldStyle(.roundedBorder)
+                .onChange(of: query) { _, value in search(value) }
+            ForEach(results) { result in
+                Button(result.label) { select(result) }
+                    .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8).background(.white, in: RoundedRectangle(cornerRadius: 8))
             }
-            ForEach(results) { item in
-                Button(item.label) { choose(item) }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(8).background(.white, in: RoundedRectangle(cornerRadius: 8))
-            }
-            MapWebView(address: address, latitude: latitude, longitude: longitude, onReady: { webView = $0 }, onSelection: { selection in
-                address = selection.address; latitude = selection.latitude; longitude = selection.longitude
-            }, onResults: { results = $0; message = nil }, onError: { message = $0 })
-                .frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 12))
+            Group {
+                if GoogleMapsConfiguration.apiKey != nil {
+                    GoogleShopPinMap(address: $address, latitude: $latitude, longitude: $longitude)
+                } else {
+                    ContentUnavailableView("Map unavailable", systemImage: "map", description: Text("Configure the iOS Google Maps SDK key to select a pin. You can still enter and keep the shop address."))
+                }
+            }.frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 12))
             HStack {
-                Button { locate() } label: { Label("Use my current location", systemImage: "location") }
+                Button { useCurrentLocation() } label: { Label("Use my current location", systemImage: "location") }
                 Spacer()
-                Text("Map pin or manual address").font(.caption).foregroundStyle(.secondary)
+                if let latitude, let longitude, latitude.isFinite, longitude.isFinite {
+                    Text(String(format: "%.6f, %.6f", latitude, longitude)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
             }
-            if let message { Text(message).font(.caption).foregroundStyle(.red) }
             TextField("Enter address manually", text: $address).textFieldStyle(.roundedBorder)
+            Text("Tap or drag the pin to adjust the exact shop location. Your address stays saved if location access is unavailable.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let message { Text(message).font(.caption).foregroundStyle(.red) }
+        }
+        .onChange(of: [latitude, longitude]) { _, coordinates in
+            guard coordinates.count == 2, let latitude = coordinates[0], let longitude = coordinates[1],
+                  latitude.isFinite, longitude.isFinite else { return }
+            resolveAddress(latitude: latitude, longitude: longitude)
         }
     }
-    private func choose(_ item: SearchResult) {
-        address = item.label; latitude = item.latitude; longitude = item.longitude; results = []
-        webView?.evaluateJavaScript("ErrnoMapAPI.select({latitude:\(item.latitude),longitude:\(item.longitude),label:\(Self.js(item.label))})")
+    private func select(_ result: PhotonSearchResult) {
+        address = result.label; latitude = result.latitude; longitude = result.longitude; query = result.label; results = []; message = nil
     }
-    private func locate() {
-        LocationPermission.shared.requestLocation { result in
+    private func search(_ value: String) {
+        searchTask?.cancel()
+        guard value.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else { results = []; return }
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            do {
+                let endpoint = Bundle.main.object(forInfoDictionaryKey: "ERRNO_PHOTON_ENDPOINT") as? String ?? "https://photon.komoot.io"
+                var components = URLComponents(string: endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/")!
+                components.queryItems = [URLQueryItem(name: "q", value: value), URLQueryItem(name: "limit", value: "6"), URLQueryItem(name: "lang", value: "en")]
+                let (data, _) = try await URLSession.shared.data(from: components.url!)
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let features = root?["features"] as? [[String: Any]] ?? []
+                let parsed = features.compactMap { feature -> PhotonSearchResult? in
+                    guard let geometry = feature["geometry"] as? [String: Any], let coords = geometry["coordinates"] as? [Double], coords.count >= 2 else { return nil }
+                    let props = feature["properties"] as? [String: Any] ?? [:]
+                    let label = ["name", "street", "housenumber", "district", "city", "state", "country"].compactMap { props[$0] as? String }.filter { !$0.isEmpty }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: ", ")
+                    guard !label.isEmpty else { return nil }
+                    return PhotonSearchResult(label: label, latitude: coords[1], longitude: coords[0])
+                }
+                guard !Task.isCancelled else { return }
+                await MainActor.run { results = parsed; message = nil }
+            } catch { await MainActor.run { results = []; message = "Address search is unavailable. Enter the address or place the pin manually." } }
+        }
+    }
+    private func useCurrentLocation() {
+        ForegroundSingleLocation.shared.request { result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let loc):
-                    latitude=loc.coordinate.latitude; longitude=loc.coordinate.longitude
-                    webView?.evaluateJavaScript("ErrnoMapAPI.setLocation(\(loc.coordinate.latitude),\(loc.coordinate.longitude),'Current location',true)")
-                case .failure(let error): message=error.description
+                case .success(let point): latitude = point.coordinate.latitude; longitude = point.coordinate.longitude; message = nil
+                case .failure(let error): message = error.localizedDescription
                 }
             }
         }
     }
-    fileprivate static func js(_ value: String) -> String { let data = try? JSONSerialization.data(withJSONObject: [value]); let array = data.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"; return String(array.dropFirst().dropLast()) }
+    private func resolveAddress(latitude: Double, longitude: Double) {
+        reverseRequestID += 1
+        let requestID = reverseRequestID
+        let addressAtStart = address
+        Task {
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+                let endpoint = Bundle.main.object(forInfoDictionaryKey: "ERRNO_PHOTON_ENDPOINT") as? String ?? "https://photon.komoot.io"
+                var components = URLComponents(string: endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/reverse")!
+                components.queryItems = [URLQueryItem(name: "lat", value: String(latitude)), URLQueryItem(name: "lon", value: String(longitude))]
+                let (data, response) = try await URLSession.shared.data(from: components.url!)
+                guard (response as? HTTPURLResponse)?.statusCode == 200,
+                      let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let feature = (root["features"] as? [[String: Any]])?.first else { throw URLError(.badServerResponse) }
+                let props = feature["properties"] as? [String: Any] ?? [:]
+                let label = ["name", "housenumber", "street", "district", "locality", "city", "state", "postcode", "country"]
+                    .compactMap { props[$0] as? String }.filter { !$0.isEmpty }
+                    .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: ", ")
+                await MainActor.run {
+                    guard requestID == reverseRequestID, self.latitude == latitude, self.longitude == longitude,
+                          address == addressAtStart else { return }
+                    if !label.isEmpty { address = label; message = nil }
+                }
+            } catch {
+                await MainActor.run {
+                    guard requestID == reverseRequestID, self.latitude == latitude, self.longitude == longitude,
+                          address == addressAtStart else { return }
+                    message = "Address lookup is unavailable. Edit the address manually if needed."
+                }
+            }
+        }
+    }
 }
 
-private struct SearchResult: Identifiable { let label: String; let latitude: Double; let longitude: Double; var id: String { "\(latitude),\(longitude),\(label)" } }
-private struct MapWebView: UIViewRepresentable {
-    let address: String; let latitude: Double?; let longitude: Double?
-    let onReady: (WKWebView) -> Void; let onSelection: (PickedMapLocation) -> Void; let onResults: ([SearchResult]) -> Void; let onError: (String) -> Void
+private struct GoogleShopPinMap: UIViewRepresentable {
+    @Binding var address: String
+    @Binding var latitude: Double?
+    @Binding var longitude: Double?
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration(); config.userContentController.add(context.coordinator, name: "errnoMap")
-        let photon = Bundle.main.object(forInfoDictionaryKey: "ERRNO_PHOTON_ENDPOINT") as? String ?? "https://photon.komoot.io"
-        let osrm = Bundle.main.object(forInfoDictionaryKey: "ERRNO_OSRM_ENDPOINT") as? String ?? "https://router.project-osrm.org/route/v1/driving"
-        let tiles = Bundle.main.object(forInfoDictionaryKey: "ERRNO_TILE_ENDPOINT") as? String ?? "https://tiles.openfreemap.org/planet"
-        let style = Bundle.main.object(forInfoDictionaryKey: "ERRNO_MAP_STYLE_URL") as? String ?? "https://tiles.openfreemap.org/styles/liberty"
-        config.userContentController.addUserScript(WKUserScript(source: "window.ERRNO_PHOTON_ENDPOINT=\(MapLocationPicker.js(photon));window.ERRNO_OSRM_ENDPOINT=\(MapLocationPicker.js(osrm));window.ERRNO_TILE_ENDPOINT=\(MapLocationPicker.js(tiles));window.ERRNO_MAP_STYLE_URL=\(MapLocationPicker.js(style));", injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        let view = WKWebView(frame: .zero, configuration: config); view.scrollView.isScrollEnabled = false; view.navigationDelegate = context.coordinator
-        if let file = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: nil) { view.loadFileURL(file, allowingReadAccessTo: file.deletingLastPathComponent()) } else { onError("Map module is missing. Enter the address manually.") }
-        onReady(view); return view
+    func makeUIView(context: Context) -> GMSMapView {
+        let initial = validPoint(latitude, longitude) ?? CLLocationCoordinate2D(latitude: 28.6139, longitude: 77.2090)
+        let options = GMSMapViewOptions(); options.camera = GMSCameraPosition.camera(withTarget: initial, zoom: validPoint(latitude, longitude) == nil ? 10 : 16)
+        let map = GMSMapView(options: options)
+        map.delegate = context.coordinator; map.settings.compassButton = true; map.settings.myLocationButton = false
+        context.coordinator.map = map; context.coordinator.updatePin()
+        return map
     }
-    func updateUIView(_ uiView: WKWebView, context: Context) {
-        guard let lat=latitude, let lng=longitude else { return }
-        uiView.evaluateJavaScript("ErrnoMapAPI&&ErrnoMapAPI.setLocation(\(lat),\(lng),\(MapLocationPicker.js(address)))")
+    func updateUIView(_ map: GMSMapView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.updatePin()
     }
-    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        let parent: MapWebView; init(_ parent: MapWebView) { self.parent=parent }
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let obj=message.body as? [String:Any], let type=obj["type"] as? String else { return }
-            if type == "selection", let lat=obj["latitude"] as? Double, let lng=obj["longitude"] as? Double { parent.onSelection(PickedMapLocation(address: obj["address"] as? String ?? "", latitude: lat, longitude: lng)) }
-            if type == "results" { let rows=obj["items"] as? [[String:Any]] ?? []; parent.onResults(rows.compactMap { r in guard let label=r["label"] as? String, let lat=r["latitude"] as? Double, let lng=r["longitude"] as? Double else{return nil}; return SearchResult(label: label,latitude: lat,longitude: lng) }); if let error=obj["error"] as? String { parent.onError(error) } }
-            if type == "error" { parent.onError("Map tiles could not be loaded. Enter the address manually.") }
+    private func validPoint(_ latitude: Double?, _ longitude: Double?) -> CLLocationCoordinate2D? {
+        guard let latitude, let longitude, latitude.isFinite, longitude.isFinite, (-90...90).contains(latitude), (-180...180).contains(longitude) else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+    final class Coordinator: NSObject, GMSMapViewDelegate {
+        var parent: GoogleShopPinMap
+        weak var map: GMSMapView?
+        var marker: GMSMarker?
+        var cameraTarget: CLLocationCoordinate2D?
+        var lastAddress: String?
+        init(_ parent: GoogleShopPinMap) { self.parent = parent }
+        func updatePin() {
+            guard let map, let point = parent.validPoint(parent.latitude, parent.longitude) else { marker?.map = nil; marker = nil; return }
+            if let lastAddress, lastAddress != parent.address { cameraTarget = cameraTarget ?? point }
+            self.lastAddress = parent.address
+            if let marker { marker.position = point; marker.title = "Shop location"; marker.snippet = parent.address }
+            else { let marker = GMSMarker(position: point); marker.title = "Shop location"; marker.snippet = parent.address; marker.isDraggable = true; marker.map = map; self.marker = marker }
+            if let target = cameraTarget, target.latitude != point.latitude || target.longitude != point.longitude {
+                map.animate(to: GMSCameraPosition.camera(withTarget: point, zoom: max(map.camera.zoom, 16)))
+            }
+            cameraTarget = point
         }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { parent.onError("Map failed to load. Enter the address manually.") }
+        func mapView(_ mapView: GMSMapView, didTapAt coordinate: CLLocationCoordinate2D) { set(coordinate) }
+        func mapView(_ mapView: GMSMapView, didEndDragging marker: GMSMarker) { set(marker.position) }
+        private func set(_ point: CLLocationCoordinate2D) {
+            cameraTarget = point
+            parent.latitude = point.latitude; parent.longitude = point.longitude
+            marker?.position = point; marker?.snippet = parent.address
+        }
     }
 }
-private struct LocationPermissionError: Error, CustomStringConvertible { let description: String }
-private final class LocationPermission: NSObject, CLLocationManagerDelegate {
-    static let shared = LocationPermission()
+
+@MainActor final class ForegroundSingleLocation: NSObject, CLLocationManagerDelegate {
+    static let shared = ForegroundSingleLocation()
     private let manager = CLLocationManager()
-    private var completion: ((Result<CLLocation,LocationPermissionError>)->Void)?
-    func requestLocation(_ completion: @escaping (Result<CLLocation,LocationPermissionError>)->Void) {
-        self.completion=completion; manager.delegate=self; manager.desiredAccuracy=kCLLocationAccuracyBest
+    private var completion: ((Result<CLLocation, Error>) -> Void)?
+    func request(_ completion: @escaping (Result<CLLocation, Error>) -> Void) {
+        self.completion = completion; manager.delegate = self; manager.desiredAccuracy = kCLLocationAccuracyBest
+        guard CLLocationManager.locationServicesEnabled() else {
+            completion(.failure(LocationRequestError("Location Services are off. Select a pin or enter the address manually."))); self.completion = nil; return
+        }
         switch manager.authorizationStatus {
-        case .authorizedAlways,.authorizedWhenInUse: manager.requestLocation()
+        case .authorizedAlways, .authorizedWhenInUse: manager.requestLocation()
         case .notDetermined: manager.requestWhenInUseAuthorization()
-        case .denied,.restricted: completion(.failure(LocationPermissionError(description:"Location permission is denied. Select a pin or enter the address manually."))); self.completion=nil
-        @unknown default: completion(.failure(LocationPermissionError(description:"Location access is unavailable."))); self.completion=nil
+        case .denied, .restricted: completion(.failure(LocationRequestError("Location permission is denied. Select a pin or enter the address manually."))); self.completion = nil
+        @unknown default: completion(.failure(LocationRequestError("Location access is unavailable."))); self.completion = nil
         }
     }
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        if status == .authorizedWhenInUse || status == .authorizedAlways { manager.requestLocation() }
-        else if status == .denied || status == .restricted { completion?(.failure(LocationPermissionError(description:"Location permission is denied. Select a pin or enter the address manually."))); completion=nil }
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways { manager.requestLocation() }
+        else if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted { completion?(.failure(LocationRequestError("Location permission is denied. Select a pin or enter the address manually."))); completion = nil }
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc=locations.last, Date().timeIntervalSince(loc.timestamp)<120 else { completion?(.failure(LocationPermissionError(description:"No fresh GPS fix. Select a pin or enter the address manually."))); completion=nil; return }
-        completion?(.success(loc)); completion=nil
+        guard let location = locations.last, Date().timeIntervalSince(location.timestamp) < 120 else { completion?(.failure(LocationRequestError("No recent GPS fix. Select a pin or enter the address manually."))); completion = nil; return }
+        completion?(.success(location)); completion = nil
     }
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { completion?(.failure(LocationPermissionError(description:"Unable to get a fresh GPS fix. Select a pin or enter the address manually."))); completion=nil }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { completion?(.failure(LocationRequestError("GPS is unavailable. Select a pin or enter the address manually."))); completion = nil }
 }
+struct LocationRequestError: LocalizedError { let message: String; init(_ message: String) { self.message = message }; var errorDescription: String? { message } }

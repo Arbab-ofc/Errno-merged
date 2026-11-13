@@ -3,6 +3,7 @@ import FirebaseMessaging
 import FirebaseCore
 import UserNotifications
 import UIKit
+import GoogleMaps
 import SwiftUI
 
 extension Notification.Name {
@@ -94,6 +95,7 @@ struct InboxPage: Decodable, Sendable { let items: [InboxNotification]; let next
 final class ErrnoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         if FirebaseApp.app() == nil { FirebaseApp.configure() }
+        if let mapsKey = GoogleMapsConfiguration.apiKey { GMSServices.provideAPIKey(mapsKey) }
         UNUserNotificationCenter.current().delegate = self; Messaging.messaging().delegate = self
         return true
     }

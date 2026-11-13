@@ -26,7 +26,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.unit.IntSize
 import com.erno.app.data.model.MapCoordinate
 import com.erno.app.data.model.NearbyWorker
-import com.erno.app.data.model.ApproximateRoute
 import com.erno.app.data.repository.ErrnoMobileApi
 import com.erno.app.ui.components.WorkerLocationMapView
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +36,6 @@ import org.json.JSONObject
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -687,13 +685,11 @@ private fun NearbyWorkersPanel(job: JobPost) {
 @Composable
 private fun AssignedWorkerTrackingPanel(job: JobPost) {
     var coordinate by remember(job.id) { mutableStateOf<MapCoordinate?>(null) }
-    var route by remember(job.id) { mutableStateOf<ApproximateRoute?>(null) }
     var state by remember(job.id) { mutableStateOf("connecting") }
     var updated by remember(job.id) { mutableStateOf<String?>(null) }
     var lastUpdateMillis by remember(job.id) { mutableStateOf(0L) }
     var error by remember(job.id) { mutableStateOf<String?>(null) }
-    val scope=rememberCoroutineScope(); val lastRouteAt=remember(job.id){AtomicLong(0)}
-    var lastRouted by remember(job.id) { mutableStateOf<MapCoordinate?>(null) }
+    val scope=rememberCoroutineScope()
     LaunchedEffect(job.id,job.status) {
         var backoff=1_000L; var terminal=false
         while(kotlinx.coroutines.currentCoroutineContext().isActive && !terminal) {
@@ -709,13 +705,6 @@ private fun AssignedWorkerTrackingPanel(job: JobPost) {
                             if(json.optString("type")=="heartbeat_ping" && lastUpdateMillis>0 && System.currentTimeMillis()-lastUpdateMillis>120_000) state="stale"
                             if(json.has("latitude")&&json.has("longitude")){
                                 val next=MapCoordinate(json.getDouble("latitude"),json.getDouble("longitude")); coordinate=next; updated=json.optString("updated_at"); lastUpdateMillis=System.currentTimeMillis()
-                                val previous=lastRouted
-                                val distance=if(previous==null)Double.POSITIVE_INFINITY else FloatArray(1).also { android.location.Location.distanceBetween(previous.latitude,previous.longitude,next.latitude,next.longitude,it) }[0].toDouble()
-                                val now=System.currentTimeMillis(); val last=lastRouteAt.get()
-                                if(distance>=100 && now-last>30_000 && lastRouteAt.compareAndSet(last,now)) {
-                                    lastRouted=next
-                                    try { route=ErrnoMobileApi.trackingRoute(job.id) } catch(_:Exception) { route=null }
-                                }
                             }
                         }
                     }
@@ -734,7 +723,6 @@ private fun AssignedWorkerTrackingPanel(job: JobPost) {
         Text("Live worker tracking",fontWeight=FontWeight.Bold,fontSize=13.sp)
         Text("${state.replaceFirstChar { it.uppercase() }}${updated?.let { " · Updated $it" } ?: ""}",fontSize=11.sp,color=if(state=="online") ErnoGreen else Color.Gray)
         error?.let { Text(it,fontSize=11.sp,color=Color(0xFFB3261E)) }
-        WorkerLocationMapView(job.location,latitude=job.latitude,longitude=job.longitude,workerLocation=coordinate,route=route)
-        route?.let { Text("${it.distanceKm} km · about ${it.durationMinutes} min · approximate, no live traffic",fontSize=11.sp,color=Color.Gray) }
+        WorkerLocationMapView(job.location,latitude=job.latitude,longitude=job.longitude,workerLocation=coordinate)
     }
 }

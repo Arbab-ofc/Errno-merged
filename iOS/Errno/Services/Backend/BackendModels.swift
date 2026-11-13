@@ -236,10 +236,6 @@ nonisolated struct TrackingLocationResponse: Decodable, Sendable {
     struct Location: Decodable, Sendable { let latitude: Double; let longitude: Double; let updated_at: String }
     let state: String; let location: Location?
 }
-nonisolated struct OSRMRouteResponse: Decodable, Sendable {
-    struct Geometry: Decodable, Sendable { let coordinates: [[Double]] }
-    let geometry: Geometry; let distance_km: Double; let duration_minutes: Int; let label: String
-}
 nonisolated struct PresencePayload: Encodable, Sendable {
     let session_identifier: String
     let device_platform: String
@@ -296,6 +292,7 @@ nonisolated struct BackendJob: Codable, Sendable, Identifiable {
     var prebooking_dispatch_worker_count: Int? = nil
     var prebooking_dispatch_failure_code: String? = nil
     var shop_name: String? = nil
+    var shop_address: String? = nil
 }
 nonisolated struct BackendApplication: Codable, Sendable {
     let id: String
@@ -472,7 +469,6 @@ nonisolated enum BackendEndpoints {
         APIEndpoint(method:"GET",path:["jobs",jobID,"nearby-workers"],query:[URLQueryItem(name:"radius_km",value:String(radius))],bearerToken:token)
     }
     static func trackingLocation(jobID: String, token: String) -> APIEndpoint { APIEndpoint(method:"GET",path:["jobs",jobID,"tracking","location"],bearerToken:token) }
-    static func trackingRoute(jobID: String, token: String) -> APIEndpoint { APIEndpoint(method:"GET",path:["jobs",jobID,"route"],bearerToken:token) }
     static func currentShop(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["shops", "me"], bearerToken: token) }
     static func saveShop(_ body: UpdateShopRequest, token: String) throws -> APIEndpoint {
         var endpoint = try APIEndpoint.json("PUT", ["shops", "me"], body: body); endpoint.bearerToken = token; return endpoint
@@ -600,7 +596,6 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     }
     func nearbyWorkers(jobID:String,radius:Double) async throws -> NearbyWorkersResponse { try await client.send(BackendEndpoints.nearbyWorkers(jobID:jobID,radius:radius,token:try await token())) }
     func trackingLocation(jobID:String) async throws -> TrackingLocationResponse { try await client.send(BackendEndpoints.trackingLocation(jobID:jobID,token:try await token())) }
-    func trackingRoute(jobID:String) async throws -> OSRMRouteResponse { try await client.send(BackendEndpoints.trackingRoute(jobID:jobID,token:try await token())) }
     func trackingWebSocketRequest(jobID:String) async throws -> URLRequest {
         guard !jobID.isEmpty,!jobID.contains("/"),!jobID.contains("%") else { throw APIError.invalidInput }
         let token=try await token(); guard var components=URLComponents(url:client.configuration.baseURL,resolvingAgainstBaseURL:false) else { throw APIError.configuration }

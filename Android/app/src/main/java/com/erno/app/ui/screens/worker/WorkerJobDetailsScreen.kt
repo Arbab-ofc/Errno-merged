@@ -16,7 +16,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.erno.app.ui.components.WorkerLocationMapView
+import com.erno.app.ui.components.openGoogleMapsDirections
 import com.erno.app.data.repository.ErrnoMobileApi
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
@@ -31,6 +33,7 @@ fun WorkerJobDetailsScreen(
     onAcceptJobClick: () -> Unit
 ) {
     val job = state.selectedJob ?: state.availableJobs.firstOrNull()
+    val context = LocalContext.current
     if (job == null) {
         Scaffold(containerColor = Color(0xFF0B121F)) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -280,9 +283,9 @@ fun WorkerJobDetailsScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Interactive Map View showing store location & route
+                        // Native shop location map; directions open externally after acceptance.
                         Text(
-                            text = "Work Location & Route",
+                            text = "Shop Location",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
@@ -291,12 +294,21 @@ fun WorkerJobDetailsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         WorkerLocationMapView(
-                            locationName = job.location,
-                            distanceText = job.distance,
+                            locationName = job.shopName.ifBlank { "Shop" },
+                            distanceText = job.shopAddress.ifBlank { job.location },
                             latitude = job.latitude,
                             longitude = job.longitude,
                             isDarkTheme = true
                         )
+
+                        if (job.status == "Ongoing" || job.status == "Accepted" || job.status == "Upcoming") {
+                            Button(
+                                onClick = { openGoogleMapsDirections(context, job.latitude, job.longitude) },
+                                enabled = job.latitude != null && job.longitude != null,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen)
+                            ) { Text("Navigate", color = Color.White) }
+                        }
 
                         Spacer(modifier = Modifier.height(24.dp))
 
