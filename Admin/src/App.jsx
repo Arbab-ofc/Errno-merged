@@ -19,6 +19,7 @@ const WhatsAppGatewayPage = lazy(() => import("./pages/WhatsAppGatewayPage").the
 const FinancePage = lazy(() => import("./pages/FinancePage").then((module) => ({ default: module.FinancePage })));
 const KycPage = lazy(() => import("./pages/KycPage").then((module) => ({ default: module.KycPage })));
 const NotificationCenterPage = lazy(() => import("./pages/NotificationCenterPage").then((module) => ({ default: module.NotificationCenterPage })));
+const ManualPaymentsPage = lazy(() => import("./pages/ManualPaymentsPage").then((module) => ({ default: module.ManualPaymentsPage })));
 
 function UnauthorizedPage() {
   const { logout, user } = useAuth();
@@ -36,6 +37,7 @@ function RouteTree() {
       <Route path="pricing" element={<PricingPage />} />
       <Route path="whatsapp" element={<WhatsAppGatewayPage />} />
       <Route path="finance" element={<FinancePage />} />
+      <Route path="manual-payments" element={<ManualPaymentsPage />} />
       <Route path="kyc" element={<KycPage />} />
       <Route path="shop-owners" element={<PeopleListPage kind="shop-owners" />} />
       <Route path="shop-owners/:userId" element={<PersonDetailPage kind="shop-owners" />} />

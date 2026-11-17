@@ -6,7 +6,8 @@ establish whether another environment has applied them. Do not run the legacy
 chain against an empty database; its integer-ID schema does not match the
 active FastAPI runtime models.
 
-The canonical environment requires ERRNO_DATABASE_URL and does not load .env.
+The canonical environment reads ERRNO_DATABASE_URL from root .env for local
+development; explicit process environment values take precedence.
 Non-loopback targets additionally require ERRNO_PGSSLROOTCERT and force
 sslmode=verify-full plus ERRNO_ALLOW_CANONICAL_MIGRATION=1. Local migration
 validation is limited to the explicitly named errno_phase22_test database with

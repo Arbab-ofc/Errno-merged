@@ -2,3 +2,4 @@ node_modules/
 session/
 *.log
 .env
+.env.local

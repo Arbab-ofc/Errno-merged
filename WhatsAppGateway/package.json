@@ -4,7 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "engines": { "node": ">=20" },
-  "scripts": { "start": "node src/index.js", "test": "node --test" },
+  "scripts": {
+    "prestart": "python3 ../scripts/sync_native_configs.py --sync --target gateway",
+    "start": "node --env-file=.env.local src/index.js",
+    "test": "node --test"
+  },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",
     "express": "^5.1.0",

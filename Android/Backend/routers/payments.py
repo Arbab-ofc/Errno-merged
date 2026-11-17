@@ -8,26 +8,151 @@ import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
+import io
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
-from database import get_db
-from firebase_auth import authenticated_user, require_admin, require_role
+from database import get_db, SessionLocal
+from firebase_auth import authenticated_user, require_admin, require_role, verify_firebase_token
 from models import (AdminAuditLog, CashCollection, FinancialAuditEvent, FinancialRefund, Job,
-                    CompanyPaymentConfiguration, PaymentTransaction, PaymentWebhookEvent, PricingQuote, Shop, User,
+                    CompanyPaymentConfiguration, ManualPaymentSubmission, PaymentTransaction, PaymentWebhookEvent, PricingQuote, Shop, User,
+                    AdminPermission, BackendAuthSession,
                     PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal,
                     KYCVerificationProfile)
 from services.notification_service import queue_notification, queue_admin_notifications
 
 router = APIRouter(prefix="/api/v1", tags=["Payments and wallet"])
 admin_router = APIRouter(prefix="/api/v1/admin", tags=["Admin finance"])
+ws_router = APIRouter(prefix="/api/v1", tags=["Payment events"])
 logger = logging.getLogger(__name__)
+
+
+class PaymentEventHub:
+    """Best-effort process-local fanout; REST state remains authoritative after reconnect."""
+    def __init__(self):
+        self.clients: dict[str, set[WebSocket]] = {}
+        self.lock = __import__("asyncio").Lock()
+
+    async def connect(self, audience: str, socket: WebSocket):
+        async with self.lock:
+            self.clients.setdefault(audience, set()).add(socket)
+
+    async def disconnect(self, audience: str, socket: WebSocket):
+        async with self.lock:
+            group = self.clients.get(audience)
+            if group:
+                group.discard(socket)
+                if not group: self.clients.pop(audience, None)
+
+    async def publish(self, event: dict, audiences: set[str]):
+        async with self.lock:
+            targets = set(audiences)
+            if "users" in targets:
+                targets.remove("users")
+                targets.update(audience for audience in self.clients if audience.startswith("user:"))
+            sockets = [(audience, socket) for audience in targets for socket in tuple(self.clients.get(audience, ()))]
+        for audience, socket in sockets:
+            try: await socket.send_json(event)
+            except Exception:
+                await self.disconnect(audience, socket)
+
+
+payment_event_hub = PaymentEventHub()
+
+
+def _payment_event(event_type: str, payment_id: str | None, booking_id: str | None, status: str, **metadata):
+    return {"version": 1, "eventType": event_type, "paymentId": payment_id, "bookingId": booking_id,
+        "status": status, "timestamp": datetime.now(timezone.utc).isoformat(), "metadata": metadata}
+
+
+def _manual_notification_event_id(action: str, submission_id: str, recipient_id: str | None = None) -> str:
+    """Stable 64-character notification key compatible with the PostgreSQL column."""
+    identity = f"manual-payment:{action}:{submission_id}:{recipient_id or ''}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+async def _payment_socket_identity(ws: WebSocket, db: Session):
+    value = ws.headers.get("authorization", "")
+    scheme, _, token = value.partition(" ")
+    token = token.strip() if scheme.lower() == "bearer" else ""
+    protocols = ws.scope.get("subprotocols", [])
+    if not token:
+        token = next((protocol[len("bearer."):] for protocol in protocols if protocol.startswith("bearer.")), "")
+    if not token: return None, None
+    if token.startswith("errno_"):
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        session = db.query(BackendAuthSession).filter(BackendAuthSession.token_digest == digest,
+            BackendAuthSession.revoked_at.is_(None), BackendAuthSession.expires_at > datetime.now(timezone.utc)).first()
+        user = db.query(User).filter_by(id=session.user_id, is_active=True).first() if session else None
+        return user, None
+    try:
+        claims = verify_firebase_token(token)
+        user = db.query(User).filter_by(firebase_uid=claims["uid"], is_active=True).first()
+        admin = db.query(AdminPermission).filter_by(firebase_uid=claims["uid"], active=True).first()
+        return user, admin
+    except HTTPException:
+        return None, None
+
+
+@ws_router.websocket("/ws/payments")
+async def payment_events_socket(ws: WebSocket):
+    db = SessionLocal()
+    scope = ws.query_params.get("scope", "user")
+    user, admin = await _payment_socket_identity(ws, db)
+    if scope == "admin":
+        if admin is None or "payments.read" not in (admin.permissions or []):
+            await ws.close(code=4403); db.close(); return
+        audience = "admin"
+    elif scope == "user":
+        if user is None or user.role not in {"shop_owner", "shopkeeper"}:
+            await ws.close(code=4403); db.close(); return
+        audience = f"user:{user.id}"
+    else:
+        await ws.close(code=4400); db.close(); return
+    protocols = ws.scope.get("subprotocols", [])
+    await ws.accept(subprotocol="errno.payment.v1" if "errno.payment.v1" in protocols else None)
+    await payment_event_hub.connect(audience, ws)
+    token = ws.headers.get("authorization", "").partition(" ")[2].strip()
+    if not token:
+        token = next((protocol[len("bearer."):] for protocol in protocols if protocol.startswith("bearer.")), "")
+    try:
+        await ws.send_json({"version": 1, "eventType": "payment_socket.ready", "timestamp": datetime.now(timezone.utc).isoformat()})
+        import asyncio
+        while True:
+            try: await asyncio.wait_for(ws.receive_text(), timeout=30)
+            except asyncio.TimeoutError:
+                await ws.send_json({"version": 1, "eventType": "payment_socket.ping", "timestamp": datetime.now(timezone.utc).isoformat()})
+            if token.startswith("errno_"):
+                valid = db.query(BackendAuthSession.id).filter(BackendAuthSession.token_digest == hashlib.sha256(token.encode()).hexdigest(),
+                    BackendAuthSession.revoked_at.is_(None), BackendAuthSession.expires_at > datetime.now(timezone.utc)).first()
+                if not valid: await ws.close(code=4401); break
+                if scope == "user":
+                    valid_user = db.query(User).filter_by(id=user.id, is_active=True).first()
+                    if not valid_user or valid_user.role not in {"shop_owner", "shopkeeper"}: await ws.close(code=4401); break
+            else:
+                try: claims = verify_firebase_token(token)
+                except HTTPException: await ws.close(code=4401); break
+                if scope == "admin":
+                    valid = db.query(AdminPermission).filter_by(firebase_uid=claims["uid"], active=True).first()
+                    if not valid or "payments.read" not in (valid.permissions or []): await ws.close(code=4403); break
+                else:
+                    valid = db.query(User).filter_by(firebase_uid=claims["uid"], is_active=True).first()
+                    if not valid or valid.role not in {"shop_owner", "shopkeeper"}: await ws.close(code=4401); break
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.debug("payment websocket disconnected", exc_info=True)
+    finally:
+        await payment_event_hub.disconnect(audience, ws)
+        db.close()
 
 
 class WithdrawalRequest(BaseModel):
@@ -75,6 +200,75 @@ class VerifyRequest(BaseModel):
     razorpayOrderId: str = Field(min_length=1, max_length=100)
     razorpayPaymentId: str = Field(min_length=1, max_length=100)
     razorpaySignature: str = Field(min_length=32, max_length=128)
+
+
+class PaymentConfigUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    activeProvider: str = Field(pattern="^(MANUAL_QR|RAZORPAY)$")
+    merchantName: str | None = Field(default=None, max_length=160)
+    upiId: str | None = Field(default=None, max_length=160)
+
+
+class ManualRejectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+def _cloudinary_config():
+    cloud_name, api_key, api_secret = (_env(k) for k in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"))
+    if not all((cloud_name, api_key, api_secret)):
+        raise HTTPException(503, detail="Secure image storage is not configured")
+    import cloudinary
+    import cloudinary.uploader
+    import cloudinary.utils
+    cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret, secure=True)
+    return cloudinary
+
+
+def _cloudinary_timeout() -> int:
+    try: return max(3, min(60, int(_env("CLOUDINARY_TIMEOUT_SECONDS") or "30")))
+    except ValueError: return 30
+
+
+def _validated_image(upload: UploadFile, data: bytes):
+    if not data or len(data) > 5 * 1024 * 1024:
+        raise HTTPException(413, detail="Choose an image no larger than 5 MB")
+    try:
+        from PIL import Image
+        image = Image.open(io.BytesIO(data))
+        if image.width * image.height > 16_000_000:
+            raise HTTPException(413, detail="Image dimensions are too large")
+        image.verify()
+        mime = Image.MIME.get(image.format)
+    except HTTPException:
+        raise
+    except Exception:
+        mime = None
+    if mime not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(415, detail="Only valid JPEG, PNG, or WebP images are supported")
+    if upload.content_type and upload.content_type not in {mime, "application/octet-stream"}:
+        raise HTTPException(415, detail="Image content does not match its declared type")
+    return mime
+
+
+def _cloudinary_upload(data: bytes, folder: str, private: bool):
+    cloudinary = _cloudinary_config()
+    try:
+        result = cloudinary.uploader.upload(io.BytesIO(data), resource_type="image", folder=folder,
+            type="authenticated" if private else "upload", public_id=uuid.uuid4().hex,
+            overwrite=False, use_filename=False, unique_filename=False, format=None, timeout=_cloudinary_timeout())
+        return result
+    except Exception as exc:
+        logger.warning("cloudinary_upload_failed folder=%s reason=%s", folder, type(exc).__name__)
+        raise HTTPException(502, detail="Image storage is temporarily unavailable") from None
+
+
+def _cloudinary_destroy(public_id: str, private: bool):
+    try:
+        _cloudinary_config().uploader.destroy(public_id, resource_type="image", type="authenticated" if private else "upload",
+            invalidate=True, timeout=_cloudinary_timeout())
+    except Exception:
+        logger.warning("cloudinary_asset_cleanup_failed")
 
 
 def _env(name: str) -> str:
@@ -165,6 +359,8 @@ def create_payment_order(booking_id: str, user: User = Depends(authenticated_use
         raise HTTPException(409, detail={"code": "COMPLETION_NOT_VERIFIED", "message": "Payment is available after the shopkeeper verifies job completion."})
     quote, amount, commission, worker_amount = _payment_snapshot(db, job)
     txn = db.query(PaymentTransaction).filter(PaymentTransaction.booking_id == job.id).with_for_update().first()
+    if txn and txn.provider == "MANUAL_QR":
+        raise HTTPException(409, detail={"code": "PAYMENT_PROVIDER_LOCKED", "message": "This booking is assigned to Manual QR payment."})
     if txn and txn.status == "PAID":
         raise HTTPException(409, detail={"code": "ALREADY_PAID", "message": "This booking is already paid."})
     if txn and txn.status == "CASH_PENDING":
@@ -174,6 +370,9 @@ def create_payment_order(booking_id: str, user: User = Depends(authenticated_use
         return {"bookingId": job.id, "razorpayOrderId": txn.order_id, "amountPaise": txn.amount_paise,
                 "currency": txn.currency, "keyId": key_id, "paymentStatus": txn.status}
     if txn is None:
+        config = db.query(CompanyPaymentConfiguration).filter_by(id="company").first()
+        if config is None or config.active_provider != "RAZORPAY":
+            raise HTTPException(409, detail={"code": "PAYMENT_PROVIDER_MANUAL", "message": "Manual QR is the active payment method."})
         txn = PaymentTransaction(booking_id=job.id, shopkeeper_id=user.id, worker_id=job.assigned_worker_id,
             amount_paise=amount, commission_paise=commission, worker_earning_paise=worker_amount,
             idempotency_key=f"booking-payment:{job.id}")
@@ -253,6 +452,77 @@ def verify_payment(body: VerifyRequest, user: User = Depends(authenticated_user)
     return {"paymentId": txn.id, "bookingId": job.id, "status": txn.status}
 
 
+@router.get("/payments/config")
+def mobile_payment_config(user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "shop_owner", "shopkeeper")
+    config = db.query(CompanyPaymentConfiguration).filter_by(id="company").first()
+    if config is None:
+        return {"activeProvider": "MANUAL_QR", "manual": {"configured": False}}
+    return {"activeProvider": config.active_provider, "manual": {
+        "configured": bool(config.qr_asset_url and config.qr_public_id and config.status == "VERIFIED"),
+        "qrImageUrl": config.qr_asset_url if config.status == "VERIFIED" else None,
+        "merchantName": config.merchant_name, "upiId": config.upi_id,
+    }}
+
+
+@router.post("/payments/bookings/{booking_id}/manual/submit")
+async def submit_manual_payment(booking_id: str, screenshot: UploadFile = File(...),
+        user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
+    require_role(user, "shop_owner", "shopkeeper")
+    data = await screenshot.read(5 * 1024 * 1024 + 1)
+    mime = _validated_image(screenshot, data)
+    job = _owned_job(db, booking_id, user, lock=True)
+    if job.status != "completed" or job.completed_at is None or job.cancelled_at is not None:
+        raise HTTPException(409, detail="Payment is available only for a completed, active booking")
+    config = db.query(CompanyPaymentConfiguration).filter_by(id="company").first()
+    if config is None or config.status != "VERIFIED" or not config.qr_public_id:
+        raise HTTPException(409, detail="Manual QR payment is not currently available")
+    quote, amount, commission, worker_amount = _payment_snapshot(db, job)
+    txn = db.query(PaymentTransaction).filter_by(booking_id=job.id).with_for_update().first()
+    if txn is None and config.active_provider != "MANUAL_QR":
+        raise HTTPException(409, detail="Manual QR is not the active method for new payment obligations")
+    if txn and (txn.status == "PAID" or txn.status == "CASH_PENDING" or txn.status in {"REFUNDED", "DISPUTED"}):
+        raise HTTPException(409, detail="This booking is not eligible for a manual payment submission")
+    if txn and txn.order_id:
+        raise HTTPException(409, detail="A Razorpay order already exists for this booking")
+    pending = db.query(ManualPaymentSubmission).filter_by(booking_id=job.id, status="PENDING_REVIEW").first()
+    if pending:
+        raise HTTPException(409, detail="A screenshot is already waiting for admin verification")
+    if txn is None:
+        txn = PaymentTransaction(booking_id=job.id, shopkeeper_id=user.id, worker_id=job.assigned_worker_id,
+            amount_paise=amount, commission_paise=commission, worker_earning_paise=worker_amount,
+            provider="MANUAL_QR", status="PAYMENT_PENDING", idempotency_key=f"booking-payment:{job.id}")
+        db.add(txn); db.flush()
+    elif config.active_provider == "MANUAL_QR" and txn.provider == "RAZORPAY" and not txn.order_id and not db.query(ManualPaymentSubmission).filter_by(booking_id=job.id).first():
+        txn.provider = "MANUAL_QR"
+    if txn.provider != "MANUAL_QR" or txn.amount_paise != amount:
+        raise HTTPException(409, detail="Stored payment obligation does not match the current payment mode or booking amount")
+    prior = db.query(ManualPaymentSubmission).filter_by(booking_id=job.id).order_by(ManualPaymentSubmission.attempt_number.desc()).first()
+    asset = await run_in_threadpool(_cloudinary_upload, data, _env("CLOUDINARY_PAYMENT_PROOF_FOLDER") or "errno/payment-proofs", True)
+    submission = ManualPaymentSubmission(booking_id=job.id, payment_id=txn.id, user_id=user.id,
+        asset_public_id=asset["public_id"], mime_type=mime, file_size=len(data),
+        attempt_number=(prior.attempt_number + 1 if prior else 1), status="PENDING_REVIEW")
+    db.add(submission)
+    txn.status = "PENDING_REVIEW"
+    db.add(FinancialAuditEvent(actor_id=user.id, event_type="manual_payment.submitted", resource_type="manual_payment_submission",
+        resource_id=submission.id, details={"booking_id": job.id, "amount_paise": amount, "attempt": submission.attempt_number}))
+    try:
+        db.flush()
+        db.commit()
+    except Exception:
+        db.rollback(); await run_in_threadpool(_cloudinary_destroy, asset["public_id"], True)
+        raise HTTPException(409, detail="Submission could not be saved. Please check payment status and retry.") from None
+    queue_admin_notifications(db, permission="payments.manage", event_type="manual_payment_pending",
+        title="Manual payment needs review", body="A shopkeeper submitted a payment screenshot for verification.",
+        data={"route":"payment","payment_id":txn.id,"booking_id":job.id}, event_id=_manual_notification_event_id("submitted", submission.id))
+    db.commit()
+    await payment_event_hub.publish(_payment_event("manual_payment.resubmitted" if prior else "manual_payment.submitted",
+        txn.id, job.id, "PENDING_REVIEW", attemptNumber=submission.attempt_number, amountPaise=amount),
+        {"admin", f"user:{user.id}"})
+    return {"submissionId": submission.id, "bookingId": job.id, "paymentId": txn.id,
+        "amountPaise": amount, "status": "PENDING_REVIEW", "submittedAt": submission.submitted_at}
+
+
 @router.get("/payments/{payment_id}")
 def get_payment(payment_id: str, user: User = Depends(authenticated_user), db: Session = Depends(get_db)):
     txn = db.query(PaymentTransaction).filter(PaymentTransaction.id == payment_id).first()
@@ -274,10 +544,20 @@ def booking_payment_status(booking_id: str, user: User = Depends(authenticated_u
         raise HTTPException(403, detail="Payment is not available to this user")
     txn = db.query(PaymentTransaction).filter_by(booking_id=booking_id).first()
     cash = db.query(CashCollection).filter_by(booking_id=booking_id).first()
+    latest = db.query(ManualPaymentSubmission).filter_by(booking_id=booking_id).order_by(ManualPaymentSubmission.attempt_number.desc()).first()
     if txn is None:
-        return {"bookingId": booking_id, "status": "PAYMENT_PENDING", "amountPaise": None, "paymentId": None, "cashCollectionId": None}
+        amount = None
+        if job.status == "completed" and job.completed_at is not None and job.cancelled_at is None:
+            try: _, amount, _, _ = _payment_snapshot(db, job)
+            except HTTPException: amount = None
+        config = db.query(CompanyPaymentConfiguration).filter_by(id="company").first()
+        return {"bookingId": booking_id, "status": "AWAITING_PAYMENT", "amountPaise": amount,
+            "paymentId": None, "provider": config.active_provider if config else "MANUAL_QR", "cashCollectionId": None}
     return {"bookingId": booking_id, "paymentId": txn.id, "providerPaymentId": txn.payment_id,
             "status": txn.status, "amountPaise": txn.amount_paise, "paidAt": txn.paid_at,
+            "provider": txn.provider,
+            "submission": ({"id": latest.id, "status": latest.status, "submittedAt": latest.submitted_at,
+                "rejectionReason": latest.rejection_reason} if latest else None),
             "cashCollectionId": cash.id if cash else None,
             "cashShopkeeperConfirmed": bool(cash and cash.shopkeeper_confirmed_at),
             "cashWorkerConfirmed": bool(cash and cash.worker_confirmed_at),
@@ -539,6 +819,8 @@ def start_cash_collection(booking_id: str, user: User = Depends(authenticated_us
         db.add(txn); db.flush()
     if txn.status == "PAID":
         raise HTTPException(409, detail="Booking already paid online")
+    if db.query(ManualPaymentSubmission).filter_by(booking_id=job.id, status="PENDING_REVIEW").first():
+        raise HTTPException(409, detail="A manual payment screenshot is awaiting admin review")
     if txn.order_id:
         raise HTTPException(409, detail="An online order already exists; resolve its provider status before switching to cash")
     cash = db.query(CashCollection).filter_by(booking_id=job.id).first()
@@ -681,7 +963,7 @@ def get_company_qr(admin=Depends(require_admin("payments.read")), db: Session = 
 
 
 @admin_router.put("/finance/company-upi-qr")
-def update_company_qr(body: CompanyQRUpdate, admin=Depends(require_admin("payments.manage")), db: Session = Depends(get_db)):
+async def update_company_qr(body: CompanyQRUpdate, admin=Depends(require_admin("payments.manage")), db: Session = Depends(get_db)):
     parsed = urllib.parse.urlparse(body.qrAssetUrl)
     if parsed.scheme != "https" or not parsed.netloc:
         raise HTTPException(422, detail="QR asset must use an HTTPS URL")
@@ -696,7 +978,166 @@ def update_company_qr(body: CompanyQRUpdate, admin=Depends(require_admin("paymen
     db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type="company_upi_qr.updated", resource_type="company_payment_configuration",
         resource_id="company", details={"status": config.status, "reason": body.reason}))
     db.commit()
+    await payment_event_hub.publish(_payment_event("payment_config.updated", None, None, config.active_provider,
+        configured=bool(config.qr_asset_url and config.status == "VERIFIED")), {"admin", "users"})
     return {"status": config.status, "qrAssetUrl": config.qr_asset_url}
+
+
+@admin_router.get("/payments/config")
+def admin_payment_config(admin=Depends(require_admin("payments.read")), db: Session = Depends(get_db)):
+    config = db.query(CompanyPaymentConfiguration).filter_by(id="company").first()
+    return {"activeProvider": config.active_provider if config else "MANUAL_QR",
+        "qrImageUrl": config.qr_asset_url if config and config.status == "VERIFIED" else None,
+        "configured": bool(config and config.qr_public_id and config.qr_asset_url and config.status == "VERIFIED"),
+        "merchantName": config.merchant_name if config else None, "upiId": config.upi_id if config else None}
+
+
+@admin_router.patch("/payments/config")
+async def update_admin_payment_config(body: PaymentConfigUpdate, admin=Depends(require_admin("payments.manage")), db: Session = Depends(get_db)):
+    config = db.query(CompanyPaymentConfiguration).filter_by(id="company").with_for_update().first()
+    if config is None:
+        config = CompanyPaymentConfiguration(id="company")
+        db.add(config)
+    if body.activeProvider == "MANUAL_QR" and not (config.qr_public_id and config.status == "VERIFIED"):
+        raise HTTPException(409, detail="Upload and verify a payment QR before selecting Manual QR")
+    config.active_provider = body.activeProvider
+    config.merchant_name = body.merchantName.strip() if body.merchantName else None
+    config.upi_id = body.upiId.strip() if body.upiId else None
+    config.updated_by = admin.firebase_uid
+    db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type="payment_config.updated",
+        resource_type="company_payment_configuration", resource_id="company", details={"active_provider": body.activeProvider}))
+    db.commit()
+    await payment_event_hub.publish(_payment_event("payment_config.updated", None, None, config.active_provider,
+        merchantName=config.merchant_name, upiId=config.upi_id), {"admin", "users"})
+    return {"activeProvider": config.active_provider, "merchantName": config.merchant_name, "upiId": config.upi_id}
+
+
+@admin_router.post("/payments/qr")
+async def upload_admin_payment_qr(image: UploadFile = File(...), admin=Depends(require_admin("payments.manage")), db: Session = Depends(get_db)):
+    data = await image.read(5 * 1024 * 1024 + 1)
+    _validated_image(image, data)
+    asset = await run_in_threadpool(_cloudinary_upload, data, _env("CLOUDINARY_PAYMENT_QR_FOLDER") or "errno/payment-qr", False)
+    config = db.query(CompanyPaymentConfiguration).filter_by(id="company").with_for_update().first()
+    if config is None:
+        config = CompanyPaymentConfiguration(id="company")
+        db.add(config)
+    old_id = config.qr_public_id
+    config.qr_public_id = asset["public_id"]
+    config.qr_asset_url = asset["secure_url"]
+    config.status = "VERIFIED"
+    config.verified_by = admin.firebase_uid
+    config.verified_at = datetime.now(timezone.utc)
+    config.updated_by = admin.firebase_uid
+    db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type="payment_qr.replaced",
+        resource_type="company_payment_configuration", resource_id="company", details={"asset_id": asset["public_id"]}))
+    try:
+        db.commit()
+    except Exception:
+        db.rollback(); await run_in_threadpool(_cloudinary_destroy, asset["public_id"], False)
+        raise HTTPException(503, detail="QR configuration could not be saved") from None
+    if old_id and old_id != asset["public_id"]:
+        await run_in_threadpool(_cloudinary_destroy, old_id, False)
+    await payment_event_hub.publish(_payment_event("payment_config.updated", None, None, config.active_provider,
+        configured=True), {"admin", "users"})
+    return {"configured": True, "qrImageUrl": config.qr_asset_url, "status": config.status}
+
+
+def _private_asset_url(public_id: str, mime_type: str = "image/jpeg"):
+    try:
+        import time
+        extension = {"image/png": "png", "image/webp": "webp"}.get(mime_type, "jpg")
+        return _cloudinary_config().utils.private_download_url(public_id, extension,
+            type="authenticated", expires_at=int(time.time()) + 300)
+    except Exception as exc:
+        logger.warning("cloudinary_private_url_failed reason=%s", type(exc).__name__)
+        raise HTTPException(503, detail="Screenshot preview is temporarily unavailable") from None
+
+
+def _manual_submission_data(row: ManualPaymentSubmission, db: Session, include_image=True):
+    job = db.query(Job).filter_by(id=row.booking_id).first()
+    user = db.query(User).filter_by(id=row.user_id).first()
+    txn = db.query(PaymentTransaction).filter_by(id=row.payment_id).first()
+    return {"id": row.id, "bookingId": row.booking_id, "paymentId": row.payment_id,
+        "shopkeeperId": row.user_id, "shopkeeperName": user.full_name if user else None,
+        "amountPaise": txn.amount_paise if txn else None, "bookingTitle": job.title if job else None,
+        "bookingStatus": job.status if job else None, "status": row.status, "attemptNumber": row.attempt_number,
+        "mimeType": row.mime_type, "fileSize": row.file_size, "submittedAt": row.submitted_at,
+        "reviewedAt": row.reviewed_at, "reviewedBy": row.reviewed_by, "rejectionReason": row.rejection_reason,
+        "screenshotUrl": _private_asset_url(row.asset_public_id, row.mime_type) if include_image else None}
+
+
+@admin_router.get("/payments/manual")
+def list_manual_payments(status: str = "ALL", limit: int = 50, offset: int = 0,
+        admin=Depends(require_admin("payments.read")), db: Session = Depends(get_db)):
+    if status not in {"ALL", "PENDING_REVIEW", "APPROVED", "REJECTED"} or not 1 <= limit <= 100 or offset < 0:
+        raise HTTPException(422, detail="Invalid payment filter or pagination")
+    query = db.query(ManualPaymentSubmission)
+    if status != "ALL": query = query.filter_by(status=status)
+    total = query.count()
+    rows = query.order_by(ManualPaymentSubmission.submitted_at.desc()).offset(offset).limit(limit).all()
+    return {"items": [_manual_submission_data(row, db) for row in rows], "limit": limit, "offset": offset, "total": total}
+
+
+@admin_router.get("/payments/manual/{submission_id}")
+def manual_payment_detail(submission_id: str, admin=Depends(require_admin("payments.read")), db: Session = Depends(get_db)):
+    row = db.query(ManualPaymentSubmission).filter_by(id=submission_id).first()
+    if row is None: raise HTTPException(404, detail="Payment submission not found")
+    result = _manual_submission_data(row, db)
+    history = db.query(ManualPaymentSubmission).filter_by(booking_id=row.booking_id).order_by(ManualPaymentSubmission.attempt_number.asc()).all()
+    result["history"] = [_manual_submission_data(item, db) for item in history]
+    return result
+
+
+@admin_router.post("/payments/manual/{submission_id}/approve")
+async def approve_manual_payment(submission_id: str, admin=Depends(require_admin("payments.manage")), db: Session = Depends(get_db)):
+    row = db.query(ManualPaymentSubmission).filter_by(id=submission_id).with_for_update().first()
+    if row is None: raise HTTPException(404, detail="Payment submission not found")
+    if row.status != "PENDING_REVIEW": raise HTTPException(409, detail={"status": row.status, "message": "Submission already has a final decision"})
+    job = db.query(Job).filter_by(id=row.booking_id).with_for_update().first()
+    txn = db.query(PaymentTransaction).filter_by(id=row.payment_id).with_for_update().first()
+    if not job or job.status != "completed" or job.cancelled_at is not None:
+        raise HTTPException(409, detail="Booking is no longer eligible for payment approval")
+    if not txn or txn.provider != "MANUAL_QR" or txn.status != "PENDING_REVIEW":
+        raise HTTPException(409, detail="Payment obligation is not pending manual review")
+    if db.query(CashCollection).filter_by(booking_id=job.id).first():
+        raise HTTPException(409, detail="Cash collection exists; payment requires reconciliation")
+    _record_paid(db, txn, "manual:" + row.id)
+    row.status = "APPROVED"; row.reviewed_at = datetime.now(timezone.utc); row.reviewed_by = admin.firebase_uid
+    db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type="manual_payment.approved", resource_type="manual_payment_submission",
+        resource_id=row.id, details={"payment_id": txn.id, "booking_id": job.id, "amount_paise": txn.amount_paise}))
+    for recipient_id in {txn.shopkeeper_id, txn.worker_id}:
+        recipient = db.query(User).filter_by(id=recipient_id).first()
+        if recipient:
+            queue_notification(db, recipient=recipient, event_type="payment_success", category="payment", title="Payment approved",
+                body="Payment for this ERRNO booking has been approved.", data={"route":"payment","payment_id":txn.id,"booking_id":job.id}, event_id=_manual_notification_event_id("approved", row.id, recipient_id))
+    db.commit()
+    await payment_event_hub.publish(_payment_event("manual_payment.approved", txn.id, job.id, "PAID",
+        submissionStatus="APPROVED", amountPaise=txn.amount_paise), {"admin", f"user:{row.user_id}"})
+    return {"id": row.id, "status": row.status, "paymentStatus": txn.status}
+
+
+@admin_router.post("/payments/manual/{submission_id}/reject")
+async def reject_manual_payment(submission_id: str, body: ManualRejectRequest,
+        admin=Depends(require_admin("payments.manage")), db: Session = Depends(get_db)):
+    row = db.query(ManualPaymentSubmission).filter_by(id=submission_id).with_for_update().first()
+    if row is None: raise HTTPException(404, detail="Payment submission not found")
+    if row.status != "PENDING_REVIEW": raise HTTPException(409, detail={"status": row.status, "message": "Submission already has a final decision"})
+    txn = db.query(PaymentTransaction).filter_by(id=row.payment_id).with_for_update().first()
+    if not txn or txn.provider != "MANUAL_QR" or txn.status != "PENDING_REVIEW":
+        raise HTTPException(409, detail="Manual payment is no longer pending review")
+    row.status = "REJECTED"; row.rejection_reason = body.reason.strip(); row.reviewed_at = datetime.now(timezone.utc); row.reviewed_by = admin.firebase_uid
+    txn.status = "PAYMENT_PENDING"
+    db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type="manual_payment.rejected", resource_type="manual_payment_submission",
+        resource_id=row.id, details={"payment_id": txn.id, "booking_id": row.booking_id, "reason": row.rejection_reason}))
+    recipient = db.query(User).filter_by(id=row.user_id).first()
+    if recipient:
+        queue_notification(db, recipient=recipient, event_type="payment_failed", category="payment", title="Payment screenshot rejected",
+            body="Your payment was rejected. Please upload a new screenshot.", data={"route":"payment","payment_id":txn.id,"booking_id":row.booking_id}, event_id=_manual_notification_event_id("rejected", row.id, row.user_id))
+    db.commit()
+    await payment_event_hub.publish(_payment_event("manual_payment.rejected", txn.id, row.booking_id, "REJECTED",
+        paymentStatus=txn.status, rejectionReason=row.rejection_reason, attemptNumber=row.attempt_number),
+        {"admin", f"user:{row.user_id}"})
+    return {"id": row.id, "status": row.status, "rejectionReason": row.rejection_reason}
 
 
 @admin_router.post("/cash-collections/{collection_id}/resolve")

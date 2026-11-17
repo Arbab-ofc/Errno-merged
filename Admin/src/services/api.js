@@ -43,6 +43,23 @@ async function send(path, { user, method = 'GET', body, signal, publicRequest = 
 
 export const api = {
   request: send,
+  paymentSocket: async (user, scope = 'admin') => {
+    const token = await user.getIdToken();
+    const socketBase = baseUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+    return new WebSocket(`${socketBase}/api/v1/ws/payments?scope=${encodeURIComponent(scope)}`, ['errno.payment.v1', `bearer.${token}`]);
+  },
+  manualPaymentConfig: (user) => send('/api/v1/admin/payments/config', { user }),
+  updateManualPaymentConfig: (user, body) => send('/api/v1/admin/payments/config', { user, method: 'PATCH', body }),
+  manualPayments: (user, status = 'ALL', offset = 0) => send(`/api/v1/admin/payments/manual?status=${encodeURIComponent(status)}&limit=50&offset=${offset}`, { user }),
+  manualPayment: (user, id) => send(`/api/v1/admin/payments/manual/${encodeURIComponent(id)}`, { user }),
+  approveManualPayment: (user, id) => send(`/api/v1/admin/payments/manual/${encodeURIComponent(id)}/approve`, { user, method: 'POST', body: {} }),
+  rejectManualPayment: (user, id, reason) => send(`/api/v1/admin/payments/manual/${encodeURIComponent(id)}/reject`, { user, method: 'POST', body: { reason } }),
+  uploadPaymentQr: async (user, file) => {
+    const token = await user.getIdToken(); const form = new FormData(); form.append('image', file);
+    const response = await fetch(`${baseUrl}/api/v1/admin/payments/qr`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form, credentials: 'omit', redirect: 'error' });
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new ApiError(response.status, payload.detail?.message || payload.detail || 'QR image upload failed.'); }
+    return response.json();
+  },
   health: (signal) => send('/health', { publicRequest: true, signal }),
   notificationInbox: (user) => send('/api/v1/admin/notifications', { user }),
   notificationUnreadCount: (user) => send('/api/v1/admin/notifications/unread-count', { user }),

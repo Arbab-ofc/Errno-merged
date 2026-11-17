@@ -23,3 +23,5 @@ uvicorn==0.52.4
 firebase-admin>=6.5,<8
 cryptography>=42,<51
 python-multipart>=0.0.9,<1
+cloudinary>=1.40,<2
+Pillow>=10,<12

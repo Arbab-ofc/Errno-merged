@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import make_url
 
@@ -21,12 +22,17 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Local developers may keep database and safety settings in root .env. Explicit
+# process environment values still take precedence, and safety gates remain.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(REPOSITORY_ROOT / ".env", override=False)
+
 
 def _database_url() -> str:
     raw_url = os.environ.get("ERRNO_DATABASE_URL")
     if not raw_url:
         raise RuntimeError(
-            "Set ERRNO_DATABASE_URL explicitly; this migration environment does not load .env."
+            "Set ERRNO_DATABASE_URL in the process environment or repository root .env."
         )
 
     url = make_url(raw_url)

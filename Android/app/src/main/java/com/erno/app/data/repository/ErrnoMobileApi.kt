@@ -142,6 +142,16 @@ object ErrnoMobileApi {
         val url=scheme+base.removePrefix("https://").removePrefix("http://")+"/ws/jobs/${java.net.URLEncoder.encode(jobId,"UTF-8")}/tracking"
         okhttp3.OkHttpClient().newWebSocket(okhttp3.Request.Builder().url(url).header("Authorization","Bearer $token").build(),listener)
     }
+    suspend fun openPaymentSocket(listener: okhttp3.WebSocketListener): okhttp3.WebSocket = withContext(Dispatchers.IO) {
+        val sessionToken = ErrnoSessionStore.read()
+        val user = FirebaseAuth.getInstance().currentUser
+        val token = sessionToken ?: (user?.getIdToken(false)?.await()?.token) ?: error("Sign in to continue.")
+        val base = BuildConfig.ERRNO_API_BASE_URL.trimEnd('/')
+        check(base.startsWith("https://") || (BuildConfig.DEBUG && (base.startsWith("http://10.0.2.2") || base.startsWith("http://localhost")))) { "Backend URL is not configured securely." }
+        val wsBase = base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
+        okhttp3.OkHttpClient().newWebSocket(okhttp3.Request.Builder().url("$wsBase/api/v1/ws/payments?scope=user")
+            .header("Authorization", "Bearer $token").build(), listener)
+    }
 
     suspend fun workerPayout(jobId: String): JSONObject = JSONObject(request("GET", "/api/v1/jobs/$jobId/worker-payout"))
     suspend fun workerWallet(): JSONObject = JSONObject(request("GET", "/api/v1/worker/wallet"))
@@ -157,6 +167,28 @@ object ErrnoMobileApi {
     ))
     suspend fun paymentStatus(paymentId: String): JSONObject = JSONObject(request("GET", "/api/v1/payments/$paymentId"))
     suspend fun bookingPaymentStatus(bookingId: String): JSONObject = JSONObject(request("GET", "/api/v1/bookings/$bookingId/payment-status"))
+    suspend fun paymentConfig(): JSONObject = JSONObject(request("GET", "/api/v1/payments/config"))
+    suspend fun submitManualScreenshot(bookingId: String, bytes: ByteArray, mimeType: String): JSONObject = withContext(Dispatchers.IO) {
+        require(bytes.isNotEmpty() && bytes.size <= 5 * 1024 * 1024) { "Choose an image smaller than 5 MB." }
+        val sessionToken = ErrnoSessionStore.read(); val user = FirebaseAuth.getInstance().currentUser
+        val token = sessionToken ?: (user?.getIdToken(false)?.await()?.token) ?: error("Sign in to continue.")
+        val boundary = "errno-${java.util.UUID.randomUUID()}"; val base = BuildConfig.ERRNO_API_BASE_URL.trimEnd('/')
+        val connection = (URL("$base/api/v1/payments/bookings/$bookingId/manual/submit").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"; connectTimeout = 15000; readTimeout = 45000; doOutput = true
+            setRequestProperty("Authorization", "Bearer $token"); setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            connection.outputStream.use { out ->
+                out.write("--$boundary\r\nContent-Disposition: form-data; name=\"screenshot\"; filename=\"payment-proof\"\r\nContent-Type: $mimeType\r\n\r\n".toByteArray())
+                out.write(bytes); out.write("\r\n--$boundary--\r\n".toByteArray())
+            }
+            val code = connection.responseCode; val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            check(code in 200..299) { try { JSONObject(response).optString("detail", "Upload failed ($code).") } catch (_: Exception) { "Upload failed ($code)." } }
+            JSONObject(response)
+        } finally { connection.disconnect() }
+    }
     suspend fun startCashCollection(bookingId: String): JSONObject = JSONObject(request("POST", "/api/v1/bookings/$bookingId/cash-collection"))
     suspend fun cashCollections(): JSONArray = JSONArray(request("GET", "/api/v1/worker/cash-collections"))
     suspend fun companyPaymentQr(): JSONObject = JSONObject(request("GET", "/api/v1/worker/company-upi-qr"))

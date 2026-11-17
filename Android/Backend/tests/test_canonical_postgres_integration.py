@@ -78,7 +78,7 @@ def migrated_postgres_client():
     app.include_router(pricing_router)
     app.dependency_overrides[get_db] = get_test_db
     with engine.begin() as connection:
-        assert connection.execute(text("select version_num from public.alembic_version")).scalar_one() == "fb4a6c90d112"
+        assert connection.execute(text("select version_num from public.alembic_version")).scalar_one() == "2c7d41e9a620"
         connection.execute(text("DELETE FROM pricing_quotes"))
         connection.execute(text("DELETE FROM applications"))
         connection.execute(text("DELETE FROM jobs"))

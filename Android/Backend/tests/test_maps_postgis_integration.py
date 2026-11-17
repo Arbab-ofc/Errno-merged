@@ -18,7 +18,7 @@ def postgis_db():
 def test_map_migration_postgis_columns_and_gist_index(postgis_db):
     with postgis_db.connect() as db:
         assert db.execute(text("SELECT PostGIS_Full_Version()")).scalar_one()
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="fb4a6c90d112"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=="2c7d41e9a620"
         indexes={row[0] for row in db.execute(text("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='worker_live_locations'"))}
         assert "ix_worker_live_locations_location_gist" in indexes
         columns={row[0] for row in db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='jobs'"))}

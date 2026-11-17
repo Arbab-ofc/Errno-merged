@@ -29,13 +29,13 @@ The repository is the source of truth for implementation. Historical reports and
 
 ## Architecture and project layout
 
-| Component | Location | Technology | Role |
-|---|---|---|---|
-| Android app | `Android/app/` | Kotlin, Jetpack Compose, Maps Compose | Shopkeeper and worker mobile clients |
-| iOS app | `iOS/Errno.xcodeproj` | SwiftUI, Google Maps SDK for iOS | Shopkeeper and worker mobile clients |
-| Backend | `Android/Backend/` | FastAPI, SQLAlchemy, Alembic | Authentication, marketplace, pricing, dispatch, location, payments, KYC, notifications |
-| Admin portal | `Admin/` | React, Vite, Firebase Web Auth | Permission-gated operations and monitoring |
-| WhatsApp gateway | `WhatsAppGateway/` | Node.js, Express, Baileys | Private QR-paired WhatsApp message transport |
+| Component        | Location                | Technology                            | Role                                                                                   |
+| ---------------- | ----------------------- | ------------------------------------- | -------------------------------------------------------------------------------------- |
+| Android app      | `Android/app/`        | Kotlin, Jetpack Compose, Maps Compose | Shopkeeper and worker mobile clients                                                   |
+| iOS app          | `iOS/Errno.xcodeproj` | SwiftUI, Google Maps SDK for iOS      | Shopkeeper and worker mobile clients                                                   |
+| Backend          | `Android/Backend/`    | FastAPI, SQLAlchemy, Alembic          | Authentication, marketplace, pricing, dispatch, location, payments, KYC, notifications |
+| Admin portal     | `Admin/`              | React, Vite, Firebase Web Auth        | Permission-gated operations and monitoring                                             |
+| WhatsApp gateway | `WhatsAppGateway/`    | Node.js, Express, Baileys             | Private QR-paired WhatsApp message transport                                           |
 
 Android and iOS are separate applications. They share the backend APIs and data contracts; neither mobile app connects directly to the database. The backend owns identity resolution, authorization, pricing snapshots, job lifecycle, and persisted coordinates.
 
@@ -43,19 +43,19 @@ Android and iOS are separate applications. They share the backend APIs and data 
 
 Status labels below describe repository evidence. External provider credentials and production deployment state are not inferred from source code.
 
-| Area | Status | Notes |
-|---|---|---|
-| Native Android and iOS maps | Implemented; credentials/runtime need setup | Native SDK maps, shop pins, worker/shop markers, foreground location support, and external directions are present. |
-| Job posting, applications, and lifecycle | Implemented | Shop owner creates jobs; workers apply; owner accepts/rejects; assigned worker starts; owner confirms completion. |
-| Nearby workers and live tracking | Implemented in code; PostGIS/runtime verification required | Nearby discovery uses PostGIS and worker presence. Assigned-worker tracking uses authenticated HTTP and WebSocket APIs. |
-| Instant/current booking | Implemented | Uses the current job lifecycle and server-generated pricing quote. |
-| Four-hour pre-booking dispatch | Implemented in code; requires supervised dispatcher | Durable dispatch state and worker invitations are separate from FCM delivery. |
-| Firebase sign-in and persisted identity | Implemented | Backend verifies Firebase ID tokens and loads the persisted user. Admin access requires an explicit database permission. |
-| Notification inbox and outbox | Implemented in code; delivery needs credentials/operations | PostgreSQL inbox is authoritative. FCM is best effort and push is disabled by default. |
-| Razorpay checkout and ledger | Implemented in code; provider credentials and financial operations need setup | Checkout verification, webhooks, wallet ledger, refunds, and cash confirmation exist. External payouts are not automatically transferred. |
-| DigiLocker | Partially implemented, fail-closed | Consent, sessions, manual review, and storage controls exist. The official provider adapter is disabled pending an approved requester specification and credentials. |
-| WhatsApp OTP | Implemented in code; gateway must be paired and privately networked | Backend owns challenges and sessions; gateway transports messages but does not verify OTPs. Baileys uses the unofficial WhatsApp Web protocol. |
-| Commercial pricing configuration | Implemented as a configurable system; production values unapproved | Draft examples are proposals only. They are not active commercial settings. |
+| Area                                     | Status                                                                        | Notes                                                                                                                                                                |
+| ---------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native Android and iOS maps              | Implemented; credentials/runtime need setup                                   | Native SDK maps, shop pins, worker/shop markers, foreground location support, and external directions are present.                                                   |
+| Job posting, applications, and lifecycle | Implemented                                                                   | Shop owner creates jobs; workers apply; owner accepts/rejects; assigned worker starts; owner confirms completion.                                                    |
+| Nearby workers and live tracking         | Implemented in code; PostGIS/runtime verification required                    | Nearby discovery uses PostGIS and worker presence. Assigned-worker tracking uses authenticated HTTP and WebSocket APIs.                                              |
+| Instant/current booking                  | Implemented                                                                   | Uses the current job lifecycle and server-generated pricing quote.                                                                                                   |
+| Four-hour pre-booking dispatch           | Implemented in code; requires supervised dispatcher                           | Durable dispatch state and worker invitations are separate from FCM delivery.                                                                                        |
+| Firebase sign-in and persisted identity  | Implemented                                                                   | Backend verifies Firebase ID tokens and loads the persisted user. Admin access requires an explicit database permission.                                             |
+| Notification inbox and outbox            | Implemented in code; delivery needs credentials/operations                    | PostgreSQL inbox is authoritative. FCM is best effort and push is disabled by default.                                                                               |
+| Razorpay checkout and ledger             | Implemented in code; provider credentials and financial operations need setup | Checkout verification, webhooks, wallet ledger, refunds, and cash confirmation exist. External payouts are not automatically transferred.                            |
+| DigiLocker                               | Partially implemented, fail-closed                                            | Consent, sessions, manual review, and storage controls exist. The official provider adapter is disabled pending an approved requester specification and credentials. |
+| WhatsApp OTP                             | Implemented in code; gateway must be paired and privately networked           | Backend owns challenges and sessions; gateway transports messages but does not verify OTPs. Baileys uses the unofficial WhatsApp Web protocol.                       |
+| Commercial pricing configuration         | Implemented as a configurable system; production values unapproved            | Draft examples are proposals only. They are not active commercial settings.                                                                                          |
 
 The old Android README described a custom Canvas map and some feature claims that no longer matched the app. Current code uses the native Google Maps SDK. No source-backed guarantee of placing a worker within 15 minutes was found; availability depends on matching and eligible workers.
 
@@ -105,10 +105,10 @@ Cancellation and rescheduling apply only according to the job/dispatch state. Re
 
 Use two separate restricted keys and enable billing plus only the Maps SDK for Android and Maps SDK for iOS in the owner-controlled Google Cloud project.
 
-| Key | Application restriction | API restriction | Root setting |
-|---|---|---|---|
+| Key     | Application restriction                                                  | API restriction      | Root setting                          |
+| ------- | ------------------------------------------------------------------------ | -------------------- | ------------------------------------- |
 | Android | Package `com.erno.app` plus every applicable signing certificate SHA-1 | Maps SDK for Android | `ERRNO_GOOGLE_MAPS_ANDROID_API_KEY` |
-| iOS | Bundle ID `com.errno.app` | Maps SDK for iOS | `ERRNO_GOOGLE_MAPS_IOS_API_KEY` |
+| iOS     | Bundle ID `com.errno.app`                                              | Maps SDK for iOS     | `ERRNO_GOOGLE_MAPS_IOS_API_KEY`     |
 
 Add the Play App Signing certificate fingerprint for Play builds. Keep dev and production keys separate where practical. Set quotas and billing alerts; alerts are not hard spending caps. Google Maps URLs do not need a Maps API key. Do not enable Places, Google Geocoding, Routes, or Navigation for this release. No real key belongs in this repository.
 
@@ -152,24 +152,24 @@ Authenticated routes accept a Firebase ID token or valid ERRNO WhatsApp session 
 
 ### Authentication, shops, and jobs
 
-| Method and path | Access / purpose |
-|---|---|
-| `POST /api/v1/auth/firebase` | Verified Firebase token; create or retrieve profile |
-| `GET`, `PATCH /api/v1/users/me` | Read/update profile and one-time role selection |
-| `POST /api/v1/auth/logout` | Acknowledgement; clients clear local Firebase session |
-| `GET`, `PUT /shops/me` | Owner reads/updates shop name, address, category |
-| `GET /jobs`, `GET /jobs/{job_id}` | Public open-job discovery/detail; undispatched pre-bookings are hidden |
-| `GET /jobs/mine` | Shop owner reads owned jobs |
-| `POST /jobs` | Shop owner posts a quoted job; ownership comes from token |
-| `POST /jobs/{job_id}/apply` | Worker applies idempotently to an open job |
-| `GET /jobs/applications/me` | Worker paginated application history |
-| `DELETE /jobs/{job_id}/applications/me` | Worker cancels a pending application |
-| `GET /jobs/applications/owner` | Owner reads minimal applicant summaries |
-| `GET /jobs/{job_id}/applications` | Owner reads applications for owned job |
-| `PATCH /jobs/{job_id}/applications/{application_id}` | Owner accepts/rejects; acceptance assignment is atomic |
-| `POST /jobs/{job_id}/start` | Assigned worker starts work |
-| `POST /jobs/{job_id}/complete` | Owning shopkeeper confirms completion; does not charge payment |
-| `PATCH /jobs/{job_id}/status?new_status=cancelled` | Owner cancels eligible unstarted work |
+| Method and path                                        | Access / purpose                                                       |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `POST /api/v1/auth/firebase`                         | Verified Firebase token; create or retrieve profile                    |
+| `GET`, `PATCH /api/v1/users/me`                    | Read/update profile and one-time role selection                        |
+| `POST /api/v1/auth/logout`                           | Acknowledgement; clients clear local Firebase session                  |
+| `GET`, `PUT /shops/me`                             | Owner reads/updates shop name, address, category                       |
+| `GET /jobs`, `GET /jobs/{job_id}`                  | Public open-job discovery/detail; undispatched pre-bookings are hidden |
+| `GET /jobs/mine`                                     | Shop owner reads owned jobs                                            |
+| `POST /jobs`                                         | Shop owner posts a quoted job; ownership comes from token              |
+| `POST /jobs/{job_id}/apply`                          | Worker applies idempotently to an open job                             |
+| `GET /jobs/applications/me`                          | Worker paginated application history                                   |
+| `DELETE /jobs/{job_id}/applications/me`              | Worker cancels a pending application                                   |
+| `GET /jobs/applications/owner`                       | Owner reads minimal applicant summaries                                |
+| `GET /jobs/{job_id}/applications`                    | Owner reads applications for owned job                                 |
+| `PATCH /jobs/{job_id}/applications/{application_id}` | Owner accepts/rejects; acceptance assignment is atomic                 |
+| `POST /jobs/{job_id}/start`                          | Assigned worker starts work                                            |
+| `POST /jobs/{job_id}/complete`                       | Owning shopkeeper confirms completion; does not charge payment         |
+| `PATCH /jobs/{job_id}/status?new_status=cancelled`   | Owner cancels eligible unstarted work                                  |
 
 Application history contains job/shop summaries and actual application status. Typical errors are 401 unauthenticated, 403 wrong role/owner, 404 missing resource, 409 lifecycle conflict, and 422 invalid request.
 
@@ -237,6 +237,16 @@ Razorpay orders are created only for a job with canonical `completed` status and
 
 Cash settlement/cancellation/refund policies remain unconfigured business decisions. RazorpayX/Payout authorization is not assumed. Admin finance permissions (for example `payments.read`, `payments.refund`, `payments.manage`, `wallet.read`, `withdrawals.manage`, and reconciliation permissions) must be explicitly provisioned. A finance queue approval is not an external transfer.
 
+### Manual QR payment verification
+
+The current default for new payment obligations is `MANUAL_QR`; existing Razorpay obligations retain their recorded provider and continue to use checkout verification and webhooks. Run the canonical Alembic migration `2c7d41e9a620` before deploying the backend. Provide server-only `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` values. QR images use `CLOUDINARY_PAYMENT_QR_FOLDER` and public delivery; payment screenshots use `CLOUDINARY_PAYMENT_PROOF_FOLDER` and authenticated Cloudinary delivery. The backend validates image bytes and caps uploads at 5 MB. Do not expose Cloudinary credentials in native apps or Vite variables.
+
+Admins with `payments.manage` upload the active QR and configure the displayed merchant name / UPI ID in **Manual Verification**. Manual submissions are attached to the completed booking’s server-calculated payment obligation, remain pending until admin review, and retain each rejected/resubmitted attempt. Approval uses the existing paid ledger transition; rejection requires a reason. Version 1 events are sent over the authenticated `/api/v1/ws/payments` socket. Admins use the `admin` scope; shopkeepers use the `user` scope. Clients fetch REST state at connection/reconnection and only poll every 30 seconds while disconnected. Switching the global provider affects new obligations; pending manual submissions remain available for review.
+
+Payment and location WebSocket fanout currently runs in-process, just like the existing tracking hub. A multi-worker or multi-instance deployment can deliver events only to clients connected to the same worker. Run one backend worker for live payment events or add a shared pub/sub adapter before horizontal scaling; REST status remains authoritative.
+
+For local development, configure the Cloudinary variables and admin permission, run `alembic -c alembic_canonical.ini upgrade head` from `Android/Backend`, then start the API and Admin Vite app. Screenshot proof assets are not public URLs. Admin previews are short-lived signed Cloudinary downloads. Production should configure Cloudinary account access controls, secure backend secrets, TLS, and the existing notification outbox worker. Razorpay credentials, checkout code, signature verification, and webhook handling remain required when selecting Razorpay.
+
 ## KYC and DigiLocker
 
 The backend supports consent-versioned verification sessions, status transitions, manual review, audit, encrypted document storage, and withdrawal eligibility integration. Manual approval is recorded as `MANUAL_DOCUMENT_REVIEW`, not DigiLocker issuer proof. Aadhaar aliases are rejected; accepted categories are controlled by `KYC_ALLOWED_DOCUMENT_TYPES`.
@@ -249,7 +259,7 @@ Documents are Fernet-encrypted in a private directory and remain quarantined unt
 
 The React/Vite app uses Firebase Web Sign-In and the shared FastAPI API. Firebase login alone grants no admin API access. Dashboard, people, jobs, pricing/presence, finance, KYC, notification, and WhatsApp gateway surfaces are present in current source; the backend enforces the corresponding persisted permissions. Review the page and endpoint implementation for operational availability—UI presence does not bypass missing data contracts or RBAC.
 
-Firebase Web settings use `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, and `VITE_FIREBASE_APP_ID`. These are public client identifiers, not service-account credentials. Never expose a Firebase Admin service account in Vite variables. The Admin app reads the root `.env` and keeps existing `Admin/.env.local` overrides; only `VITE_` variables are bundled for browser use.
+Firebase Web settings use `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, and `VITE_FIREBASE_APP_ID`. These are public client identifiers, not service-account credentials. Never expose a Firebase Admin service account in Vite variables. The synchronization script copies only this explicit public allowlist plus `VITE_API_BASE_URL` to `Admin/.env.local`.
 
 ## WhatsApp gateway
 
@@ -259,7 +269,7 @@ Baileys implements the unofficial WhatsApp Web protocol. WhatsApp can disconnect
 
 ## Environment setup
 
-There is one tracked environment example: root `.env.example`. It contains safe placeholders/defaults for backend, Admin, gateway, Android, and iOS settings. Copy it to ignored root `.env`, replace placeholders in your local copy/secret manager, and do not commit it:
+There is one tracked environment example: root `.env.example`. Copy it to ignored root `.env` once, then manage developer credentials and environment-specific values there. Keep secrets out of `.env.example` and do not commit `.env`:
 
 ```sh
 cp .env.example .env
@@ -273,35 +283,40 @@ set -a
 set +a
 ```
 
-The backend loads `Android/Backend/.env` first and then reads the root `.env` for unset values; component-local values therefore retain precedence. Vite reads root `.env` while preserving existing Admin-local overrides. Docker Compose receives it explicitly with `--env-file .env`.
-
-Android Gradle and Xcode do not parse dotenv files directly. For a clean checkout, generate ignored native configuration files from root `.env`:
+Synchronize every component and validate the result with:
 
 ```sh
-python3 scripts/sync_native_configs.py
+python3 scripts/sync_native_configs.py --sync --target all
+python3 scripts/sync_native_configs.py --check --target all
 ```
 
-The helper creates either missing target (`Android/gradle.properties.local` and/or `iOS/Local.xcconfig`) and refuses to overwrite an existing file. If a private file already exists, preserve it and manually add/update the required setting in that local file. Xcode loads the tracked, non-secret `iOS/NativeEnvironment.xcconfig`, which optionally includes ignored `Local.xcconfig`. `google-services.json` and `GoogleService-Info.plist` are separate Firebase platform inputs and are not generated from `.env`.
+Use `--target android`, `ios`, `admin`, `backend`, or `gateway` to synchronize one component. The tool parses dotenv with `python-dotenv`, detects duplicate names, migrates non-conflicting old local values into empty root entries, reports conflicting names without showing values, and writes generated files atomically with private permissions. Once generated, Android, iOS, Admin, and gateway local files are managed outputs; edit root `.env` instead. If two existing values conflict, resolve the named variable before syncing. The one-time `--adopt-local-urls` option is available when explicitly choosing to move existing app API URLs into root `.env`.
+
+Android Gradle runs Android synchronization during settings evaluation, before it reads `Android/gradle.properties.local`. Xcode's shared `Errno` scheme synchronizes iOS values before each build. Admin's `npm run dev` and `npm run build` scripts synchronize the Vite allowlist into `Admin/.env.local`. The local WhatsApp Gateway's `npm start` synchronizes only its own variables into ignored `WhatsAppGateway/.env.local`, then Node loads that allowlisted file. FastAPI loads root `.env` by absolute repository path, regardless of working directory. Explicit process environment values take precedence over root `.env`, followed by application defaults. Existing `Android/Backend/.env` values are retained for reference but are no longer loaded by FastAPI; use root `.env` for local development. Docker Compose continues to receive root `.env` explicitly with `--env-file .env`.
+
+Android and iOS backend endpoints can differ: set `ERRNO_API_BASE_URL_ANDROID` and `ERRNO_API_BASE_URL_IOS`. An empty platform value inherits `ERRNO_API_BASE_URL`. Only public mobile settings (API endpoint, Maps key, Photon endpoint, and the Android auth emulator host) are generated into native configuration; Cloudinary, database, Razorpay, Firebase Admin, JWT, and gateway secrets remain backend-only. The Admin allowlist is limited to `VITE_API_BASE_URL` and the four Firebase web client identifiers.
+
+Xcode reads tracked `iOS/NativeEnvironment.xcconfig`, which optionally includes ignored `Local.xcconfig`. Android still requires the official `Android/app/google-services.json`, and iOS requires `iOS/Errno/GoogleService-Info.plist`; the files are provisioned through Firebase and are not reconstructed from `.env`. Firebase Admin credentials remain server-side through `GOOGLE_APPLICATION_CREDENTIALS` or runtime identity.
 
 ### Variable groups and defaults
 
 The root `.env.example` is the full variable catalog. Empty values mean the deployment must provide the setting before enabling that integration. Do not set migration safety flags in a general production runtime environment.
 
-| Group | Variables / defaults | Notes |
-|---|---|---|
-| Runtime/database | `APP_ENV=development`, `ENVIRONMENT=development`, `LOG_LEVEL=info`, `DATABASE_URL=` | No PostgreSQL URL uses local SQLite for development. PostgreSQL requires verified TLS. |
-| Database CA/migrations | `PGSSLROOTCERT=`, `ERRNO_PGSSLROOTCERT=`, `ERRNO_DATABASE_URL=`, `ERRNO_TEST_DATABASE_URL=`, `ERRNO_ALLOW_LOCAL_TEST_DB=`, `ERRNO_ALLOW_CANONICAL_MIGRATION=` | Explicit CA and migration/test opt-ins; blank by default. |
-| Backend/Firebase | `FIREBASE_PROJECT_ID=errno-pvt-ltd`, `GOOGLE_APPLICATION_CREDENTIALS=`, `ERRNO_CORS_ALLOWED_ORIGINS=` | Server credentials are backend-only. CORS is a comma-separated origin allowlist. |
-| Android/iOS | `ERRNO_API_BASE_URL=http://localhost:8000`, both `ERRNO_GOOGLE_MAPS_*_API_KEY`, `ERRNO_FIREBASE_AUTH_EMULATOR_HOST=`, `ERRNO_PHOTON_ENDPOINT=https://photon.komoot.io` | Android emulator commonly needs `http://10.0.2.2:8000`; maps keys are distinct/restricted. |
-| Route compatibility | `ERRNO_OSRM_ENDPOINT=https://router.project-osrm.org/route/v1/driving` | Legacy backend route endpoint only; mobile maps do not request route geometry/ETA. |
-| Admin web | `VITE_API_BASE_URL=http://localhost:8000`, `VITE_FIREBASE_API_KEY=`, `VITE_FIREBASE_AUTH_DOMAIN=errno-pvt-ltd.firebaseapp.com`, `VITE_FIREBASE_PROJECT_ID=errno-pvt-ltd`, `VITE_FIREBASE_APP_ID=` | Web Firebase values are public client configuration. Never put service credentials here. |
-| Notifications | `NOTIFICATION_WORKER_ENABLED=true`, `NOTIFICATION_PUSH_ENABLED=false`, `NOTIFICATION_MAX_ATTEMPTS=6`, `NOTIFICATION_RETRY_BASE_SECONDS=15`, `NOTIFICATION_RETRY_MAX_SECONDS=3600`, `NOTIFICATION_LEASE_SECONDS=120`, `NOTIFICATION_WORKER_POLL_SECONDS=2`, `NOTIFICATION_RETENTION_DAYS=365`, `NOTIFICATION_DELIVERY_LOG_RETENTION_DAYS=180`, `NOTIFICATION_TOKEN_ENCRYPTION_KEY=`, `NOTIFICATION_TOKEN_HASH_SECRET=` | Configure encryption/hash secrets before push. Worker is a separate process. |
-| Razorpay | `RAZORPAY_KEY_ID=rzp_test_replace-me`, `RAZORPAY_KEY_SECRET=`, `RAZORPAY_WEBHOOK_SECRET=`, `RAZORPAY_ENVIRONMENT=test`, `RAZORPAY_API_TIMEOUT_SECONDS=10` | Secrets are server-side. Use Test Mode first. |
-| Payment policy controls | `ERRNO_PAYOUT_METHOD_VERIFICATION_ENABLED=false`, `ERRNO_CASH_SETTLEMENT_POLICY=unconfigured`, `ERRNO_CANCELLATION_REFUND_POLICY=unconfigured` | Business/provider operations remain gated; do not invent policy. |
-| DigiLocker/KYC | `DIGILOCKER_ENABLED=false`, `DIGILOCKER_PROVIDER_MODE=disabled`, `DIGILOCKER_CLIENT_ID=`, `DIGILOCKER_CLIENT_SECRET=`, `DIGILOCKER_REDIRECT_URI=`, `DIGILOCKER_ALLOWED_SCOPES=`, `DIGILOCKER_API_BASE_URL=`, `DIGILOCKER_AUTHORIZATION_URL=`, `DIGILOCKER_TOKEN_URL=`, `DIGILOCKER_SESSION_TTL_SECONDS=600`, `DIGILOCKER_HTTP_TIMEOUT_SECONDS=15`, `DIGILOCKER_STATE_SECRET=`, `KYC_MANUAL_REVIEW_ENABLED=false`, `KYC_REQUIRED_FOR_WITHDRAWAL=true`, `KYC_DOCUMENT_RETENTION_DAYS=0`, `KYC_CONSENT_VERSION=v1`, `KYC_ALLOWED_DOCUMENT_TYPES=`, `KYC_DOCUMENT_ENCRYPTION_KEY=`, `KYC_MANUAL_STORAGE_PATH=`, `KYC_ANTIVIRUS_MODE=quarantine`, `KYC_CLAMAV_UNIX_SOCKET=` | Official provider remains disabled/fail-closed. The old DigiLocker example also named `DIGILOCKER_DOCUMENT_RETENTION_DAYS`; current code reads `KYC_DOCUMENT_RETENTION_DAYS`. The old name is included as a blank compatibility note in the example but is not consumed by current code. |
-| Pre-booking dispatcher | `PREBOOKING_DISPATCH_POLL_SECONDS=1`, `PREBOOKING_DISPATCH_LEASE_SECONDS=120`, `PREBOOKING_NO_WORKER_RETRY_SECONDS=300`, `PREBOOKING_WORKER_RADIUS_KM=5`, `PREBOOKING_LOCATION_MAX_AGE_SECONDS=300` | Separate supervised process, same backend database. |
-| WhatsApp backend | `WHATSAPP_GATEWAY_ENABLED=false`, `WHATSAPP_GATEWAY_INTERNAL_URL=http://whatsapp-gateway:8787`, `WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET=`, `WHATSAPP_GATEWAY_TIMEOUT_SECONDS=35`, `WHATSAPP_OTP_HASH_SECRET=`, `WHATSAPP_OTP_LENGTH=6`, `WHATSAPP_OTP_TTL_SECONDS=300`, `WHATSAPP_OTP_RESEND_SECONDS=30`, `WHATSAPP_OTP_MAX_ATTEMPTS=5`, `WHATSAPP_OTP_PHONE_LIMIT_PER_HOUR=5`, `WHATSAPP_OTP_IP_LIMIT_PER_HOUR=20`, `WHATSAPP_SESSION_TTL_SECONDS=2592000`, `WHATSAPP_SESSION_MAX_ACTIVE=5` | Use independent high-entropy secrets. |
-| WhatsApp gateway process | `WHATSAPP_GATEWAY_BIND=127.0.0.1`, `WHATSAPP_GATEWAY_PORT=8787`, `WHATSAPP_GATEWAY_SESSION_PATH=./session`, `WHATSAPP_GATEWAY_AUTOCONNECT=true`, `WHATSAPP_GATEWAY_QR_TTL_SECONDS=60` | In Docker the bind and session path are set by Compose; protect the persistent volume. |
+| Group                    | Variables / defaults                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Notes                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime/database         | `APP_ENV=development`, `ENVIRONMENT=development`, `LOG_LEVEL=info`, `DATABASE_URL=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | No PostgreSQL URL uses local SQLite for development. PostgreSQL requires verified TLS.                                                                                                                                                                                                       |
+| Database CA/migrations   | `PGSSLROOTCERT=`, `ERRNO_PGSSLROOTCERT=`, `ERRNO_DATABASE_URL=`, `ERRNO_TEST_DATABASE_URL=`, `ERRNO_ALLOW_LOCAL_TEST_DB=`, `ERRNO_ALLOW_CANONICAL_MIGRATION=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Explicit CA and migration/test opt-ins; blank by default.                                                                                                                                                                                                                                    |
+| Backend/Firebase         | `FIREBASE_PROJECT_ID=errno-pvt-ltd`, `GOOGLE_APPLICATION_CREDENTIALS=`, `ERRNO_CORS_ALLOWED_ORIGINS=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Server credentials are backend-only. CORS is a comma-separated origin allowlist.                                                                                                                                                                                                             |
+| Android/iOS              | `ERRNO_API_BASE_URL=http://localhost:8000`, `ERRNO_API_BASE_URL_ANDROID=`, `ERRNO_API_BASE_URL_IOS=`, both `ERRNO_GOOGLE_MAPS_*_API_KEY`, `ERRNO_FIREBASE_AUTH_EMULATOR_HOST=`, `ERRNO_PHOTON_ENDPOINT=https://photon.komoot.io`                                                                                                                                                                                                                                                                                                                                                                                                                 | Platform URLs override the shared fallback; Android emulator commonly needs `http://10.0.2.2:8000`; maps keys are distinct/restricted.                                                                                         |
+| Route compatibility      | `ERRNO_OSRM_ENDPOINT=https://router.project-osrm.org/route/v1/driving`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Legacy backend route endpoint only; mobile maps do not request route geometry/ETA.                                                                                                                                                                                                           |
+| Admin web                | `VITE_API_BASE_URL=http://localhost:8000`, `VITE_FIREBASE_API_KEY=`, `VITE_FIREBASE_AUTH_DOMAIN=errno-pvt-ltd.firebaseapp.com`, `VITE_FIREBASE_PROJECT_ID=errno-pvt-ltd`, `VITE_FIREBASE_APP_ID=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Web Firebase values are public client configuration. Never put service credentials here.                                                                                                                                                                                                     |
+| Notifications            | `NOTIFICATION_WORKER_ENABLED=true`, `NOTIFICATION_PUSH_ENABLED=false`, `NOTIFICATION_MAX_ATTEMPTS=6`, `NOTIFICATION_RETRY_BASE_SECONDS=15`, `NOTIFICATION_RETRY_MAX_SECONDS=3600`, `NOTIFICATION_LEASE_SECONDS=120`, `NOTIFICATION_WORKER_POLL_SECONDS=2`, `NOTIFICATION_RETENTION_DAYS=365`, `NOTIFICATION_DELIVERY_LOG_RETENTION_DAYS=180`, `NOTIFICATION_TOKEN_ENCRYPTION_KEY=`, `NOTIFICATION_TOKEN_HASH_SECRET=`                                                                                                                                                                                                                                                                      | Configure encryption/hash secrets before push. Worker is a separate process.                                                                                                                                                                                                                 |
+| Razorpay                 | `RAZORPAY_KEY_ID=`, `RAZORPAY_KEY_SECRET=`, `RAZORPAY_WEBHOOK_SECRET=`, `RAZORPAY_ENVIRONMENT=test`, `RAZORPAY_API_TIMEOUT_SECONDS=10`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Secrets are server-side. Use Test Mode first.                                                                                                                                                                                                                                                |
+| Payment policy controls  | `ERRNO_PAYOUT_METHOD_VERIFICATION_ENABLED=false`, `ERRNO_CASH_SETTLEMENT_POLICY=unconfigured`, `ERRNO_CANCELLATION_REFUND_POLICY=unconfigured`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Business/provider operations remain gated; do not invent policy.                                                                                                                                                                                                                             |
+| DigiLocker/KYC           | `DIGILOCKER_ENABLED=false`, `DIGILOCKER_PROVIDER_MODE=disabled`, `DIGILOCKER_CLIENT_ID=`, `DIGILOCKER_CLIENT_SECRET=`, `DIGILOCKER_REDIRECT_URI=`, `DIGILOCKER_ALLOWED_SCOPES=`, `DIGILOCKER_API_BASE_URL=`, `DIGILOCKER_AUTHORIZATION_URL=`, `DIGILOCKER_TOKEN_URL=`, `DIGILOCKER_SESSION_TTL_SECONDS=600`, `DIGILOCKER_HTTP_TIMEOUT_SECONDS=15`, `DIGILOCKER_STATE_SECRET=`, `KYC_MANUAL_REVIEW_ENABLED=false`, `KYC_REQUIRED_FOR_WITHDRAWAL=true`, `KYC_DOCUMENT_RETENTION_DAYS=0`, `KYC_CONSENT_VERSION=v1`, `KYC_ALLOWED_DOCUMENT_TYPES=`, `KYC_DOCUMENT_ENCRYPTION_KEY=`, `KYC_MANUAL_STORAGE_PATH=`, `KYC_ANTIVIRUS_MODE=quarantine`, `KYC_CLAMAV_UNIX_SOCKET=` | Official provider remains disabled/fail-closed. The old DigiLocker example also named `DIGILOCKER_DOCUMENT_RETENTION_DAYS`; current code reads `KYC_DOCUMENT_RETENTION_DAYS`. The old name is included as a blank compatibility note in the example but is not consumed by current code. |
+| Pre-booking dispatcher   | `PREBOOKING_DISPATCH_POLL_SECONDS=1`, `PREBOOKING_DISPATCH_LEASE_SECONDS=120`, `PREBOOKING_NO_WORKER_RETRY_SECONDS=300`, `PREBOOKING_WORKER_RADIUS_KM=5`, `PREBOOKING_LOCATION_MAX_AGE_SECONDS=300`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Separate supervised process, same backend database.                                                                                                                                                                                                                                          |
+| WhatsApp backend         | `WHATSAPP_GATEWAY_ENABLED=false`, `WHATSAPP_GATEWAY_INTERNAL_URL=http://whatsapp-gateway:8787`, `WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET=`, `WHATSAPP_GATEWAY_TIMEOUT_SECONDS=35`, `WHATSAPP_OTP_HASH_SECRET=`, `WHATSAPP_OTP_LENGTH=6`, `WHATSAPP_OTP_TTL_SECONDS=300`, `WHATSAPP_OTP_RESEND_SECONDS=30`, `WHATSAPP_OTP_MAX_ATTEMPTS=5`, `WHATSAPP_OTP_PHONE_LIMIT_PER_HOUR=5`, `WHATSAPP_OTP_IP_LIMIT_PER_HOUR=20`, `WHATSAPP_SESSION_TTL_SECONDS=2592000`, `WHATSAPP_SESSION_MAX_ACTIVE=5`                                                                                                                                                                                            | Use independent high-entropy secrets.                                                                                                                                                                                                                                                        |
+| WhatsApp gateway process | `WHATSAPP_GATEWAY_BIND=127.0.0.1`, `WHATSAPP_GATEWAY_PORT=8787`, `WHATSAPP_GATEWAY_SESSION_PATH=./session`, `WHATSAPP_GATEWAY_AUTOCONNECT=true`, `WHATSAPP_GATEWAY_QR_TTL_SECONDS=60`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | In Docker the bind and session path are set by Compose; protect the persistent volume.                                                                                                                                                                                                       |
 
 `DIGILOCKER_DOCUMENT_RETENTION_DAYS` remains listed to avoid silently dropping a name from the old template; it is not currently read. Set `KYC_DOCUMENT_RETENTION_DAYS` for runtime behavior.
 
@@ -333,11 +348,11 @@ Root `.env` supplies local settings. For a PostgreSQL development database, prov
 
 ### Android
 
-Provide the private Firebase `google-services.json`, populate root `.env`, and generate native configuration if absent. Open the `Android/` project in Android Studio or run the Gradle wrapper. Emulator API origin: `http://10.0.2.2:8000`; real devices need a reachable development backend URL.
+Provide the official Firebase `Android/app/google-services.json` if it is absent, fill root `.env`, and open the `Android/` project in Android Studio or run the Gradle wrapper. Android Gradle synchronizes its ignored client settings before project configuration. Android emulators commonly use `http://10.0.2.2:8000`; real devices need a reachable development backend URL.
 
 ### iOS
 
-Open `iOS/Errno.xcodeproj` in Xcode, resolve Swift packages, and use a compatible iOS 17+ simulator/device target. Provide the private Firebase `GoogleService-Info.plist` and native local config. For local simulator backend access use a host-reachable API URL.
+Open `iOS/Errno.xcodeproj` in Xcode, resolve Swift packages, and use a compatible iOS 17+ simulator/device target. Provide `iOS/Errno/GoogleService-Info.plist` through Firebase if it is absent; the shared scheme synchronizes ignored local settings before builds. For local simulator backend access use the iOS API URL from root `.env`.
 
 ### Admin
 
@@ -347,11 +362,11 @@ npm ci
 npm run dev
 ```
 
-Vite reads the root environment file. `VITE_API_BASE_URL` should point to the backend. The authenticated Admin UID must also have persisted backend permissions.
+The Admin `predev` and `prebuild` scripts synchronize the allowlisted Vite values from root `.env` before Vite runs. `VITE_API_BASE_URL` should point to the backend. The authenticated Admin UID must also have persisted backend permissions.
 
 ### WhatsApp gateway
 
-Local process (after exporting root `.env`):
+Local process (after `npm ci`):
 
 ```sh
 cd WhatsAppGateway
@@ -372,20 +387,20 @@ The network creation command will report an error if the named network already e
 
 Run commands from the indicated component directory. These commands do not apply database migrations.
 
-| Component | Command |
-|---|---|
-| Android debug build and unit tests | `cd Android && bash gradlew :app:assembleDebug :app:testDebugUnitTest` |
-| Android signing fingerprints | `cd Android && bash gradlew signingReport` |
-| iOS dependency resolution | `xcodebuild -resolvePackageDependencies -project iOS/Errno.xcodeproj -scheme Errno` |
-| iOS simulator build | `xcodebuild -project iOS/Errno.xcodeproj -scheme Errno -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO` |
-| iOS tests | The current `Errno` scheme contains only the app target; no XCTest target is listed. |
-| Backend suite | `cd Android/Backend && .venv/bin/python -m pytest -q` |
-| Backend maps/booking focus | `cd Android/Backend && .venv/bin/python -m pytest tests/test_maps.py tests/test_mobile_workflows.py -q` |
-| PostgreSQL/PostGIS integration | Set `ERRNO_TEST_DATABASE_URL` to a dedicated disposable test database only, then run the relevant integration tests. Never use production. |
-| Admin tests/build | `cd Admin && npm test && npm run build` |
-| WhatsApp gateway tests | `cd WhatsAppGateway && npm test` |
-| Python syntax check | `python3 -m compileall -q Android/Backend` |
-| Patch whitespace | `git diff --check` |
+| Component                          | Command                                                                                                                                      |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android debug build and unit tests | `cd Android && bash gradlew :app:assembleDebug :app:testDebugUnitTest`                                                                     |
+| Android signing fingerprints       | `cd Android && bash gradlew signingReport`                                                                                                 |
+| iOS dependency resolution          | `xcodebuild -resolvePackageDependencies -project iOS/Errno.xcodeproj -scheme Errno`                                                        |
+| iOS simulator build                | `xcodebuild -project iOS/Errno.xcodeproj -scheme Errno -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO`                  |
+| iOS tests                          | The current `Errno` scheme contains only the app target; no XCTest target is listed.                                                       |
+| Backend suite                      | `cd Android/Backend && .venv/bin/python -m pytest -q`                                                                                      |
+| Backend maps/booking focus         | `cd Android/Backend && .venv/bin/python -m pytest tests/test_maps.py tests/test_mobile_workflows.py -q`                                    |
+| PostgreSQL/PostGIS integration     | Set `ERRNO_TEST_DATABASE_URL` to a dedicated disposable test database only, then run the relevant integration tests. Never use production. |
+| Admin tests/build                  | `cd Admin && npm test && npm run build`                                                                                                    |
+| WhatsApp gateway tests             | `cd WhatsAppGateway && npm test`                                                                                                           |
+| Python syntax check                | `python3 -m compileall -q Android/Backend`                                                                                                 |
+| Patch whitespace                   | `git diff --check`                                                                                                                         |
 
 Backend tests import the database module. Use a dedicated disposable database and correct TLS settings for PostGIS integration tests. Do not infer that tests passed when a database-dependent test was skipped or blocked.
 
@@ -404,19 +419,19 @@ Backend tests import the database module. Use a dedicated disposable database an
 
 ## Troubleshooting
 
-| Symptom | Checks |
-|---|---|
-| PostgreSQL connection fails | Confirm `DATABASE_URL`, CA path, hostname/certificate chain, and `sslmode=verify-full`. The app deliberately does not fall back to SQLite for a failed PostgreSQL connection. |
-| PostGIS/nearby-worker features unavailable | Use PostgreSQL with PostGIS and the required canonical schema; SQLite cannot validate spatial queries. Confirm job coordinates and fresh foreground worker presence. |
-| Android map blank | Verify the Android SDK key, package and signing SHA-1 restrictions, Maps SDK activation, billing, network, and generated `Android/gradle.properties.local`. |
-| iOS map blank | Verify the iOS SDK key, `com.errno.app` restriction, Maps SDK activation/billing, and generated `iOS/Local.xcconfig`; the key is loaded at app launch. |
-| Address lookup unavailable | Photon requires network access. Manual address editing and coordinate pin selection remain available; do not add Google Places/Geocoding as a workaround without a product decision. |
-| Android Firebase sign-in fails | Check private `google-services.json`, Firebase package/OAuth registration, and debug/release SHA fingerprints. |
-| iOS Firebase/sign-in fails | Check private `GoogleService-Info.plist`, bundle ID, URL scheme, signing and Firebase registration. |
-| FCM is queued but not delivered | Verify separate notification worker, push flag, Firebase Admin credentials, token registration, APNs setup, device permission, and provider delivery status. Queue acceptance is not device receipt. |
-| Admin login succeeds but API returns 403 | Verify the Firebase UID and explicit active admin permission records; login alone grants no role. |
-| WhatsApp OTP is unavailable | Check paired session, private network, gateway secret (minimum 32 random characters), backend enable flag, rate limits, and gateway logs. A transport acknowledgement is not proof of delivery. |
-| DigiLocker returns `PROVIDER_SPEC_REQUIRED` | Expected until requester approval and the official provider protocol are implemented and validated. Do not use mock mode in production. |
+| Symptom                                       | Checks                                                                                                                                                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL connection fails                   | Confirm `DATABASE_URL`, CA path, hostname/certificate chain, and `sslmode=verify-full`. The app deliberately does not fall back to SQLite for a failed PostgreSQL connection.                    |
+| PostGIS/nearby-worker features unavailable    | Use PostgreSQL with PostGIS and the required canonical schema; SQLite cannot validate spatial queries. Confirm job coordinates and fresh foreground worker presence.                                 |
+| Android map blank                             | Verify the Android SDK key, package and signing SHA-1 restrictions, Maps SDK activation, billing, network, and generated `Android/gradle.properties.local`.                                        |
+| iOS map blank                                 | Verify the iOS SDK key, `com.errno.app` restriction, Maps SDK activation/billing, and generated `iOS/Local.xcconfig`; the key is loaded at app launch.                                           |
+| Address lookup unavailable                    | Photon requires network access. Manual address editing and coordinate pin selection remain available; do not add Google Places/Geocoding as a workaround without a product decision.                 |
+| Android Firebase sign-in fails                | Check private `google-services.json`, Firebase package/OAuth registration, and debug/release SHA fingerprints.                                                                                     |
+| iOS Firebase/sign-in fails                    | Check private `GoogleService-Info.plist`, bundle ID, URL scheme, signing and Firebase registration.                                                                                                |
+| FCM is queued but not delivered               | Verify separate notification worker, push flag, Firebase Admin credentials, token registration, APNs setup, device permission, and provider delivery status. Queue acceptance is not device receipt. |
+| Admin login succeeds but API returns 403      | Verify the Firebase UID and explicit active admin permission records; login alone grants no role.                                                                                                    |
+| WhatsApp OTP is unavailable                   | Check paired session, private network, gateway secret (minimum 32 random characters), backend enable flag, rate limits, and gateway logs. A transport acknowledgement is not proof of delivery.      |
+| DigiLocker returns `PROVIDER_SPEC_REQUIRED` | Expected until requester approval and the official provider protocol are implemented and validated. Do not use mock mode in production.                                                              |
 
 ## Security and privacy
 
