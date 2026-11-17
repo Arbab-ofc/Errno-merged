@@ -5,9 +5,13 @@ from sqlalchemy import pool
 
 from alembic import context
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Root .env is stable regardless of the Alembic command's working directory;
+# explicit process variables retain priority for deployments and CI.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(REPOSITORY_ROOT / ".env", override=False)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("com.google.gms.google-services")
 }
-
 android {
     namespace = "com.erno.app"
     compileSdk = 36
@@ -20,12 +19,12 @@ android {
         val localApiProperties = Properties().apply {
             rootProject.file("gradle.properties.local").takeIf { it.isFile }?.inputStream()?.use { load(it) }
         }
-        val apiBaseUrl = providers.gradleProperty("ERRNO_API_BASE_URL")
-            .getOrElse(localApiProperties.getProperty("ERRNO_API_BASE_URL") ?: "")
+        val apiBaseUrl = localApiProperties.getProperty("ERRNO_API_BASE_URL")
+            ?: providers.gradleProperty("ERRNO_API_BASE_URL").orElse("").get()
         val mapsApiKey = localApiProperties.getProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY") ?: providers.gradleProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY").orElse("").get()
         val photonEndpoint = localApiProperties.getProperty("ERRNO_PHOTON_ENDPOINT") ?: providers.gradleProperty("ERRNO_PHOTON_ENDPOINT").orElse("https://photon.komoot.io").get()
-        val authEmulatorHost = providers.gradleProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST")
-            .getOrElse(localApiProperties.getProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST") ?: "")
+        val authEmulatorHost = localApiProperties.getProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST")
+            ?: providers.gradleProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST").orElse("").get()
         buildConfigField("String", "ERRNO_API_BASE_URL", "\"$apiBaseUrl\"")
         manifestPlaceholders["googleMapsApiKey"] = mapsApiKey
         buildConfigField("String", "ERRNO_PHOTON_ENDPOINT", "\"$photonEndpoint\"")

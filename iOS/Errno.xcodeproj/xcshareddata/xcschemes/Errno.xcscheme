@@ -2,6 +2,23 @@
 <Scheme
    LastUpgradeVersion = "2660"
    version = "1.7">
+   <PreActions>
+      <ExecutionAction ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+         <ActionContent
+            title = "Synchronize ERRNO Environment"
+            scriptText = "set -e&#10;cd &quot;${SRCROOT}/..&quot;&#10;python3 scripts/sync_native_configs.py --sync --target ios">
+            <EnvironmentBuildable>
+               <BuildableReference
+                  BuildableIdentifier = "primary"
+                  BlueprintIdentifier = "821DCBB6305686FF0075DD41"
+                  BuildableName = "Errno.app"
+                  BlueprintName = "Errno"
+                  ReferencedContainer = "container:Errno.xcodeproj">
+               </BuildableReference>
+            </EnvironmentBuildable>
+         </ActionContent>
+      </ExecutionAction>
+   </PreActions>
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"

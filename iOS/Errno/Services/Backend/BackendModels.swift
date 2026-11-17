@@ -150,12 +150,26 @@ nonisolated struct BookingPaymentStatus: Decodable, Sendable {
     let paymentId: String?
     let providerPaymentId: String?
     let status: String
+    let provider: String?
+    let submission: ManualSubmissionStatus?
     let amountPaise: Int?
     let cashCollectionId: String?
     let cashShopkeeperConfirmed: Bool?
     let cashWorkerConfirmed: Bool?
     let cashReconciliationStatus: String?
 }
+nonisolated struct ManualSubmissionStatus: Decodable, Sendable {
+    let id: String
+    let status: String
+    let submittedAt: String?
+    let rejectionReason: String?
+}
+nonisolated struct ManualPaymentConfig: Decodable, Sendable {
+    struct Manual: Decodable, Sendable { let configured: Bool; let qrImageUrl: String?; let merchantName: String?; let upiId: String? }
+    let activeProvider: String
+    let manual: Manual?
+}
+nonisolated struct ManualPaymentSubmitResponse: Decodable, Sendable { let submissionId: String; let status: String }
 nonisolated struct CashCollectionRow: Decodable, Sendable, Identifiable {
     let id: String
     let bookingId: String
@@ -429,6 +443,13 @@ nonisolated enum BackendEndpoints {
     static func bookingPaymentStatus(bookingID: String, token: String) -> APIEndpoint {
         APIEndpoint(method: "GET", path: ["api", "v1", "bookings", bookingID, "payment-status"], bearerToken: token)
     }
+    static func paymentConfig(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "payments", "config"], bearerToken: token) }
+    static func submitManualPayment(bookingID: String, data: Data, mime: String, token: String) -> APIEndpoint {
+        let boundary = "errno-\(UUID().uuidString)"
+        var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"screenshot\"; filename=\"payment-proof\"\r\nContent-Type: \(mime)\r\n\r\n".utf8)
+        body.append(data); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        return APIEndpoint(method: "POST", path: ["api", "v1", "payments", "bookings", bookingID, "manual", "submit"], body: body, bearerToken: token, contentType: "multipart/form-data; boundary=\(boundary)")
+    }
     static func workerWallet(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "wallet"], bearerToken: token) }
     static func workerPayoutMethods(token: String) -> APIEndpoint { APIEndpoint(method: "GET", path: ["api", "v1", "worker", "payout-methods"], bearerToken: token) }
     static func addWorkerPayoutMethod(_ body: PayoutMethodCreateRequest, token: String) throws -> APIEndpoint {
@@ -543,6 +564,10 @@ nonisolated struct BackendRepository: JobCatalogRepository {
     func createPaymentOrder(bookingID: String) async throws -> PaymentOrderResponse { try await client.send(BackendEndpoints.createPaymentOrder(bookingID: bookingID, token: try await token())) }
     func verifyPayment(_ body: PaymentVerificationRequest) async throws -> PaymentVerificationResponse { try await client.send(BackendEndpoints.verifyPayment(body, token: try await token())) }
     func bookingPaymentStatus(bookingID: String) async throws -> BookingPaymentStatus { try await client.send(BackendEndpoints.bookingPaymentStatus(bookingID: bookingID, token: try await token())) }
+    func paymentConfig() async throws -> ManualPaymentConfig { try await client.send(BackendEndpoints.paymentConfig(token: try await token())) }
+    func submitManualPayment(bookingID: String, data: Data, mime: String) async throws -> ManualPaymentSubmitResponse {
+        try await client.send(BackendEndpoints.submitManualPayment(bookingID: bookingID, data: data, mime: mime, token: try await token()))
+    }
     func workerWallet() async throws -> WorkerWalletResponse { try await client.send(BackendEndpoints.workerWallet(token: try await token())) }
     func workerPayoutMethods() async throws -> [PayoutMethodResponse] { try await client.send(BackendEndpoints.workerPayoutMethods(token: try await token())) }
     func addWorkerPayoutMethod(providerReference: String) async throws -> (id: String, message: String) {
@@ -602,6 +627,15 @@ nonisolated struct BackendRepository: JobCatalogRepository {
         components.scheme=components.scheme=="https" ? "wss":"ws"; components.path += "/ws/jobs/\(jobID)/tracking"
         guard let url=components.url else { throw APIError.configuration }
         var request=URLRequest(url:url); request.setValue("Bearer \(token)",forHTTPHeaderField:"Authorization"); return request
+    }
+    func paymentWebSocketRequest() async throws -> URLRequest {
+        let token = try await token()
+        guard var components = URLComponents(url: client.configuration.baseURL, resolvingAgainstBaseURL: false) else { throw APIError.configuration }
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.path += "/api/v1/ws/payments"
+        components.queryItems = [URLQueryItem(name: "scope", value: "user")]
+        guard let url = components.url else { throw APIError.configuration }
+        var request = URLRequest(url: url); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization"); return request
     }
     func profile() async throws -> FirebaseUserProfile { try await client.send(BackendEndpoints.currentUser(token: try await token())) }
     func updateProfile(name: String) async throws -> FirebaseUserProfile {

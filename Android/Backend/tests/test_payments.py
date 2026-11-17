@@ -3,6 +3,7 @@ import hmac
 import json
 import secrets
 import sys
+import io
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -10,16 +11,19 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import firebase_auth
 import routers.payments as payments
 from database import Base, get_db
 from models import (AdminPermission, Job, PaymentTransaction, PricingQuote, Shop, User,
-                    CashCollection, PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal)
+                    CashCollection, CompanyPaymentConfiguration, ManualPaymentSubmission, PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal)
 from models import KYCVerificationProfile
 
 PAYMENT_TEST_SECRET = secrets.token_urlsafe(32)
@@ -36,8 +40,10 @@ def payment_client(monkeypatch):
         owner = User(id="owner", firebase_uid="owner-uid", full_name="Owner", role="shop_owner")
         worker = User(id="worker", firebase_uid="worker-uid", full_name="Worker", role="worker")
         db.add_all([owner, worker, AdminPermission(firebase_uid="finance-admin", active=True,
-            permissions=["payments.read", "payments.refund", "wallet.read", "withdrawals.read", "withdrawals.manage", "reconciliation.read", "reconciliation.manage"],
+            permissions=["payments.read", "payments.manage", "payments.refund", "wallet.read", "withdrawals.read", "withdrawals.manage", "reconciliation.read", "reconciliation.manage"],
             granted_by_uid="test", reason="test"), Shop(id="shop", owner_id="owner", shop_name="Shop")])
+        # Razorpay regression cases explicitly opt into their provider; production defaults to Manual QR.
+        db.add(CompanyPaymentConfiguration(id="company", active_provider="RAZORPAY"))
         job = Job(id="job-1", shop_id="shop", title="Shift", pay_amount=160.0, duration_type="1 hour",
             status="completed", assigned_worker_id="worker", completed_at=now, created_at=now)
         db.add(job)
@@ -57,7 +63,9 @@ def payment_client(monkeypatch):
             db.close()
 
     claims = {"owner-token": {"uid": "owner-uid"}, "worker-token": {"uid": "worker-uid"}, "admin-token": {"uid": "finance-admin"}}
-    monkeypatch.setattr(firebase_auth, "verify_firebase_token", lambda token: claims[token] if token in claims else (_ for _ in ()).throw(HTTPException(401)))
+    claim_lookup = lambda token: claims[token] if token in claims else (_ for _ in ()).throw(HTTPException(401))
+    monkeypatch.setattr(firebase_auth, "verify_firebase_token", claim_lookup)
+    monkeypatch.setattr(payments, "verify_firebase_token", claim_lookup)
     monkeypatch.setenv("RAZORPAY_KEY_ID", "rzp_test_public")
     monkeypatch.setenv("RAZORPAY_KEY_SECRET", PAYMENT_TEST_SECRET)
     monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", WEBHOOK_TEST_SECRET)
@@ -65,7 +73,9 @@ def payment_client(monkeypatch):
     app = FastAPI()
     app.include_router(payments.router)
     app.include_router(payments.admin_router)
+    app.include_router(payments.ws_router)
     app.dependency_overrides[get_db] = get_test_db
+    monkeypatch.setattr(payments, "SessionLocal", factory)
     with TestClient(app) as client:
         yield client, factory
     Base.metadata.drop_all(bind=engine)
@@ -79,6 +89,207 @@ def test_payment_requires_shopkeeper_verified_completion(payment_client):
         db.commit()
     response = client.post("/api/v1/bookings/job-1/payment-order", headers={"Authorization": "Bearer owner-token"})
     assert response.status_code == 409
+
+
+def test_manual_screenshot_rejection_resubmission_and_approval(payment_client, monkeypatch):
+    client, factory = payment_client
+    with factory() as db:
+        config = db.query(CompanyPaymentConfiguration).filter_by(id="company").one()
+        config.active_provider = "MANUAL_QR"; config.status = "VERIFIED"; config.qr_public_id = "errno/payment-qr/live"
+        config.qr_asset_url = "https://res.cloudinary.com/demo/image/upload/qr.png"
+        db.commit()
+    counter = iter(("proof-one", "proof-two"))
+    monkeypatch.setattr(payments, "_cloudinary_upload", lambda data, folder, private: {"public_id": next(counter)})
+    monkeypatch.setattr(payments, "_cloudinary_destroy", lambda *args: None)
+    monkeypatch.setattr(payments, "_private_asset_url", lambda public_id: "https://signed.example/" + public_id)
+    image = io.BytesIO(); Image.new("RGB", (4, 4), "white").save(image, format="PNG")
+    headers = {"Authorization": "Bearer owner-token"}
+    first = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=headers,
+        files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+    assert first.status_code == 200
+    assert first.json()["status"] == "PENDING_REVIEW"
+    repeated = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=headers,
+        files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+    assert repeated.status_code == 409
+    admin = {"Authorization": "Bearer admin-token"}
+    rejected = client.post(f"/api/v1/admin/payments/manual/{first.json()['submissionId']}/reject", headers=admin,
+        json={"reason": "Screenshot does not show the payment confirmation."})
+    assert rejected.status_code == 200 and rejected.json()["status"] == "REJECTED"
+    second = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=headers,
+        files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+    assert second.status_code == 200
+    approved = client.post(f"/api/v1/admin/payments/manual/{second.json()['submissionId']}/approve", headers=admin)
+    assert approved.status_code == 200 and approved.json()["paymentStatus"] == "PAID"
+    status = client.get("/api/v1/bookings/job-1/payment-status", headers=headers).json()
+    assert status["status"] == "PAID" and status["provider"] == "MANUAL_QR"
+    with factory() as db:
+        rows = db.query(ManualPaymentSubmission).filter_by(booking_id="job-1").order_by(ManualPaymentSubmission.attempt_number).all()
+        assert [row.status for row in rows] == ["REJECTED", "APPROVED"]
+        assert db.query(WalletLedgerEntry).filter_by(idempotency_key=f"earning:{status['paymentId']}").count() == 1
+
+
+def test_payment_socket_auth_and_manual_submission_event(payment_client, monkeypatch):
+    client, factory = payment_client
+    with factory() as db:
+        config = db.query(CompanyPaymentConfiguration).filter_by(id="company").one()
+        config.active_provider = "MANUAL_QR"; config.status = "VERIFIED"; config.qr_public_id = "qr"
+        config.qr_asset_url = "https://res.cloudinary.com/demo/image/upload/qr.png"
+        db.commit()
+    monkeypatch.setattr(payments, "_cloudinary_upload", lambda *args: {"public_id": "proof-live-test"})
+    monkeypatch.setattr(payments, "_cloudinary_destroy", lambda *args: None)
+    monkeypatch.setattr(payments, "_private_asset_url", lambda public_id: "https://signed.example/proof")
+    image = io.BytesIO(); Image.new("RGB", (2, 2), "white").save(image, format="PNG")
+    admin_headers = {"Authorization": "Bearer admin-token"}
+    owner_headers = {"Authorization": "Bearer owner-token"}
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/api/v1/ws/payments?scope=admin", headers={"Authorization": "Bearer owner-token"}):
+            pass
+    with client.websocket_connect("/api/v1/ws/payments?scope=admin", subprotocols=["errno.payment.v1", "bearer.admin-token"]) as admin_socket, \
+         client.websocket_connect("/api/v1/ws/payments?scope=user", headers=owner_headers) as owner_socket:
+        assert admin_socket.receive_json()["eventType"] == "payment_socket.ready"
+        assert owner_socket.receive_json()["eventType"] == "payment_socket.ready"
+        response = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=owner_headers,
+            files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+        assert response.status_code == 200
+        admin_event = admin_socket.receive_json(); owner_event = owner_socket.receive_json()
+        assert admin_event["eventType"] == owner_event["eventType"] == "manual_payment.submitted"
+        assert admin_event["version"] == 1 and admin_event["status"] == "PENDING_REVIEW"
+        assert admin_event["paymentId"] == response.json()["paymentId"]
+        assert "screenshotUrl" not in admin_event and "public_id" not in str(admin_event)
+        submission_id = response.json()["submissionId"]
+        rejected = client.post(f"/api/v1/admin/payments/manual/{submission_id}/reject", headers=admin_headers,
+            json={"reason": "Screenshot is not readable."})
+        assert rejected.status_code == 200
+        rejected_state = client.get("/api/v1/bookings/job-1/payment-status", headers=owner_headers).json()
+        assert rejected_state["status"] == "PAYMENT_PENDING" and rejected_state["submission"]["status"] == "REJECTED"
+        assert admin_socket.receive_json()["eventType"] == owner_socket.receive_json()["eventType"] == "manual_payment.rejected"
+        switched = client.patch("/api/v1/admin/payments/config", headers=admin_headers,
+            json={"activeProvider": "RAZORPAY", "merchantName": "ERRNO", "upiId": "payee@example"})
+        assert switched.status_code == 200
+        assert admin_socket.receive_json()["eventType"] == owner_socket.receive_json()["eventType"] == "payment_config.updated"
+        second = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=owner_headers,
+            files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+        assert second.status_code == 200
+        resubmitted = admin_socket.receive_json(); owner_resubmitted = owner_socket.receive_json()
+        assert resubmitted["eventType"] == owner_resubmitted["eventType"] == "manual_payment.resubmitted"
+        approved = client.post(f"/api/v1/admin/payments/manual/{second.json()['submissionId']}/approve", headers=admin_headers)
+        assert approved.status_code == 200
+        assert admin_socket.receive_json()["status"] == owner_socket.receive_json()["status"] == "PAID"
+        repeated_approval = client.post(f"/api/v1/admin/payments/manual/{second.json()['submissionId']}/approve", headers=admin_headers)
+        assert repeated_approval.status_code == 409
+    # Reconnect is followed by authoritative REST recovery rather than event replay.
+    with client.websocket_connect("/api/v1/ws/payments?scope=user", headers=owner_headers) as reconnected:
+        assert reconnected.receive_json()["eventType"] == "payment_socket.ready"
+        assert client.get("/api/v1/bookings/job-1/payment-status", headers=owner_headers).json()["status"] == "PAID"
+
+
+def test_payment_socket_hub_is_user_scoped():
+    class Socket:
+        def __init__(self): self.events = []
+        async def send_json(self, event): self.events.append(event)
+    owner, unrelated = Socket(), Socket()
+    import asyncio
+    asyncio.run(payments.payment_event_hub.connect("user:owner", owner))
+    asyncio.run(payments.payment_event_hub.connect("user:other", unrelated))
+    try:
+        asyncio.run(payments.payment_event_hub.publish({"eventType": "manual_payment.approved"}, {"user:owner"}))
+        assert len(owner.events) == 1
+        assert unrelated.events == []
+    finally:
+        asyncio.run(payments.payment_event_hub.disconnect("user:owner", owner))
+        asyncio.run(payments.payment_event_hub.disconnect("user:other", unrelated))
+
+
+def test_manual_payment_notification_event_ids_fit_postgres_and_are_idempotent():
+    first = payments._manual_notification_event_id("approved", "submission-123", "recipient-456")
+    assert len(first) == 64
+    assert first == payments._manual_notification_event_id("approved", "submission-123", "recipient-456")
+    assert first != payments._manual_notification_event_id("rejected", "submission-123", "recipient-456")
+
+
+def test_manual_image_validator_accepts_jpeg_png_and_rejects_bad_size_or_mime():
+    class Upload:
+        def __init__(self, content_type): self.content_type = content_type
+    for fmt, mime in (("PNG", "image/png"), ("JPEG", "image/jpeg")):
+        image = io.BytesIO(); Image.new("RGB", (3, 3), "green").save(image, format=fmt)
+        assert payments._validated_image(Upload(mime), image.getvalue()) == mime
+    with pytest.raises(HTTPException) as invalid:
+        payments._validated_image(Upload("image/png"), b"not an image")
+    assert invalid.value.status_code == 415
+    with pytest.raises(HTTPException) as mismatch:
+        payments._validated_image(Upload("image/png"), image.getvalue())
+    assert mismatch.value.status_code == 415
+    with pytest.raises(HTTPException) as oversized:
+        payments._validated_image(Upload("image/png"), b"x" * (5 * 1024 * 1024 + 1))
+    assert oversized.value.status_code == 413
+
+
+def test_admin_preview_requests_authenticated_short_lived_cloudinary_download(monkeypatch):
+    calls = []
+    class Utils:
+        @staticmethod
+        def private_download_url(public_id, file_format, **options):
+            calls.append((public_id, file_format, options)); return "https://signed.example/temporary"
+    class Cloudinary: utils = Utils()
+    monkeypatch.setattr(payments, "_cloudinary_config", lambda: Cloudinary())
+    assert payments._private_asset_url("proof-private", "image/png") == "https://signed.example/temporary"
+    assert calls[0][0:2] == ("proof-private", "png")
+    assert calls[0][2]["type"] == "authenticated"
+    assert calls[0][2]["expires_at"] > int(datetime.now(timezone.utc).timestamp())
+
+
+def test_cloudinary_upload_failure_and_database_failure_cleanup(payment_client, monkeypatch):
+    client, factory = payment_client
+    with factory() as db:
+        config = db.query(CompanyPaymentConfiguration).filter_by(id="company").one()
+        config.active_provider = "MANUAL_QR"; config.status = "VERIFIED"; config.qr_public_id = "qr"
+        config.qr_asset_url = "https://res.cloudinary.com/demo/image/upload/qr.png"
+        db.commit()
+    image = io.BytesIO(); Image.new("RGB", (2, 2), "white").save(image, format="PNG")
+    headers = {"Authorization": "Bearer owner-token"}
+    monkeypatch.setattr(payments, "_cloudinary_upload", lambda *args: (_ for _ in ()).throw(HTTPException(502, "storage unavailable")))
+    failed_upload = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=headers,
+        files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+    assert failed_upload.status_code == 502
+    with factory() as db: assert db.query(PaymentTransaction).filter_by(booking_id="job-1").count() == 0
+
+    cleanup = []
+    monkeypatch.setattr(payments, "_cloudinary_upload", lambda *args: {"public_id": "orphan-proof"})
+    monkeypatch.setattr(payments, "_cloudinary_destroy", lambda public_id, private: cleanup.append((public_id, private)))
+    original_commit = Session.commit
+    monkeypatch.setattr(Session, "commit", lambda self: (_ for _ in ()).throw(RuntimeError("simulated database outage")))
+    failed_db = client.post("/api/v1/payments/bookings/job-1/manual/submit", headers=headers,
+        files={"screenshot": ("proof.png", image.getvalue(), "image/png")})
+    assert failed_db.status_code == 409
+    assert cleanup == [("orphan-proof", True)]
+    monkeypatch.setattr(Session, "commit", original_commit)
+
+
+def test_admin_qr_upload_replacement_is_authorized_and_mobile_config_updates(payment_client, monkeypatch):
+    client, _ = payment_client
+    uploaded = iter((
+        {"public_id": "qr-first", "secure_url": "https://res.cloudinary.com/demo/image/upload/v1/qr-first.png"},
+        {"public_id": "qr-second", "secure_url": "https://res.cloudinary.com/demo/image/upload/v2/qr-second.png"},
+    ))
+    destroyed = []
+    monkeypatch.setattr(payments, "_cloudinary_upload", lambda data, folder, private: next(uploaded))
+    monkeypatch.setattr(payments, "_cloudinary_destroy", lambda public_id, private: destroyed.append((public_id, private)))
+    image = io.BytesIO(); Image.new("RGB", (3, 3), "blue").save(image, format="PNG")
+    denied = client.post("/api/v1/admin/payments/qr", headers={"Authorization": "Bearer owner-token"},
+        files={"image": ("qr.png", image.getvalue(), "image/png")})
+    assert denied.status_code == 403
+    admin = {"Authorization": "Bearer admin-token"}
+    for expected in ("qr-first", "qr-second"):
+        result = client.post("/api/v1/admin/payments/qr", headers=admin,
+            files={"image": ("qr.png", image.getvalue(), "image/png")})
+        assert result.status_code == 200 and expected in result.json()["qrImageUrl"]
+    assert destroyed == [("qr-first", False)]
+    changed = client.patch("/api/v1/admin/payments/config", headers=admin,
+        json={"activeProvider": "MANUAL_QR", "merchantName": "ERRNO", "upiId": "payee@example"})
+    assert changed.status_code == 200
+    current = client.get("/api/v1/payments/config", headers={"Authorization": "Bearer owner-token"}).json()
+    assert current["activeProvider"] == "MANUAL_QR"
+    assert current["manual"]["qrImageUrl"].endswith("qr-second.png")
 
 
 def test_order_uses_immutable_quote_and_webhook_credits_once(payment_client, monkeypatch):

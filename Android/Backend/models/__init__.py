@@ -311,6 +311,7 @@ class PaymentTransaction(Base):
     worker_earning_paise = Column(Integer, nullable=False)
     currency = Column(String(3), nullable=False, default="INR", server_default=text("'INR'"))
     status = Column(String(32), nullable=False, default="PAYMENT_PENDING", server_default=text("'PAYMENT_PENDING'"))
+    provider = Column(String(24), nullable=False, default="RAZORPAY", server_default=text("'RAZORPAY'"))
     idempotency_key = Column(String(160), nullable=False, unique=True)
     provider_payload = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
     paid_at = Column(DateTime(timezone=True), nullable=True)
@@ -561,10 +562,34 @@ class CompanyPaymentConfiguration(Base):
     __tablename__ = "company_payment_configuration"
     id = Column(String(40), primary_key=True, default="company")
     qr_asset_url = Column(String(2048), nullable=True)
+    active_provider = Column(String(24), nullable=False, default="MANUAL_QR", server_default=text("'MANUAL_QR'"))
+    qr_public_id = Column(String(500), nullable=True)
+    merchant_name = Column(String(160), nullable=True)
+    upi_id = Column(String(160), nullable=True)
+    updated_by = Column(String(160), nullable=True)
     status = Column(String(24), nullable=False, default="UNCONFIGURED", server_default=text("'UNCONFIGURED'"))
     verified_by = Column(String, nullable=True)
     verified_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ManualPaymentSubmission(Base):
+    __tablename__ = "manual_payment_submissions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    booking_id = Column(String, ForeignKey("jobs.id"), nullable=False, index=True)
+    payment_id = Column(String, ForeignKey("payment_transactions.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    asset_public_id = Column(String(500), nullable=False)
+    mime_type = Column(String(80), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    status = Column(String(24), nullable=False, default="PENDING_REVIEW", server_default=text("'PENDING_REVIEW'"), index=True)
+    attempt_number = Column(Integer, nullable=False)
+    submitted_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(String(160), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (UniqueConstraint("booking_id", "attempt_number", name="uq_manual_payment_attempt"),)
 
 
 class KYCVerificationProfile(Base):

@@ -1,14 +1,13 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from db_base import Base
+from config_env import load_backend_environment
 
-# Preserve component-local private settings; the shared root .env fills missing values.
-load_dotenv(Path(__file__).with_name(".env"))
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# Process environment has priority; root .env supplies local development values.
+load_backend_environment()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
