@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.data.model.JobPost
 import com.erno.app.ui.components.RatingDialog
+import com.erno.app.ui.components.OptionalWorkerVerificationBadge
 import com.erno.app.ui.components.ShopkeeperBottomNavigation
 import com.erno.app.ui.components.ShopkeeperTab
 import com.erno.app.ui.theme.ErnoGreen
@@ -311,29 +311,7 @@ fun ShopkeeperMyJobsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFE8F5E9)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Verified,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2E7D32),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Aadhaar Verified",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32)
-                                )
-                            }
-                        }
+                        OptionalWorkerVerificationBadge()
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -558,7 +536,7 @@ fun ShopkeeperJobManageCard(
                                     color = Color.Black
                                 )
                                 Text(
-                                    text = "Rating: ${job.assignedWorkerRating} / 5.0 • Aadhaar Verified",
+                                    text = "Rating: ${job.assignedWorkerRating} / 5.0",
                                     fontSize = 11.sp,
                                     color = ErnoGreen,
                                     fontWeight = FontWeight.Medium
