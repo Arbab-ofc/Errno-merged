@@ -9,6 +9,7 @@ class OptionalWorkerVerificationBadgeTest {
     fun missingOrBlankKycStatusDoesNotProduceAVerifiedBadge() {
         assertNull(workerVerificationBadgeLabel(null))
         assertNull(workerVerificationBadgeLabel("  "))
+        assertNull(workerVerificationBadgeLabel("NOT_STARTED"))
     }
 
     @Test

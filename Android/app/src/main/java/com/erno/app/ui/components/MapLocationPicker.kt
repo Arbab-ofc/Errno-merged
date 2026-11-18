@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.erno.app.BuildConfig
+import com.erno.app.data.model.MapCoordinate
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -39,7 +40,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.Locale
 
-private data class PhotonResult(val label: String, val latitude: Double, val longitude: Double)
+internal data class PhotonResult(val label: String, val latitude: Double, val longitude: Double)
 private val photonClient = OkHttpClient()
 
 @Composable
@@ -168,21 +169,49 @@ internal fun isCoordinate(lat: Double?, lng: Double?) = lat != null && lng != nu
 private fun hasMapLocationPermission(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 private fun lastLocation(manager: LocationManager): Location? = try { listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).mapNotNull { manager.getLastKnownLocation(it) }.maxByOrNull { it.time }?.takeIf { System.currentTimeMillis() - it.time < 120_000 } } catch (_: SecurityException) { null }
 
+internal suspend fun geocodePhotonAddress(query: String): MapCoordinate? =
+    searchPhoton(query).firstOrNull()?.let { MapCoordinate(it.latitude, it.longitude) }
+
 private suspend fun searchPhoton(query: String): List<PhotonResult> = withContext(Dispatchers.IO) {
     val encoded = URLEncoder.encode(query, Charsets.UTF_8.name())
     val request = Request.Builder().url("${BuildConfig.ERRNO_PHOTON_ENDPOINT.trimEnd('/')}/api/?q=$encoded&limit=6&lang=en").build()
     photonClient.newCall(request).execute().use { response ->
         check(response.isSuccessful) { "Photon returned ${response.code}" }
-        val features = JSONObject(response.body?.string().orEmpty()).optJSONArray("features") ?: return@withContext emptyList()
-        (0 until features.length()).mapNotNull { index ->
-            val feature = features.getJSONObject(index); val coords = feature.optJSONObject("geometry")?.optJSONArray("coordinates") ?: return@mapNotNull null
-            if (coords.length() < 2) return@mapNotNull null
-            val props = feature.optJSONObject("properties") ?: JSONObject()
-            val label = listOf("name", "street", "housenumber", "district", "city", "state", "country").mapNotNull { props.optString(it).takeIf(String::isNotBlank) }.distinct().joinToString(", ")
-            if (label.isBlank()) return@mapNotNull null
-            PhotonResult(label, coords.getDouble(1), coords.getDouble(0))
-        }
+        parsePhotonResults(response.body?.string().orEmpty())
     }
+}
+
+internal fun parsePhotonResults(body: String): List<PhotonResult> {
+    val features = try {
+        JSONObject(body).optJSONArray("features")
+    } catch (_: Exception) {
+        null
+    } ?: return emptyList()
+    val results = mutableListOf<PhotonResult>()
+    for (index in 0 until features.length()) {
+        val parsed = try {
+            parsePhotonFeature(features.getJSONObject(index))
+        } catch (_: Exception) {
+            null
+        }
+        if (parsed != null) results += parsed
+    }
+    return results
+}
+
+private fun parsePhotonFeature(feature: JSONObject): PhotonResult? {
+    val coords = feature.optJSONObject("geometry")?.optJSONArray("coordinates") ?: return null
+    if (coords.length() < 2) return null
+    val longitude = coords.getDouble(0)
+    val latitude = coords.getDouble(1)
+    if (!isCoordinate(latitude, longitude)) return null
+    val props = feature.optJSONObject("properties") ?: JSONObject()
+    val label = listOf("name", "street", "housenumber", "district", "city", "state", "country")
+        .mapNotNull { props.optString(it).takeIf(String::isNotBlank) }
+        .distinct()
+        .joinToString(", ")
+    if (label.isBlank()) return null
+    return PhotonResult(label, latitude, longitude)
 }
 
 private suspend fun reversePhoton(latitude: Double, longitude: Double): String = withContext(Dispatchers.IO) {

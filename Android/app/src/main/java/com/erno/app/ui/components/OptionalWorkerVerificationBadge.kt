@@ -46,4 +46,6 @@ internal fun OptionalWorkerVerificationBadge(verifiedDocumentLabel: String? = nu
 }
 
 internal fun workerVerificationBadgeLabel(verifiedDocumentLabel: String?): String? =
-    verifiedDocumentLabel?.takeIf { it.isNotBlank() }
+    verifiedDocumentLabel?.trim()?.takeIf {
+        it.isNotBlank() && it.contains("verified", ignoreCase = true)
+    }
