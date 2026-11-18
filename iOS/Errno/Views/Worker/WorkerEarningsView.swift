@@ -28,8 +28,8 @@ struct WorkerEarningsView: View {
                             metric("Withdrawn", wallet.totalWithdrawnPaise)
                             Text("Eligible paid orders: \(wallet.eligibleCompletedOrders) / 3").font(.system(size: 13, weight: .semibold))
                             ForEach(wallet.eligibilityReasons, id: \.self) { Text("• \($0)").font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary) }
-                            let method = payoutMethods.first { $0.status == "VERIFIED" && $0.kycVerified }
-                            PrimaryButton(title: method == nil ? "Verified payout method required" : "Request withdrawal",
+                            let method = payoutMethods.first { $0.status == "VERIFIED" && (!(wallet.kycRequired ?? false) || $0.kycVerified) }
+                            PrimaryButton(title: method == nil ? "Admin-reviewed payout method required" : "Request withdrawal",
                                 style: .dark, isDisabled: !wallet.withdrawalEligible || method == nil || loading) {
                                 guard let method else { return }
                                 Task {
@@ -40,7 +40,7 @@ struct WorkerEarningsView: View {
                                     } catch { self.error = error.localizedDescription }
                                 }
                             }
-                            if method == nil { Text("KYC and payout method are subject to audited Admin verification. Bank details are not stored in this app.").font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary) }
+                            if method == nil { Text("Payout destination ownership is reviewed by Admin. Identity verification is not required. Bank details are not stored in this app.").font(.system(size: 12)).foregroundStyle(Color.errnoTextSecondary) }
                         }.marketplaceCard(padding: 18, radius: 18)
 
                         VStack(alignment: .leading, spacing: 10) {

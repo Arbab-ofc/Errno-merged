@@ -212,6 +212,7 @@ nonisolated struct WorkerWalletResponse: Decodable, Sendable {
     let cashCollectedPaise: Int
     let unresolvedSettlementAdjustmentsPaise: Int
     let eligibleCompletedOrders: Int
+    let kycRequired: Bool?
     let withdrawalEligible: Bool
     let eligibilityReasons: [String]
     let recentTransactions: [WalletLedgerTransaction]

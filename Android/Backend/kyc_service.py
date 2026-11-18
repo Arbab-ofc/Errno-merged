@@ -27,6 +27,11 @@ def feature_enabled(name: str, default: bool = False) -> bool:
     return os.getenv(name, "true" if default else "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def kyc_required() -> bool:
+    """Central worker identity gate; verification services remain available when false."""
+    return feature_enabled("ERRNO_KYC_REQUIRED")
+
+
 def allowed_document_types() -> set[str]:
     values = os.getenv("KYC_ALLOWED_DOCUMENT_TYPES", "")
     return {value.strip().upper() for value in values.split(",") if value.strip()} - AADHAAR_ALIASES

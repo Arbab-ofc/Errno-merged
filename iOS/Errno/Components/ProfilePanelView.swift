@@ -111,12 +111,12 @@ struct ProfilePanelView: View {
                         Text("Registered payout methods").font(.headline)
                         if profileLoading { ProgressView() }
                         ForEach(payoutMethods) { method in
-                            Text("Method \(method.id.prefix(8)) · \(method.status.replacingOccurrences(of: "_", with: " ")) · \(method.kycVerified ? "KYC verified" : "KYC pending")")
+                            Text("Method \(method.id.prefix(8)) · \(method.status.replacingOccurrences(of: "_", with: " "))")
                                 .font(.footnote).foregroundStyle(Color.errnoTextSecondary)
                         }
                         if payoutMethods.isEmpty && !profileLoading { Text("No payout methods registered.").foregroundStyle(Color.errnoTextSecondary) }
                         TextField("UPI ID", text: $payoutReference).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
-                        Text("New methods require Admin verification before withdrawals. Bank details are not collected here.")
+                        Text("New payout destinations require Admin ownership review before withdrawals. Identity verification is optional; bank details are not collected here.")
                             .font(.footnote).foregroundStyle(Color.errnoTextSecondary)
                         if let saveError { Text(saveError).foregroundStyle(Color.errnoError) }
                         if let payoutMessage { Text(payoutMessage).foregroundStyle(Color.errnoGreen) }

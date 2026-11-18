@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from '@firebase/app';
-import { getAuth, GoogleAuthProvider } from '@firebase/auth';
+import { connectAuthEmulator, getAuth, GoogleAuthProvider } from '@firebase/auth';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -16,5 +16,9 @@ export const firebaseConfigurationReady = Boolean(
 
 const app = firebaseConfigurationReady ? (getApps().length ? getApp() : initializeApp(config)) : null;
 export const firebaseAuth = app ? getAuth(app) : null;
+const authEmulatorHost = import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_HOST;
+if (firebaseAuth && authEmulatorHost) {
+  connectAuthEmulator(firebaseAuth, `http://${authEmulatorHost}`, { disableWarnings: true });
+}
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

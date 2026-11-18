@@ -237,6 +237,8 @@ fun PreviewJobScreen(
                         WorkerLocationMapView(
                             locationName = if (state.draftIsDelivery) state.draftPickupLocation else state.draftLocation.ifBlank { "Okhla Market Area" },
                             distanceText = "Location Map Preview",
+                            latitude = state.draftLatitude,
+                            longitude = state.draftLongitude,
                             isDarkTheme = false
                         )
 

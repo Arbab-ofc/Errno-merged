@@ -151,7 +151,7 @@ class ShopkeeperViewModel : ViewModel() {
     }
 
     fun updatePickupLocation(pickup: String) {
-        _uiState.update { it.copy(draftPickupLocation = pickup, pricingQuote = emptyMap()) }
+        _uiState.update { it.copy(draftPickupLocation = pickup, draftLatitude = null, draftLongitude = null, pricingQuote = emptyMap()) }
     }
 
     fun updateDropLocation(drop: String) {
@@ -442,6 +442,9 @@ class ShopkeeperViewModel : ViewModel() {
             require(state.draftLocation.isNotBlank()) { "Enter or select a job address." }
             state.draftLocation
         }
+        require(hasValidJobCoordinates(state.draftLatitude, state.draftLongitude)) {
+            "Choose a valid location from the address suggestions or place the map pin before continuing."
+        }
         val draft = JobPost(
             id = System.currentTimeMillis().toString(), title = state.draftCategory.ifBlank { "Loading & Unloading" },
             category = state.draftCategory.ifBlank { "Loading & Unloading" }, location = location, latitude = state.draftLatitude, longitude = state.draftLongitude,
@@ -464,3 +467,8 @@ class ShopkeeperViewModel : ViewModel() {
         }
     }
 }
+
+internal fun hasValidJobCoordinates(latitude: Double?, longitude: Double?): Boolean =
+    latitude != null && longitude != null &&
+        latitude.isFinite() && longitude.isFinite() &&
+        latitude in -90.0..90.0 && longitude in -180.0..180.0

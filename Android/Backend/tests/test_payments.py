@@ -369,7 +369,8 @@ def test_cash_requires_both_parties_and_admin_commission_reconciliation(payment_
         assert db.query(PlatformFinanceLedgerEntry).filter_by(entry_type="CASH_COMMISSION_RECEIPT").one().amount_paise == 1280
 
 
-def test_withdrawal_requires_three_paid_jobs_verified_method_and_reserves_ledger(payment_client):
+def test_withdrawal_with_kyc_enabled_requires_verified_method_and_reserves_ledger(payment_client, monkeypatch):
+    monkeypatch.setenv("ERRNO_KYC_REQUIRED", "true")
     client, factory = payment_client
     now = datetime.now(timezone.utc)
     with factory() as db:
@@ -410,12 +411,95 @@ def test_wallet_surfaces_refund_shortfall_as_withdrawal_hold(payment_client):
     assert wallet["unresolvedSettlementAdjustmentsPaise"] == 2500
 
 
-def test_wallet_requires_identity_verification_when_policy_enabled(payment_client):
+def test_wallet_requires_identity_verification_when_central_policy_enabled(payment_client, monkeypatch):
+    monkeypatch.setenv("ERRNO_KYC_REQUIRED", "true")
     client, _ = payment_client
     wallet = client.get("/api/v1/worker/wallet", headers={"Authorization": "Bearer worker-token"}).json()
     assert wallet["kycVerified"] is False
+    assert wallet["kycRequired"] is True
     assert "KYC_REQUIRED" in wallet["eligibilityReasons"]
     assert wallet["withdrawalEligible"] is False
+
+
+def _seed_withdrawal_funds(factory, *, total_each=10000):
+    now = datetime.now(timezone.utc)
+    with factory() as db:
+        for index in range(3):
+            job_id = f"no-kyc-paid-job-{index}"
+            payment_id = f"no-kyc-payment-{index}"
+            db.add(Job(id=job_id, shop_id="shop", title=f"Paid shift {index}", pay_amount=100,
+                duration_type="1 hour", status="completed", assigned_worker_id="worker", completed_at=now, created_at=now))
+            db.flush()
+            db.add(PaymentTransaction(id=payment_id, booking_id=job_id, shopkeeper_id="owner", worker_id="worker",
+                amount_paise=total_each, commission_paise=0, worker_earning_paise=total_each, status="PAID",
+                payment_id=f"provider-no-kyc-{index}", idempotency_key=f"payment-no-kyc-{index}"))
+            db.add(WalletLedgerEntry(worker_id="worker", booking_id=job_id, payment_id=payment_id,
+                category="EARNING_AVAILABLE", amount_paise=total_each, idempotency_key=f"earning:no-kyc:{payment_id}"))
+        db.commit()
+
+
+def test_worker_can_withdraw_without_kyc_after_payout_destination_review(payment_client, monkeypatch):
+    monkeypatch.setenv("ERRNO_KYC_REQUIRED", "false")
+    client, factory = payment_client
+    _seed_withdrawal_funds(factory)
+    worker = {"Authorization": "Bearer worker-token"}
+    admin = {"Authorization": "Bearer admin-token"}
+    added = client.post("/api/v1/worker/payout-methods", headers=worker,
+        json={"providerReference": "worker.upi@example"})
+    assert added.status_code == 200 and added.json()["status"] == "PENDING_VERIFICATION"
+    reviewed = client.post(f"/api/v1/admin/finance/payout-methods/{added.json()['id']}/review", headers=admin,
+        json={"status": "VERIFIED", "reason": "Destination ownership and control checked."})
+    assert reviewed.status_code == 200 and reviewed.json()["kycVerified"] is False
+
+    wallet = client.get("/api/v1/worker/wallet", headers=worker).json()
+    assert wallet["kycRequired"] is False and wallet["kycVerified"] is False
+    assert wallet["withdrawalEligible"] is True
+    result = client.post("/api/v1/worker/withdrawals", headers=worker,
+        json={"amountPaise": 5000, "payoutMethodId": added.json()["id"], "idempotencyKey": "no-kyc-withdrawal-test-01"})
+    assert result.status_code == 200 and result.json()["status"] == "PENDING_EXTERNAL_PAYOUT"
+    with factory() as db:
+        assert db.query(KYCVerificationProfile).filter_by(user_id="worker").count() == 0
+
+
+def test_withdrawal_without_kyc_still_enforces_balance_auth_and_destination_ownership(payment_client, monkeypatch):
+    monkeypatch.setenv("ERRNO_KYC_REQUIRED", "false")
+    client, factory = payment_client
+    _seed_withdrawal_funds(factory, total_each=1000)
+    with factory() as db:
+        db.add_all([
+            WorkerPayoutMethod(id="worker-reviewed-method", worker_id="worker", provider_reference="worker.upi@example", status="VERIFIED"),
+            WorkerPayoutMethod(id="owner-reviewed-method", worker_id="owner", provider_reference="owner.upi@example", status="VERIFIED"),
+        ])
+        db.commit()
+    assert client.post("/api/v1/worker/withdrawals", json={
+        "amountPaise": 500, "payoutMethodId": "worker-reviewed-method", "idempotencyKey": "auth-required-test-01"
+    }).status_code == 401
+    worker = {"Authorization": "Bearer worker-token"}
+    insufficient = client.post("/api/v1/worker/withdrawals", headers=worker, json={
+        "amountPaise": 5000, "payoutMethodId": "worker-reviewed-method", "idempotencyKey": "balance-check-test-01"
+    })
+    assert insufficient.status_code == 409 and "exceeds available balance" in insufficient.text
+    wrong_owner = client.post("/api/v1/worker/withdrawals", headers=worker, json={
+        "amountPaise": 500, "payoutMethodId": "owner-reviewed-method", "idempotencyKey": "ownership-check-test-01"
+    })
+    assert wrong_owner.status_code == 409 and wrong_owner.json()["detail"]["code"] == "PAYOUT_METHOD_UNVERIFIED"
+
+
+def test_enabled_kyc_gate_is_restorable_and_does_not_fabricate_status(payment_client, monkeypatch):
+    monkeypatch.setenv("ERRNO_KYC_REQUIRED", "true")
+    client, factory = payment_client
+    _seed_withdrawal_funds(factory)
+    now = datetime.now(timezone.utc)
+    with factory() as db:
+        db.add(WorkerPayoutMethod(id="verified-method-no-identity", worker_id="worker", provider_reference="worker.upi@example",
+            status="VERIFIED", kyc_verified=True, verified_by="finance-admin", verified_at=now))
+        db.commit()
+    response = client.post("/api/v1/worker/withdrawals", headers={"Authorization": "Bearer worker-token"}, json={
+        "amountPaise": 500, "payoutMethodId": "verified-method-no-identity", "idempotencyKey": "kyc-enabled-test-0001"
+    })
+    assert response.status_code == 409 and response.json()["detail"]["code"] == "KYC_REQUIRED"
+    wallet = client.get("/api/v1/worker/wallet", headers={"Authorization": "Bearer worker-token"}).json()
+    assert wallet["kycVerified"] is False
 
 
 def test_partial_refund_requires_provider_webhook_and_reverses_worker_ledger(payment_client, monkeypatch):

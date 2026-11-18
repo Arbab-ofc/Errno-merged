@@ -19,12 +19,16 @@ android {
         val localApiProperties = Properties().apply {
             rootProject.file("gradle.properties.local").takeIf { it.isFile }?.inputStream()?.use { load(it) }
         }
-        val apiBaseUrl = localApiProperties.getProperty("ERRNO_API_BASE_URL")
-            ?: providers.gradleProperty("ERRNO_API_BASE_URL").orElse("").get()
-        val mapsApiKey = localApiProperties.getProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY") ?: providers.gradleProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY").orElse("").get()
-        val photonEndpoint = localApiProperties.getProperty("ERRNO_PHOTON_ENDPOINT") ?: providers.gradleProperty("ERRNO_PHOTON_ENDPOINT").orElse("https://photon.komoot.io").get()
-        val authEmulatorHost = localApiProperties.getProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST")
-            ?: providers.gradleProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST").orElse("").get()
+        // Explicit Gradle properties are temporary build overrides (for example,
+        // an isolated emulator backend); local synchronized config remains default.
+        val apiBaseUrl = providers.gradleProperty("ERRNO_API_BASE_URL")
+            .orElse(localApiProperties.getProperty("ERRNO_API_BASE_URL") ?: "").get()
+        val mapsApiKey = providers.gradleProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY")
+            .orElse(localApiProperties.getProperty("ERRNO_GOOGLE_MAPS_ANDROID_API_KEY") ?: "").get()
+        val photonEndpoint = providers.gradleProperty("ERRNO_PHOTON_ENDPOINT")
+            .orElse(localApiProperties.getProperty("ERRNO_PHOTON_ENDPOINT") ?: "https://photon.komoot.io").get()
+        val authEmulatorHost = providers.gradleProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST")
+            .orElse(localApiProperties.getProperty("ERRNO_FIREBASE_AUTH_EMULATOR_HOST") ?: "").get()
         buildConfigField("String", "ERRNO_API_BASE_URL", "\"$apiBaseUrl\"")
         manifestPlaceholders["googleMapsApiKey"] = mapsApiKey
         buildConfigField("String", "ERRNO_PHOTON_ENDPOINT", "\"$photonEndpoint\"")
@@ -81,6 +85,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

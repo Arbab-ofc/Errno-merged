@@ -30,11 +30,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erno.app.data.model.DurationPay
+import com.erno.app.data.model.MapCoordinate
 import com.erno.app.ui.components.MapLocationPicker
+import com.erno.app.ui.components.geocodePhotonAddress
+import com.erno.app.ui.components.isCoordinate
 import com.erno.app.ui.theme.ErnoGreen
 import com.erno.app.ui.theme.ErnoTextSecondary
 import java.util.Calendar
 import java.util.Locale
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -907,6 +912,8 @@ fun PostJobScreen(
                                 SimpleBeginnerLocationInput(
                                     value = state.draftPickupLocation,
                                     onValueChange = onPickupLocationChange,
+                                    onLocationResolved = onMapLocationChange,
+                                    coordinatesSelected = isCoordinate(state.draftLatitude, state.draftLongitude),
                                     label = "Pickup Store Address",
                                     placeholder = "Type store address for suggestions..."
                                 )
@@ -916,6 +923,7 @@ fun PostJobScreen(
                                 SimpleBeginnerLocationInput(
                                     value = state.draftDropLocation,
                                     onValueChange = onDropLocationChange,
+                                    onLocationResolved = { address, _, _ -> onDropLocationChange(address) },
                                     label = "Customer Drop Address",
                                     placeholder = "Type delivery address for suggestions..."
                                 )
@@ -925,6 +933,8 @@ fun PostJobScreen(
                                 SimpleBeginnerLocationInput(
                                     value = state.draftLocation,
                                     onValueChange = onLocationChange,
+                                    onLocationResolved = onMapLocationChange,
+                                    coordinatesSelected = isCoordinate(state.draftLatitude, state.draftLongitude),
                                     label = "Shop / Work Address",
                                     placeholder = "Type shop address (e.g. Okhla, Noida)..."
                                 )
@@ -941,7 +951,7 @@ fun PostJobScreen(
                                 )
 
                                 MapLocationPicker(
-                                    address = state.draftLocation,
+                                    address = if (state.draftIsDelivery) state.draftPickupLocation else state.draftLocation,
                                     latitude = state.draftLatitude,
                                     longitude = state.draftLongitude,
                                     onSelection = onMapLocationChange,
@@ -963,9 +973,39 @@ fun SimpleBeginnerLocationInput(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    placeholder: String
+    placeholder: String,
+    onLocationResolved: (String, Double, Double) -> Unit = { _, _, _ -> },
+    geocodeAddress: suspend (String) -> MapCoordinate? = ::geocodePhotonAddress,
+    coordinatesSelected: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var resolvingLocation by remember { mutableStateOf(false) }
+    var locationError by remember { mutableStateOf<String?>(null) }
+    var resolutionRevision by remember { mutableIntStateOf(0) }
+    var resolutionJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(coordinatesSelected) {
+        if (coordinatesSelected) locationError = null
+    }
+
+    fun selectAddress(address: String) {
+        onValueChange(address)
+        locationError = null
+        resolutionJob?.cancel()
+        val revision = ++resolutionRevision
+        resolutionJob = scope.launch {
+            resolvingLocation = true
+            val coordinate = runCatching { geocodeAddress(address) }.getOrNull()
+            if (revision == resolutionRevision) {
+                if (coordinate != null && isCoordinate(coordinate.latitude, coordinate.longitude)) {
+                    onLocationResolved(address, coordinate.latitude, coordinate.longitude)
+                } else {
+                    locationError = "No valid map coordinates found. Choose the location pin manually."
+                }
+                resolvingLocation = false
+            }
+        }
+    }
 
     val allLocations = listOf(
         "Okhla Market Store #12, Block B, New Delhi",
@@ -1003,7 +1043,7 @@ fun SimpleBeginnerLocationInput(
 
         // 1-Tap Big Friendly GPS Location Button
         Button(
-            onClick = { onValueChange("Okhla Market Store #12, New Delhi") },
+            onClick = { selectAddress("Okhla Main Market, Okhla, New Delhi, India") },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -1011,14 +1051,14 @@ fun SimpleBeginnerLocationInput(
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.MyLocation,
+                imageVector = Icons.Default.LocationOn,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "📍 Tap Here to Use My Current Location",
+                text = "Use Okhla Market address",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -1037,11 +1077,16 @@ fun SimpleBeginnerLocationInput(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            val areas = listOf("Okhla Market", "Sector 18 Noida", "Lajpat Nagar", "Connaught Place")
-            areas.forEach { area ->
+            val areas = listOf(
+                "Okhla Market" to "Okhla Market, Okhla, New Delhi, India",
+                "Sector 18 Noida" to "Sector 18 Market, Noida, Uttar Pradesh, India",
+                "Lajpat Nagar" to "Lajpat Nagar Market, New Delhi, India",
+                "Connaught Place" to "Connaught Place, New Delhi, India",
+            )
+            areas.forEach { (area, address) ->
                 val isSelected = value.contains(area, ignoreCase = true)
                 Surface(
-                    onClick = { onValueChange("$area Store, New Delhi") },
+                    onClick = { selectAddress(address) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp),
                     color = if (isSelected) Color(0xFFEAF5D8) else Color.White,
@@ -1057,10 +1102,14 @@ fun SimpleBeginnerLocationInput(
                             fontWeight = FontWeight.Bold,
                             color = if (isSelected) ErnoGreen else Color.Black
                         )
+
                     }
                 }
             }
         }
+
+        if (resolvingLocation) LinearProgressIndicator(Modifier.fillMaxWidth())
+        locationError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
 
         Spacer(modifier = Modifier.height(2.dp))
 
@@ -1072,6 +1121,10 @@ fun SimpleBeginnerLocationInput(
             OutlinedTextField(
                 value = value,
                 onValueChange = {
+                    resolutionJob?.cancel()
+                    resolutionRevision++
+                    resolvingLocation = false
+                    locationError = null
                     onValueChange(it)
                     expanded = true
                 },
@@ -1124,7 +1177,7 @@ fun SimpleBeginnerLocationInput(
                             }
                         },
                         onClick = {
-                            onValueChange(suggestion)
+                            selectAddress(suggestion)
                             expanded = false
                         },
                         modifier = Modifier.background(Color.White)

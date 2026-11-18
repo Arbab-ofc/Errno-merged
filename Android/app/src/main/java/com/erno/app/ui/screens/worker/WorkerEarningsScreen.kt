@@ -43,7 +43,10 @@ fun WorkerEarningsScreen(state: WorkerState, onBackClick: () -> Unit, onNavigate
     LaunchedEffect(Unit) { refresh() }
     val available = wallet?.optInt("availableBalancePaise") ?: 0
     val eligible = wallet?.optBoolean("withdrawalEligible") ?: false
-    val eligibleMethod = methods?.let { rows -> (0 until rows.length()).map { rows.getJSONObject(it) }.firstOrNull { it.optString("status") == "VERIFIED" && it.optBoolean("kycVerified") } }
+    val kycRequired = wallet?.optBoolean("kycRequired", false) ?: false
+    val eligibleMethod = methods?.let { rows -> (0 until rows.length()).map { rows.getJSONObject(it) }.firstOrNull {
+        it.optString("status") == "VERIFIED" && (!kycRequired || it.optBoolean("kycVerified"))
+    } }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Earnings & Wallet", color = Color.White, fontWeight = FontWeight.Bold) },
             navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) } },
@@ -73,8 +76,8 @@ fun WorkerEarningsScreen(state: WorkerState, onBackClick: () -> Unit, onNavigate
                                     .onSuccess { message = "Withdrawal request ${it.optString("status")}; payout has not been sent yet."; refresh() }
                                     .onFailure { error = it.localizedMessage ?: "Withdrawal request failed." }
                             }
-                        }, modifier = Modifier.fillMaxWidth()) { Text(if (eligibleMethod == null) "Verified payout method required" else "Request withdrawal") }
-                        if (eligibleMethod == null) Text("Payout methods and KYC require Admin verification. Bank details are not stored in this app.", fontSize = 12.sp, color = Color.Gray)
+                        }, modifier = Modifier.fillMaxWidth()) { Text(if (eligibleMethod == null) "Admin-reviewed payout method required" else "Request withdrawal") }
+                        if (eligibleMethod == null) Text("Payout destination ownership is reviewed by Admin. Identity verification is not required. Bank details are not stored in this app.", fontSize = 12.sp, color = Color.Gray)
                     } }
                 }
                 val pendingCash = cashRows ?: JSONArray()

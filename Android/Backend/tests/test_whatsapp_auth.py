@@ -12,8 +12,9 @@ from sqlalchemy.pool import StaticPool
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import routers.whatsapp_auth as whatsapp_auth
 from database import Base, get_db
-from models import AdminPermission, BackendAuthSession, User, WhatsAppOTPChallenge
+from models import AdminPermission, BackendAuthSession, KYCVerificationProfile, User, WhatsAppOTPChallenge
 from routers.firebase import router as firebase_router
+from routers.jobs import router as jobs_router
 
 
 @pytest.fixture
@@ -29,6 +30,7 @@ def auth_client(monkeypatch):
     app.include_router(whatsapp_auth.router)
     app.include_router(whatsapp_auth.admin_router)
     app.include_router(firebase_router)
+    app.include_router(jobs_router)
     app.dependency_overrides[get_db] = get_test_db
     monkeypatch.setenv("WHATSAPP_OTP_HASH_SECRET", "h" * 48)
     monkeypatch.setenv("WHATSAPP_SESSION_TTL_SECONDS", "86400")
@@ -54,9 +56,12 @@ def test_challenge_hash_and_session_issue_and_revoke(auth_client):
     assert result["user"]["role"] == "worker" and result["accessToken"].startswith("errno_")
     profile = client.get("/api/v1/users/me", headers={"Authorization": "Bearer " + result["accessToken"]})
     assert profile.status_code == 200 and profile.json()["id"] == result["user"]["id"]
+    assert profile.json()["role"] == "worker"
+    assert client.get("/jobs/worker/mine", headers={"Authorization": "Bearer " + result["accessToken"]}).status_code == 200
     with factory() as db:
         assert db.query(User).filter_by(phone_number="+919876543210").count() == 1
         assert db.query(BackendAuthSession).count() == 1
+        assert db.query(KYCVerificationProfile).filter_by(user_id=result["user"]["id"]).count() == 0
     logout = client.post("/api/v1/auth/whatsapp/logout", headers={"Authorization": "Bearer " + result["accessToken"]})
     assert logout.status_code == 200
     with factory() as db:

@@ -28,6 +28,7 @@ from models import (AdminAuditLog, CashCollection, FinancialAuditEvent, Financia
                     PlatformFinanceLedgerEntry, WalletLedgerEntry, WorkerPayoutMethod, WorkerWithdrawal,
                     KYCVerificationProfile)
 from services.notification_service import queue_notification, queue_admin_notifications
+import kyc_service
 
 router = APIRouter(prefix="/api/v1", tags=["Payments and wallet"])
 admin_router = APIRouter(prefix="/api/v1/admin", tags=["Admin finance"])
@@ -723,7 +724,7 @@ def _wallet_summary(db: Session, worker_id: str):
     recent = [{"id": x.id, "bookingId": x.booking_id, "category": x.category, "amountPaise": x.amount_paise,
                "currency": x.currency, "createdAt": x.created_at} for x in entries[:50]]
     profile = db.query(KYCVerificationProfile).filter_by(user_id=worker_id, subject_role="worker").first()
-    kyc_required = os.getenv("KYC_REQUIRED_FOR_WITHDRAWAL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    kyc_required = kyc_service.kyc_required()
     reverification_at = profile.reverification_required_at if profile else None
     if reverification_at is not None and reverification_at.tzinfo is None:
         reverification_at = reverification_at.replace(tzinfo=timezone.utc)
@@ -737,7 +738,7 @@ def _wallet_summary(db: Session, worker_id: str):
             "pendingEarningsPaise": pending, "availableBalancePaise": available, "withdrawalPendingPaise": reserved,
             "totalWithdrawnPaise": withdrawn, "cashCollectedPaise": cash_collected,
             "unresolvedSettlementAdjustmentsPaise": cash_unresolved + refund_shortfall,
-            "eligibleCompletedOrders": paid_jobs, "kycVerified": kyc_verified,
+            "eligibleCompletedOrders": paid_jobs, "kycVerified": kyc_verified, "kycRequired": kyc_required,
             "withdrawalEligible": paid_jobs >= 3 and available > 0 and kyc_ok,
             "eligibilityReasons": ([] if paid_jobs >= 3 else [f"Complete {3-paid_jobs} more eligible paid orders"])
             + ([] if available > 0 else ["No available balance"])
@@ -768,10 +769,13 @@ def request_withdrawal(body: WithdrawalRequest, user: User = Depends(authenticat
         raise HTTPException(409, detail={"code": "SETTLEMENT_HOLD", "message": "An unresolved refund adjustment blocks withdrawal."})
     if body.amountPaise > summary["availableBalancePaise"]:
         raise HTTPException(409, detail="Withdrawal exceeds available balance")
-    payout_method = db.query(WorkerPayoutMethod).filter_by(id=body.payoutMethodId, worker_id=user.id,
-        status="VERIFIED", kyc_verified=True).first()
+    payout_method_query = db.query(WorkerPayoutMethod).filter_by(
+        id=body.payoutMethodId, worker_id=user.id, status="VERIFIED")
+    if kyc_service.kyc_required():
+        payout_method_query = payout_method_query.filter_by(kyc_verified=True)
+    payout_method = payout_method_query.first()
     if payout_method is None:
-        raise HTTPException(409, detail={"code": "PAYOUT_METHOD_UNVERIFIED", "message": "Admin verification of payout method and KYC is required before withdrawal."})
+        raise HTTPException(409, detail={"code": "PAYOUT_METHOD_UNVERIFIED", "message": "An Admin-reviewed payout destination is required before withdrawal."})
     withdrawal = WorkerWithdrawal(worker_id=user.id, amount_paise=body.amountPaise, payout_method_id=body.payoutMethodId,
                                   status="PENDING_EXTERNAL_PAYOUT", idempotency_key=body.idempotencyKey)
     db.add(withdrawal)
@@ -1215,7 +1219,7 @@ def review_withdrawal(withdrawal_id: str, body: dict, admin=Depends(require_admi
 @admin_router.get("/finance/payout-methods")
 def payout_methods(admin=Depends(require_admin("wallet.read")), db: Session = Depends(get_db)):
     return [{"id": p.id, "workerId": p.worker_id, "providerReferenceSuffix": p.provider_reference[-4:],
-             "status": p.status, "kycVerified": p.kyc_verified, "createdAt": p.created_at}
+             "status": p.status, "kycVerified": p.kyc_verified, "kycRequired": kyc_service.kyc_required(), "createdAt": p.created_at}
         for p in db.query(WorkerPayoutMethod).order_by(WorkerPayoutMethod.created_at.desc()).limit(200).all()]
 
 
@@ -1227,7 +1231,9 @@ def review_payout_method(method_id: str, body: dict, admin=Depends(require_admin
     if row is None:
         raise HTTPException(404, detail="Payout method not found")
     row.status = body["status"]
-    row.kyc_verified = body["status"] == "VERIFIED"
+    # Destination ownership review remains independent of worker KYC. Preserve the
+    # legacy method-level KYC decision only while the centralized KYC gate is on.
+    row.kyc_verified = body["status"] == "VERIFIED" and kyc_service.kyc_required()
     row.verified_by = admin.firebase_uid
     row.verified_at = datetime.now(timezone.utc)
     db.add(FinancialAuditEvent(actor_id=admin.firebase_uid, event_type=f"payout_method.{row.status.lower()}",
