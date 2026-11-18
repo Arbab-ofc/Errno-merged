@@ -125,6 +125,24 @@ def test_profile_update_allows_one_time_role_selection(client):
     assert conflict.status_code == 409
 
 
+def test_worker_can_register_login_and_open_dashboard_without_kyc(client):
+    headers = {"Authorization": "Bearer worker-token"}
+    registered = client.post("/api/v1/auth/firebase", headers=headers)
+    assert registered.status_code == 200
+    selected = client.patch("/api/v1/users/me", headers=headers, json={"name": "New Worker", "role": "worker"})
+    assert selected.status_code == 200
+
+    # A subsequent login resolves the same worker and dashboard data without creating a KYC profile.
+    logged_in = client.post("/api/v1/auth/firebase", headers=headers)
+    assert logged_in.status_code == 200
+    assert logged_in.json()["user"]["id"] == registered.json()["user"]["id"]
+    assert logged_in.json()["user"]["role"] == "worker"
+    assert client.get("/jobs/worker/mine", headers=headers).status_code == 200
+    with client.app.state.session_factory() as db:
+        from models import KYCVerificationProfile
+        assert db.query(KYCVerificationProfile).filter_by(user_id=registered.json()["user"]["id"]).count() == 0
+
+
 def test_logout_is_compatible_with_stateless_firebase_tokens(client):
     response = client.post("/api/v1/auth/logout", headers={"Authorization": "Bearer signed-token"})
     assert response.status_code == 200

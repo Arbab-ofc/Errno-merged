@@ -18,7 +18,7 @@ struct DigiLockerVerificationView: View {
                 Text("Identity verification").font(.system(size: 24, weight: .bold))
                 Text("Status: \(status?.status ?? "Loading")").font(.headline)
                 Text("Method: \(status?.verificationMethod ?? "Not verified")")
-                Text("ERRNO uses identity details for onboarding and eligibility review. Authorized reviewers can access verification results. Retention follows the configured policy. DigiLocker sign-in takes place outside ERRNO. Never share your DigiLocker password, PIN, or OTP with ERRNO.")
+                Text("Identity verification is optional. If you choose to verify, authorized reviewers can access the results and retention follows the configured policy. DigiLocker sign-in takes place outside ERRNO. Never share your DigiLocker password, PIN, or OTP with ERRNO.")
                     .font(.system(size: 14)).foregroundStyle(Color.errnoTextSecondary)
                 if let status, !status.availableDocumentTypes.isEmpty {
                     Picker("Document category", selection: $documentType) {

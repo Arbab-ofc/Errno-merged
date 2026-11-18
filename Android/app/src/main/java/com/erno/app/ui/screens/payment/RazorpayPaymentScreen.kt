@@ -1,6 +1,9 @@
 package com.erno.app.ui.screens.payment
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.ColumnScope
 import android.net.Uri
 import java.io.ByteArrayOutputStream
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -11,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -102,7 +106,7 @@ fun RazorpayPaymentScreen(bookingId: String, onBack: () -> Unit) {
         val manual = config?.optJSONObject("manual")
         val submission = status?.optJSONObject("submission")
         val paymentStatus = if (status?.optString("status") == "PAID") "PAID" else submission?.optString("status") ?: status?.optString("status")
-        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        PaymentScreenScrollColumn {
             Text("UPI payment", style = MaterialTheme.typography.headlineSmall)
             Text("Booking: $bookingId")
             status?.optInt("amountPaise")?.takeIf { it > 0 }?.let { Text("Payable: ₹%.2f".format(it / 100.0), style = MaterialTheme.typography.titleLarge) }
@@ -149,7 +153,7 @@ fun RazorpayPaymentScreen(bookingId: String, onBack: () -> Unit) {
         }
         return
     }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    PaymentScreenScrollColumn {
         Text("Job payment", style = MaterialTheme.typography.headlineSmall)
         Text("Payment is collected only after the shopkeeper confirms completed work.")
         Text("Booking: $bookingId")
@@ -183,4 +187,17 @@ fun RazorpayPaymentScreen(bookingId: String, onBack: () -> Unit) {
         OutlinedButton(enabled = !loading, onClick = { scope.launch { refresh() } }) { Text("Refresh payment status") }
         OutlinedButton(onClick = onBack) { Text("Back") }
     }
+}
+
+@Composable
+internal fun PaymentScreenScrollColumn(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp)
+            .testTag("payment-scroll-content"),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        content = content,
+    )
 }

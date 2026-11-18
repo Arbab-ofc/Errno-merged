@@ -1011,14 +1011,14 @@ fun SimpleBeginnerLocationInput(
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.MyLocation,
+                imageVector = Icons.Default.LocationOn,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "📍 Tap Here to Use My Current Location",
+                text = "Use Okhla Market address",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White

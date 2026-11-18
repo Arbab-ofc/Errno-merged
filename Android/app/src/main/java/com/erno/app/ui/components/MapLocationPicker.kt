@@ -164,7 +164,7 @@ fun MapLocationPicker(
     }
 }
 
-private fun isCoordinate(lat: Double?, lng: Double?) = lat != null && lng != null && lat.isFinite() && lng.isFinite() && lat in -90.0..90.0 && lng in -180.0..180.0
+internal fun isCoordinate(lat: Double?, lng: Double?) = lat != null && lng != null && lat.isFinite() && lng.isFinite() && lat in -90.0..90.0 && lng in -180.0..180.0
 private fun hasMapLocationPermission(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 private fun lastLocation(manager: LocationManager): Location? = try { listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).mapNotNull { manager.getLastKnownLocation(it) }.maxByOrNull { it.time }?.takeIf { System.currentTimeMillis() - it.time < 120_000 } } catch (_: SecurityException) { null }
 

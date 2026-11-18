@@ -56,7 +56,7 @@ fun DigiLockerVerificationScreen(
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Status: ${status?.optString("status") ?: if (isAlreadyVerified) "Loading" else "Not started"}", style = MaterialTheme.typography.titleLarge)
             Text("Verification method: ${status?.optString("verificationMethod").takeUnless { it.isNullOrBlank() || it == "null" } ?: "Not verified"}")
-            Text("ERRNO uses identity information only for worker onboarding and eligibility review. Results are restricted to authorized reviewers and retained under the configured policy. DigiLocker authentication happens outside ERRNO; never share your password, PIN, or OTP with us.")
+            Text("Identity verification is optional. If you choose to verify, results are restricted to authorized reviewers and retained under the configured policy. DigiLocker authentication happens outside ERRNO; never share your password, PIN, or OTP with us.")
             Text("Available document categories: ${if (available == null || available.length() == 0) "Not configured" else (0 until available.length()).joinToString { available.optString(it) }}")
             Row { Checkbox(consent, { consent = it }); Text("I consent to the selected document category being used for ERRNO identity verification.", modifier = Modifier.padding(top = 12.dp)) }
             Button(enabled = consent && !busy && status?.optBoolean("digilockerEnabled") == true, onClick = {

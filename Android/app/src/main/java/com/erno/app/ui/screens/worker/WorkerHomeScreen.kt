@@ -39,52 +39,8 @@ fun WorkerHomeScreen(
     state: WorkerState,
     onJobSelect: (WorkerJob) -> Unit,
     onToggleOnlineStatus: (Boolean) -> Unit,
-    onDigiLockerPopupDismiss: (Boolean) -> Unit,
-    onVerifyDigiLockerClick: () -> Unit,
     onNavigateTab: (WorkerTab) -> Unit
 ) {
-    // DigiLocker Verification Popup for First-Time Workers
-    if (state.showDigiLockerPopup && !state.isDigiLockerVerified) {
-        AlertDialog(
-            onDismissRequest = { onDigiLockerPopupDismiss(false) },
-            containerColor = Color.White,
-            titleContentColor = Color.Black,
-            textContentColor = Color.Black,
-            title = {
-                Text(
-                    text = "DigiLocker Aadhaar Verification",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = Color.Black
-                )
-            },
-            text = {
-                Text(
-                    text = "Welcome! First-time workers require Aadhaar verification via DigiLocker to start accepting shifts and receiving secure payouts.",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onDigiLockerPopupDismiss(false)
-                        onVerifyDigiLockerClick()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ErnoGreen),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Verify Now via DigiLocker", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onDigiLockerPopupDismiss(false) }) {
-                    Text("Remind Me Later", color = Color.Gray)
-                }
-            }
-        )
-    }
-
     val animatedCardBg by animateColorAsState(
         targetValue = if (state.isOnline) Color(0xFF132A1D) else Color(0xFF121824),
         animationSpec = tween(durationMillis = 500),

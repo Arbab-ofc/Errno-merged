@@ -283,9 +283,6 @@ fun NavGraph(navController: NavHostController) {
                     runCatching { com.erno.app.notifications.ErrnoNotificationDeviceSync.registerCurrent() }
                     runCatching { ErrnoMobileApi.presenceHeartbeat(true) }
                     (context as? com.erno.app.MainActivity)?.startPresenceTracking()
-                    if (identity.role == "worker" || role == "worker") {
-                        workerViewModel.triggerDigiLockerPopup(true)
-                    }
                     val home = if (identity.role == "worker") Screen.WorkerHome.route else Screen.ShopkeeperHome.route
                     navController.navigate(home) { popUpTo(Screen.RoleSelection.route) { inclusive = true } }
                     openPendingNotification()
@@ -519,10 +516,6 @@ fun NavGraph(navController: NavHostController) {
                     runCatching { workerViewModel.setAvailableForWork(available) }
                         .onFailure { Toast.makeText(context, it.localizedMessage ?: "Availability update failed", Toast.LENGTH_LONG).show() }
                 } },
-                onDigiLockerPopupDismiss = workerViewModel::triggerDigiLockerPopup,
-                onVerifyDigiLockerClick = {
-                    navController.navigate(Screen.DigiLockerVerification.route)
-                },
                 onNavigateTab = { tab ->
                     when (tab) {
                         WorkerTab.HOME -> navController.navigateTab(Screen.WorkerHome.route, Screen.WorkerHome.route)
