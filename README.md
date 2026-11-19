@@ -223,11 +223,11 @@ cd Android/Backend
 python -m services.notification_dispatcher
 ```
 
-Implemented event integrations include booking created, worker assigned/job assigned, job started, booking cancelled, job completed, verified payment success/failure, and KYC review status changed. Unsupported arrival/en-route, complaint/dispute, payout-completion, rating-eligibility, or broad job-alert events are not fabricated.
+Implemented event integrations include booking created, job applications received/accepted/rejected (including candidates displaced by an accepted applicant), job started/completed, booking cancelled, payment submitted/approved/rejected, worker earnings available, verified payment success/failure, and KYC review status changed. Unsupported arrival/en-route, complaint/dispute, payout-completion, rating-eligibility, or broad job-alert events are not fabricated.
 
 Push is best effort; the PostgreSQL inbox is authoritative. `accepted_by_fcm` only means Firebase accepted a request, not that a device displayed or a person read it. Push preference does not erase transactional inbox items. Data payloads contain routing IDs, not authority. Android 13+ notification permission and iOS/APNs delivery require runtime setup. Current push taps route to the authenticated inbox rather than a specific authorized business detail.
 
-Notification device tokens are encrypted and HMAC hashed. Configure independent high-entropy `NOTIFICATION_TOKEN_ENCRYPTION_KEY` (Fernet) and `NOTIFICATION_TOKEN_HASH_SECRET` values before enabling push. Mobile Firebase/APNs credentials remain platform-side; Firebase Admin credentials stay on the backend. Retention cleanup and operational alerts require deployment configuration.
+Notification device tokens are encrypted and HMAC hashed. Configure independent high-entropy `NOTIFICATION_TOKEN_ENCRYPTION_KEY` (Fernet) and `NOTIFICATION_TOKEN_HASH_SECRET` values before enabling push. Mobile Firebase/APNs credentials remain platform-side; Firebase Admin uses managed identity on Cloud Run. Keep `NOTIFICATION_WORKER_ENABLED=false` on the API service and run the dispatcher as a bounded batch (`python -m services.notification_dispatcher --once --limit 100`) from a scheduled Cloud Run Job. `NOTIFICATION_PUSH_ENABLED` controls FCM transport. Retention cleanup and operational alerts require deployment configuration.
 
 ## Payments and wallet
 

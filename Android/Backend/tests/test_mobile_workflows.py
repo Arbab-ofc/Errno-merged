@@ -73,7 +73,7 @@ def test_mobile_shop_job_application_persists_and_enforces_owner_scope(mobile_cl
     client, factory = mobile_client
     owner_headers, owner_id = onboard(client, "owner", "shop_owner")
     worker_headers, worker_id = onboard(client, "worker", "worker")
-    outsider_headers, _ = onboard(client, "outsider", "worker")
+    outsider_headers, outsider_id = onboard(client, "outsider", "worker")
 
     # A read is side-effect free; shop creation is explicit and bound to verified user ID.
     assert client.get("/shops/me", headers=owner_headers).json() is None
@@ -100,6 +100,8 @@ def test_mobile_shop_job_application_persists_and_enforces_owner_scope(mobile_cl
     application = client.post(f"/jobs/{job_id}/apply", headers=worker_headers)
     assert application.status_code == 200
     assert application.json()["worker_id"] == worker_id
+    other_application = client.post(f"/jobs/{job_id}/apply", headers=outsider_headers)
+    assert other_application.status_code == 200
     history = client.get("/jobs/applications/me", headers=worker_headers)
     assert history.json()["items"][0]["id"] == application.json()["id"]
     assert history.json()["items"][0]["job"]["title"] == "Delivery Partner"
@@ -107,21 +109,26 @@ def test_mobile_shop_job_application_persists_and_enforces_owner_scope(mobile_cl
     assert history.json()["items"][0]["created_at"]
     owner_app = client.get("/jobs/applications/owner", headers=owner_headers)
     assert owner_app.status_code == 200
-    assert owner_app.json()[0]["worker_name"] == "Worker"
+    assert {row["worker_name"] for row in owner_app.json()} == {"Worker", "Outsider"}
     assert "email" not in owner_app.json()[0] and "phone_number" not in owner_app.json()[0]
     assert client.get(f"/jobs/{job_id}/applications", headers=owner_headers).status_code == 200
     assert client.get(f"/jobs/{job_id}/applications", headers=outsider_headers).status_code == 403
+    with factory() as db:
+        assert db.query(Notification).filter_by(recipient_user_id=owner_id, event_type="job_application_received").count() == 2
 
     decision = client.patch(f"/jobs/{job_id}/applications/{application.json()['id']}", headers=owner_headers,
                             json={"decision": "accepted"})
     assert decision.status_code == 200 and decision.json()["status"] == "accepted"
+    with factory() as db:
+        assert db.query(Notification).filter_by(recipient_user_id=worker_id, event_type="application_accepted").count() == 1
+        assert db.query(Notification).filter_by(recipient_user_id=outsider_id, event_type="application_rejected").count() == 1
     assert client.get("/jobs/worker/mine", headers=worker_headers).json()[0]["id"] == job_id
     assert client.get("/jobs", params={"status_filter": "assigned"}).json()[0]["assigned_worker_id"] == worker_id
     with factory() as db:
         assert db.query(User).count() == 3
         assert db.query(Shop).count() == 1
         assert db.query(Job).count() == 1
-        assert db.query(Application).count() == 1
+        assert db.query(Application).count() == 2
 
 
 def test_job_lifecycle_authorization_timestamps_and_idempotency(mobile_client):

@@ -526,6 +526,25 @@ def test_enabled_kyc_gate_is_restorable_and_does_not_fabricate_status(payment_cl
     assert wallet["kycVerified"] is False
 
 
+def test_paid_payment_queues_worker_earnings_notification(payment_client):
+    client, factory = payment_client
+    with factory() as db:
+        txn = PaymentTransaction(id="earnings-notification-payment", booking_id="job-1", shopkeeper_id="owner",
+            worker_id="worker", amount_paise=16000, commission_paise=1280, worker_earning_paise=14720,
+            currency="INR", status="PAYMENT_PENDING", idempotency_key="earnings-notification-key")
+        db.add(txn)
+        db.flush()
+        assert payments._record_paid(db, txn, "payment-earnings-test") is True
+        db.commit()
+        from models import Notification, NotificationOutbox
+        notice = db.query(Notification).filter_by(recipient_user_id="worker", event_type="worker_earning_available").one()
+        outbox = db.query(NotificationOutbox).filter_by(notification_id=notice.id).one()
+        assert notice.category == "payment"
+        assert len(notice.event_id) <= 64
+        assert outbox.status == "queued"
+        assert outbox.payload["data"]["payment_id"] == txn.id
+
+
 def test_partial_refund_requires_provider_webhook_and_reverses_worker_ledger(payment_client, monkeypatch):
     client, factory = payment_client
     with factory() as db:
