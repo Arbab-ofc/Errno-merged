@@ -261,6 +261,22 @@ def test_check_fails_for_missing_root_example_names(tmp_path):
         sync.inspect_configuration(root)
 
 
+def test_admin_sync_does_not_require_backend_only_catalog_names(tmp_path):
+    root = make_root(
+        tmp_path,
+        "VITE_API_BASE_URL=http://localhost:8000\n",
+        "VITE_API_BASE_URL=http://localhost:8000\nWHATSAPP_GATEWAY_CA_BUNDLE=\nWHATSAPP_GATEWAY_MANAGEMENT_ENABLED=false\n",
+    )
+
+    assert sync.run(root, mode="sync", targets=("admin",)) == 0
+    generated = root / "Admin/.env.local"
+    assert generated.is_file()
+    assert "WHATSAPP_GATEWAY" not in generated.read_text()
+
+    with pytest.raises(sync.ConfigError, match="WHATSAPP_GATEWAY_CA_BUNDLE"):
+        sync.inspect_configuration(root)
+
+
 def test_cli_rejects_nonexclusive_modes():
     with pytest.raises(SystemExit) as error:
         sync.main(["--check", "--sync"])
