@@ -332,6 +332,30 @@ def test_unauthorized_admin_finance_access_fails(payment_client):
     assert response.status_code == 403
 
 
+def test_manual_payment_permissions_are_grantable_and_enforced(payment_client):
+    from tools.provision_admin import PERMISSIONS
+
+    assert {"payments.read", "payments.manage"}.issubset(PERMISSIONS)
+    client, factory = payment_client
+    with factory() as db:
+        admin = db.query(AdminPermission).filter_by(firebase_uid="finance-admin").one()
+        admin.permissions = ["payments.manage"]
+        db.commit()
+
+    headers = {"Authorization": "Bearer admin-token"}
+    assert client.get("/api/v1/admin/payments/manual", headers=headers).status_code == 403
+    assert client.post("/api/v1/admin/payments/manual/missing/approve", headers=headers).status_code == 404
+
+    with factory() as db:
+        admin = db.query(AdminPermission).filter_by(firebase_uid="finance-admin").one()
+        admin.permissions = ["payments.read"]
+        db.commit()
+
+    queue = client.get("/api/v1/admin/payments/manual", headers=headers)
+    assert queue.status_code == 200 and queue.json()["items"] == []
+    assert client.post("/api/v1/admin/payments/manual/missing/approve", headers=headers).status_code == 403
+
+
 def test_finance_overview_includes_completed_unpaid_bookings(payment_client):
     client, _ = payment_client
     response = client.get("/api/v1/admin/finance/overview", headers={"Authorization": "Bearer admin-token"})
@@ -500,6 +524,25 @@ def test_enabled_kyc_gate_is_restorable_and_does_not_fabricate_status(payment_cl
     assert response.status_code == 409 and response.json()["detail"]["code"] == "KYC_REQUIRED"
     wallet = client.get("/api/v1/worker/wallet", headers={"Authorization": "Bearer worker-token"}).json()
     assert wallet["kycVerified"] is False
+
+
+def test_paid_payment_queues_worker_earnings_notification(payment_client):
+    client, factory = payment_client
+    with factory() as db:
+        txn = PaymentTransaction(id="earnings-notification-payment", booking_id="job-1", shopkeeper_id="owner",
+            worker_id="worker", amount_paise=16000, commission_paise=1280, worker_earning_paise=14720,
+            currency="INR", status="PAYMENT_PENDING", idempotency_key="earnings-notification-key")
+        db.add(txn)
+        db.flush()
+        assert payments._record_paid(db, txn, "payment-earnings-test") is True
+        db.commit()
+        from models import Notification, NotificationOutbox
+        notice = db.query(Notification).filter_by(recipient_user_id="worker", event_type="worker_earning_available").one()
+        outbox = db.query(NotificationOutbox).filter_by(notification_id=notice.id).one()
+        assert notice.category == "payment"
+        assert len(notice.event_id) <= 64
+        assert outbox.status == "queued"
+        assert outbox.payload["data"]["payment_id"] == txn.id
 
 
 def test_partial_refund_requires_provider_webhook_and_reverses_worker_ledger(payment_client, monkeypatch):

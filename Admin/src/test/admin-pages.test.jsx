@@ -14,6 +14,8 @@ const { useAuth, api } = vi.hoisted(() => ({
     whatsappStatus: vi.fn(), whatsappQr: vi.fn(), whatsappConnect: vi.fn(), whatsappDisconnect: vi.fn(), whatsappLogout: vi.fn(), whatsappMonitoring: vi.fn(),
     financeOverview: vi.fn(), financePayments: vi.fn(), financeRefunds: vi.fn(), financeAudit: vi.fn(), financeWallets: vi.fn(),
     financeWithdrawals: vi.fn(), financePayoutMethods: vi.fn(), reconciliation: vi.fn(), companyPaymentQr: vi.fn(),
+    manualPaymentConfig: vi.fn(), manualPayments: vi.fn(), manualPayment: vi.fn(), paymentSocket: vi.fn(),
+    updateManualPaymentConfig: vi.fn(), uploadPaymentQr: vi.fn(), approveManualPayment: vi.fn(), rejectManualPayment: vi.fn(),
     kycOverview: vi.fn(), kycVerifications: vi.fn(), kycVerification: vi.fn(), reviewKyc: vi.fn(), kycAudit: vi.fn(), kycDocument: vi.fn(),
   },
 }));
@@ -27,6 +29,7 @@ import { JobsPage } from "../pages/JobsPage";
 import { PricingPage } from "../pages/PricingPage";
 import { WhatsAppGatewayPage } from "../pages/WhatsAppGatewayPage";
 import { FinancePage } from "../pages/FinancePage";
+import { ManualPaymentsPage } from "../pages/ManualPaymentsPage";
 import { KycPage } from "../pages/KycPage";
 import { RequireAdmin } from "../auth/RequireAdmin";
 
@@ -59,10 +62,39 @@ describe("admin authentication gates and live pages", () => {
     api.financeAudit.mockResolvedValue({ items: [], limit: 50, offset: 0 }); api.financeWallets.mockResolvedValue({ items: [] });
     api.financeWithdrawals.mockResolvedValue([]); api.financePayoutMethods.mockResolvedValue([]);
     api.reconciliation.mockResolvedValue({ cashCollections: [], unmatchedEvents: 0 }); api.companyPaymentQr.mockResolvedValue({ status: "UNCONFIGURED", qrAssetUrl: null });
+    api.manualPaymentConfig.mockResolvedValue({ activeProvider: "MANUAL_QR", configured: false, merchantName: "", upiId: "", qrImageUrl: null });
     render(<MemoryRouter><FinancePage /></MemoryRouter>);
     expect(await screen.findByText("Finance & Payments")).toBeInTheDocument();
-    expect(screen.getByText("Completed-job amount outstanding")).toBeInTheDocument();
+    expect(screen.getByText("Completed · unpaid")).toBeInTheDocument();
     expect(api.financeOverview).toHaveBeenCalledWith(user);
+  });
+
+  it("shows server-derived manual payment totals and exposes management actions only to managers", async () => {
+    const payment = { id: "submission-123456789", bookingId: "job-23", paymentId: "payment-23", shopkeeperId: "shop-1", shopkeeperName: "Market Shop", bookingTitle: "Evening shift", amountPaise: 125000, status: "PENDING_REVIEW", attemptNumber: 2, submittedAt: "2026-11-18T12:00:00Z", screenshotUrl: "https://images.example/signed.jpg", history: [{ id: "submission-old", attemptNumber: 1, status: "REJECTED", submittedAt: "2026-11-17T11:00:00Z", rejectionReason: "Amount not visible" }] };
+    useAuth.mockReturnValue({ ...useAuth(), admin: { ...admin, permissions: [...admin.permissions, "payments.read", "payments.manage"] } });
+    api.manualPaymentConfig.mockResolvedValue({ activeProvider: "MANUAL_QR", configured: true, merchantName: "ERRNO", upiId: "errno@bank", qrImageUrl: "https://images.example/qr.png" });
+    api.manualPayments.mockImplementation(async (_user, status) => status === "PENDING_REVIEW" ? { items: [payment], total: 1 } : { items: [], total: status === "APPROVED" ? 3 : status === "REJECTED" ? 2 : 6 });
+    api.paymentSocket.mockResolvedValue({ readyState: 0, close: vi.fn() });
+    api.manualPayment.mockResolvedValue(payment);
+    render(<MemoryRouter><ManualPaymentsPage /></MemoryRouter>);
+    expect(await screen.findByText("Awaiting review")).toBeInTheDocument();
+    expect(screen.getByText(/₹1,250/)).toBeInTheDocument();
+    expect(screen.getByText("Market Shop")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByRole("dialog", { name: /submission details/i })).toBeInTheDocument();
+    expect(await screen.findByText(/Amount not visible/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve payment/i })).toBeInTheDocument();
+  });
+
+  it("keeps a payment reader read-only and hides finance configuration controls", async () => {
+    useAuth.mockReturnValue({ ...useAuth(), admin: { ...admin, permissions: [...admin.permissions, "payments.read"] } });
+    api.manualPaymentConfig.mockResolvedValue({ activeProvider: "RAZORPAY", configured: false, merchantName: "", upiId: "", qrImageUrl: null });
+    api.manualPayments.mockResolvedValue({ items: [], total: 0 });
+    api.paymentSocket.mockResolvedValue({ readyState: 0, close: vi.fn() });
+    render(<MemoryRouter><ManualPaymentsPage /></MemoryRouter>);
+    expect(await screen.findByText("Payment submissions")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve payment/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Browse")).not.toBeInTheDocument();
   });
 
   it("shows server-backed KYC and labels manual review distinctly", async () => {

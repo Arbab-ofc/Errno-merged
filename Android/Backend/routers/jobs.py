@@ -16,6 +16,10 @@ def _assignment_notification_event_id(job_id: str, worker_id: str) -> str:
     """Keep the deterministic notification key within the PostgreSQL 64-char column."""
     digest = hashlib.sha256(f"{job_id}:{worker_id}".encode()).hexdigest()[:48]
     return f"job-assigned:{digest}"
+
+def _application_notification_event_id(action: str, job_id: str, worker_id: str) -> str:
+    digest = hashlib.sha256(f"{job_id}:{worker_id}".encode()).hexdigest()[:48]
+    return f"job-{action}:{digest}"
 from services.notification_service import queue_notification, queue_admin_notifications
 from routers.maps import tracking_hub
 from services.prebooking_dispatcher import dispatch_immediately_or_retry, utc_now
@@ -222,6 +226,8 @@ def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Ses
     if existing_app:
         return ApplicationResponse.from_orm(existing_app)
 
+    shop = db.query(Shop).filter(Shop.id == job.shop_id).first() if job.shop_id else None
+    owner = db.query(User).filter(User.id == shop.owner_id).first() if shop else None
     app = Application(
         job_id=job_id,
         worker_id=worker.id,
@@ -229,6 +235,10 @@ def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Ses
     )
     db.add(app)
     try:
+        if owner:
+            queue_notification(db, recipient=owner, event_type="job_application_received", category="job",
+                title="New job application", body="A worker applied for your job. Open ERRNO to review the application.",
+                data={"route":"job", "job_id":job.id}, event_id=_application_notification_event_id("applied", job.id, worker.id))
         db.commit()
     except IntegrityError:
         # The unique job/worker key closes the concurrent duplicate-apply race.
@@ -241,7 +251,6 @@ def apply_for_job(job_id: str, user: User = Depends(authenticated_user), db: Ses
             raise
         return ApplicationResponse.from_orm(existing_app)
     db.refresh(app)
-
     return ApplicationResponse.from_orm(app)
 
 @router.get("/applications/me", response_model=WorkerApplicationsPage)
@@ -330,24 +339,37 @@ def decide_application(job_id: str, application_id: str, body: ApplicationDecisi
         job.status = "assigned"
         job.assigned_worker_id = application.worker_id
         application.status = "accepted"
-        db.query(Application).filter(
+        other_applications = db.query(Application).filter(
             Application.job_id == job_id,
             Application.id != application_id,
             Application.status == "pending",
-        ).update({Application.status: "rejected"}, synchronize_session=False)
+        ).with_for_update().all()
+        for other_application in other_applications:
+            other_application.status = "rejected"
+            other_worker = db.query(User).filter(User.id == other_application.worker_id).first()
+            if other_worker:
+                queue_notification(db, recipient=other_worker, event_type="application_rejected", category="job",
+                    title="Application update", body="Your application was not selected for this job.",
+                    data={"route":"job", "job_id":job.id},
+                    event_id=_application_notification_event_id("rejected", job.id, other_worker.id))
         worker = db.query(User).filter(User.id == application.worker_id).first()
         shop = db.query(Shop).filter(Shop.id == job.shop_id).first()
         owner = db.query(User).filter(User.id == shop.owner_id).first() if shop else None
         if worker:
-            queue_notification(db, recipient=worker, event_type="job_assigned", category="job",
-                title="Job assigned", body="You have been assigned a job. Open ERRNO to review details.",
-                data={"route":"job","job_id":job.id}, event_id=_assignment_notification_event_id(job.id,worker.id))
+            queue_notification(db, recipient=worker, event_type="application_accepted", category="job",
+                title="Application accepted", body="You have been assigned a job. Open ERRNO to review details.",
+                data={"route":"job","job_id":job.id}, event_id=_application_notification_event_id("accepted", job.id, worker.id))
         if owner:
             queue_notification(db, recipient=owner, event_type="worker_assigned", category="booking",
                 title="Worker assigned", body="A worker has accepted your booking.",
                 data={"route":"booking","job_id":job.id}, event_id=_assignment_notification_event_id(job.id,worker.id))
     else:
         application.status = "rejected"
+        worker = db.query(User).filter(User.id == application.worker_id).first()
+        if worker:
+            queue_notification(db, recipient=worker, event_type="application_rejected", category="job",
+                title="Application update", body="Your application was not selected for this job.",
+                data={"route":"job", "job_id":job.id}, event_id=_application_notification_event_id("rejected", job.id, worker.id))
     db.commit()
     db.refresh(application)
     return ApplicationResponse.from_orm(application)

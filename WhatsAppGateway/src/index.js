@@ -30,7 +30,7 @@ async function authorized(req, res, next) {
   const signature = req.get('X-ERRNO-Signature') || '';
   const nonce = req.get('X-ERRNO-Nonce') || '';
   const now = Date.now();
-  const verdict = verifyInternalRequest({ timestamp, signature, nonce, method: req.method, path: req.path,
+  const verdict = verifyInternalRequest({ timestamp, signature, nonce, method: req.method, path: `${req.baseUrl}${req.path}`,
     body: req.body, secret, now, nonceStore: state.usedNonces });
   if (verdict === 'invalid') return res.status(secret.length < 32 ? 503 : 401).json({ error: secret.length < 32 ? 'internal_auth_not_configured' : 'invalid_internal_auth' });
   if (verdict === 'replay') return res.status(409).json({ error: 'replayed_request' });

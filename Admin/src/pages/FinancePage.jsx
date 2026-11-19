@@ -1,128 +1,92 @@
-import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "../auth/AuthContext";
-import { api } from "../services/api";
-import { PageHeader } from "../components/PageHeader";
-import { StatePanel } from "../components/StatePanel";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowDownLeft, ArrowUpRight, Banknote, CheckCircle2, Clock3, FileText, Image as ImageIcon, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
+import { api } from '../services/api';
+import { PageHeader } from '../components/PageHeader';
+import { StatePanel } from '../components/StatePanel';
+import '../styles/payments.css';
 
-const inr = (paise) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format((Number(paise) || 0) / 100);
+const inr = (paise) => paise == null ? '—' : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(paise) / 100);
+const date = (value) => value ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+const financeCards = [
+  { key: 'verifiedCollectionsPaise', label: 'Verified collections', helper: 'Payments recorded as paid', icon: CheckCircle2, money: true },
+  { key: 'outstandingCompletedPaymentsPaise', label: 'Completed · unpaid', helperKey: 'outstandingCompletedJobCount', helperSuffix: 'completed jobs', icon: Clock3, money: true },
+  { key: 'workerPayablePaise', label: 'Worker payable', helper: 'Earnings from paid bookings', icon: Wallet, money: true },
+  { key: 'withdrawalsPendingPaise', label: 'Withdrawals in queue', helper: 'Pending external payout', icon: ArrowUpRight, money: true },
+];
+
+function StateBadge({ value }) { const tone = value === 'PAID' || value === 'VERIFIED' ? 'good' : value === 'PAYMENT_FAILED' || value === 'REJECTED' ? 'bad' : 'pending'; return <span className={`pay-status ${tone}`}><i />{(value || 'UNKNOWN').replaceAll('_', ' ')}</span>; }
 
 export function FinancePage() {
-  const { user, admin } = useAuth();
-  const [data, setData] = useState(null);
-  const [payments, setPayments] = useState([]);
-  const [refunds, setRefunds] = useState([]);
-  const [audit, setAudit] = useState([]);
-  const [wallets, setWallets] = useState([]);
-  const [withdrawals, setWithdrawals] = useState([]);
-  const [methods, setMethods] = useState([]);
-  const [reconciliation, setReconciliation] = useState(null);
-  const [companyQr, setCompanyQr] = useState(null);
-  const [companyQrUrl, setCompanyQrUrl] = useState("");
-  const [qrVerified, setQrVerified] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const can = new Set(admin?.permissions || []);
-  const refresh = useCallback(async () => {
-    setLoading(true); setError("");
+  const { user, admin } = useAuth(); const permissions = new Set(admin?.permissions || []);
+  const canRead = permissions.has('payments.read'); const canManage = permissions.has('payments.manage');
+  const [data, setData] = useState(null); const [payments, setPayments] = useState([]); const [refunds, setRefunds] = useState([]); const [audit, setAudit] = useState([]);
+  const [wallets, setWallets] = useState([]); const [withdrawals, setWithdrawals] = useState([]); const [methods, setMethods] = useState([]); const [reconciliation, setReconciliation] = useState(null);
+  const [config, setConfig] = useState(null); const [merchant, setMerchant] = useState(''); const [upi, setUpi] = useState(''); const [provider, setProvider] = useState('MANUAL_QR');
+  const [loading, setLoading] = useState(true); const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [updatedAt, setUpdatedAt] = useState(null); const [offset, setOffset] = useState(0);
+  const refresh = useCallback(async (initial = false) => {
+    if (!canRead) { setLoading(false); return; } if (initial) setLoading(true); setError('');
     try {
-      const [overview, paymentRows, refundRows, auditRows, walletRows, withdrawalRows, methodRows, reconcile, qrConfig] = await Promise.all([
-        api.financeOverview(user), api.financePayments(user, { limit: 50, offset }),
-        api.financeRefunds(user, { limit: 50, offset }),
-        api.financeAudit(user, { limit: 50, offset }),
-        can.has("wallet.read") ? api.financeWallets(user, { limit: 50, offset }) : Promise.resolve({ items: [] }),
-        can.has("withdrawals.read") ? api.financeWithdrawals(user) : Promise.resolve([]),
-        can.has("wallet.read") ? api.financePayoutMethods(user) : Promise.resolve([]),
-        can.has("reconciliation.read") ? api.reconciliation(user) : Promise.resolve(null),
-        api.companyPaymentQr(user),
+      const [overview, paymentRows, refundRows, auditRows, walletRows, withdrawalRows, methodRows, reconcile, paymentConfig] = await Promise.all([
+        api.financeOverview(user), api.financePayments(user, { limit: 50, offset }), api.financeRefunds(user, { limit: 50, offset }), api.financeAudit(user, { limit: 50, offset }),
+        permissions.has('wallet.read') ? api.financeWallets(user, { limit: 50, offset }) : Promise.resolve({ items: [] }),
+        permissions.has('withdrawals.read') ? api.financeWithdrawals(user) : Promise.resolve([]),
+        permissions.has('wallet.read') ? api.financePayoutMethods(user) : Promise.resolve([]),
+        permissions.has('reconciliation.read') ? api.reconciliation(user) : Promise.resolve(null), api.manualPaymentConfig(user),
       ]);
-      setData(overview); setPayments(paymentRows.items || []); setRefunds(refundRows.items || []); setAudit(auditRows.items || []); setWallets(walletRows.items || []);
-      setWithdrawals(withdrawalRows || []); setMethods(methodRows || []); setReconciliation(reconcile);
-      setCompanyQr(qrConfig); setCompanyQrUrl(qrConfig.qrAssetUrl || ""); setQrVerified(qrConfig.status === "VERIFIED");
-    } catch (e) { setError(e.message || "Finance data could not be loaded."); }
+      setData(overview); setPayments(paymentRows.items || []); setRefunds(refundRows.items || []); setAudit(auditRows.items || []); setWallets(walletRows.items || []); setWithdrawals(withdrawalRows || []); setMethods(methodRows || []); setReconciliation(reconcile);
+      setConfig(paymentConfig); setMerchant(paymentConfig.merchantName || ''); setUpi(paymentConfig.upiId || ''); setProvider(paymentConfig.activeProvider || 'MANUAL_QR'); setUpdatedAt(new Date());
+    } catch (e) { setError(e.message || 'Finance data could not be loaded.'); }
     finally { setLoading(false); }
-  }, [user, offset, admin]);
-  useEffect(() => { refresh(); }, [refresh]);
+  }, [user, offset, canRead, admin]);
+  useEffect(() => { refresh(true); }, [refresh]);
+  const dirty = Boolean(config && (merchant !== (config.merchantName || '') || upi !== (config.upiId || '') || provider !== (config.activeProvider || 'MANUAL_QR')));
+  const upiInvalid = Boolean(upi.trim() && (!/^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9.-]{1,63}$/.test(upi.trim())));
+  const latestPayments = useMemo(() => payments.slice(0, 8), [payments]);
 
-  async function reviewWithdrawal(row, status) {
-    const reason = window.prompt(`Reason to ${status.toLowerCase()} withdrawal ${row.id}?`);
-    if (!reason?.trim()) return;
-    try { await api.reviewWithdrawal(user, row.id, { status, reason }); await refresh(); }
-    catch (e) { setError(e.message); }
+  async function saveConfig() { if (upiInvalid) { setError('Enter a valid UPI ID, such as name@bank.'); return; } setSaving(true); setError(''); try { await api.updateManualPaymentConfig(user, { activeProvider: provider, merchantName: merchant.trim() || null, upiId: upi.trim() || null }); await refresh(true); } catch (e) { setError(e.message || 'Configuration could not be saved.'); } finally { setSaving(false); } }
+  async function uploadQr(file) {
+    if (!file) return; if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) { setError('Choose a JPG, PNG or WebP image under 5 MB.'); return; }
+    setUploading(true); setError(''); try { await api.uploadPaymentQr(user, file); await refresh(true); } catch (e) { setError(e.message || 'QR upload failed.'); } finally { setUploading(false); }
   }
-  async function completeWithdrawal(row) {
-    const providerPayoutId = window.prompt("Verified provider/bank transfer reference:");
-    const reason = window.prompt("Verification note (must refer to checked transfer evidence):");
-    if (!providerPayoutId?.trim() || !reason?.trim()) return;
-    try { await api.reviewWithdrawal(user, row.id, { status: "COMPLETED", providerPayoutId, reason }); await refresh(); }
-    catch (e) { setError(e.message); }
-  }
-  async function reviewMethod(row) {
-    const status = window.confirm(`Review payout destination ending ${row.providerReferenceSuffix}? Confirm only after checking destination ownership and control${row.kycRequired ? " and the required identity verification" : ""}.`) ? "VERIFIED" : "REJECTED";
-    const reason = window.prompt("Enter the review reason:");
-    if (!reason?.trim()) return;
-    try { await api.reviewPayoutMethod(user, row.id, { status, reason }); await refresh(); }
-    catch (e) { setError(e.message); }
-  }
-  async function refund(row) {
-    const reason = window.prompt("Refund reason:");
-    if (!reason?.trim()) return;
-    const amount = window.prompt(`Refund amount in paise (blank for remaining balance):`);
-    const body = { paymentId: row.id, reason, idempotencyKey: crypto.randomUUID() };
-    if (amount?.trim()) body.amountPaise = Number(amount);
-    try { await api.refundPayment(user, body); await refresh(); }
-    catch (e) { setError(e.message); }
-  }
-  async function resolveCash(row) {
-    const outcome = window.confirm("Confirm that ERRNO commission was received and reconciled? Choose Cancel to mark as disputed.") ? "RECONCILED" : "DISPUTED";
-    const reason = window.prompt("Reconciliation or dispute reason:");
-    if (!reason?.trim()) return;
-    const body = { outcome, reason };
-    if (outcome === "RECONCILED") body.errnoCommissionReceivedPaise = Number(window.prompt("Confirmed ERRNO commission received (paise):") || 0);
-    try { await api.resolveCash(user, row.id, body); await refresh(); }
-    catch (e) { setError(e.message); }
-  }
-  async function saveCompanyQr() {
-    const reason = window.prompt("Confirm that this is the approved ERRNO YES BANK QR asset and that destination ownership was checked:");
-    if (!reason?.trim()) return;
-    try { await api.updateCompanyPaymentQr(user, { qrAssetUrl: companyQrUrl, verified: qrVerified, reason }); await refresh(); }
-    catch (e) { setError(e.message); }
-  }
+  async function reviewWithdrawal(row, status) { const reason = window.prompt(`Reason to ${status.toLowerCase()} withdrawal ${row.id}?`); if (!reason?.trim()) return; try { await api.reviewWithdrawal(user, row.id, { status, reason }); await refresh(); } catch (e) { setError(e.message); } }
+  async function completeWithdrawal(row) { const providerPayoutId = window.prompt('Verified provider/bank transfer reference:'); const reason = window.prompt('Verification note (must refer to checked transfer evidence):'); if (!providerPayoutId?.trim() || !reason?.trim()) return; try { await api.reviewWithdrawal(user, row.id, { status: 'COMPLETED', providerPayoutId, reason }); await refresh(); } catch (e) { setError(e.message); } }
+  async function reviewMethod(row) { const status = window.confirm(`Review payout destination ending ${row.providerReferenceSuffix}? Confirm only after checking destination ownership and control.`) ? 'VERIFIED' : 'REJECTED'; const reason = window.prompt('Enter the review reason:'); if (!reason?.trim()) return; try { await api.reviewPayoutMethod(user, row.id, { status, reason }); await refresh(); } catch (e) { setError(e.message); } }
+  async function refund(row) { const reason = window.prompt('Refund reason:'); if (!reason?.trim()) return; const amount = window.prompt('Refund amount in paise (blank for remaining balance):'); const body = { paymentId: row.id, reason, idempotencyKey: crypto.randomUUID() }; if (amount?.trim()) body.amountPaise = Number(amount); try { await api.refundPayment(user, body); await refresh(); } catch (e) { setError(e.message); } }
+  async function resolveCash(row) { const outcome = window.confirm('Confirm that ERRNO commission was received and reconciled? Choose Cancel to mark as disputed.') ? 'RECONCILED' : 'DISPUTED'; const reason = window.prompt('Reconciliation or dispute reason:'); if (!reason?.trim()) return; const body = { outcome, reason }; if (outcome === 'RECONCILED') body.errnoCommissionReceivedPaise = Number(window.prompt('Confirmed ERRNO commission received (paise):') || 0); try { await api.resolveCash(user, row.id, body); await refresh(); } catch (e) { setError(e.message); } }
 
-  if (loading && !data) return <><PageHeader title="Finance & Payments" description="Verified collections, wallet ledger, refunds and settlement operations." /><StatePanel title="Loading finance data" detail="Fetching backend verified financial records…" loading /></>;
-  if (error && !data) return <><PageHeader title="Finance & Payments" description="Backend controlled financial operations." onRefresh={refresh} /><StatePanel tone="denied" title="Finance data unavailable" detail={error} actionLabel="Retry" onAction={refresh} /></>;
+  if (!canRead) return <main className="payments-page"><PageHeader title="Finance & Payments" description="Verified collections and payment operations." /><StatePanel tone="denied" title="Payment access required" detail="Your Admin grant does not include payments.read." /></main>;
+  if (loading && !data) return <main className="payments-page"><PageHeader title="Finance & Payments" description="Verified collections, payment configuration and settlement activity." /><div className="payment-skeleton" aria-label="Loading finance data"><i /><i /><i /><i /></div></main>;
+  if (error && !data) return <main className="payments-page"><PageHeader title="Finance & Payments" description="Verified collections, payment configuration and settlement activity." onRefresh={() => refresh(true)} /><StatePanel tone="denied" title="Finance data unavailable" detail={error} actionLabel="Retry" onAction={() => refresh(true)} /></main>;
 
-  const cards = [
-    ["Verified collections", data?.verifiedCollectionsPaise, true], ["ERRNO commission net", data?.errnoCommissionNetPaise, true],
-    ["Completed-job amount outstanding", data?.outstandingCompletedPaymentsPaise, true], ["Worker payable", data?.workerPayablePaise, true],
-    ["Withdrawals pending", data?.withdrawalsPendingPaise, true], ["Refunds total", data?.refundTotalPaise, true],
-    ["Cash collections pending reconciliation", data?.cashCollectionsPending, false],
-    ["Unmatched provider events", data?.unreconciledWebhookEvents, false], ["Payments failed", data?.paymentFailedCount, false],
-  ];
-  return <>
-    <PageHeader title="Finance & Payments" description="Razorpay collections, append-only worker wallet, withdrawals and cash reconciliation." onRefresh={refresh} refreshing={loading} />
-    {error && <div className="inline-error" role="alert">{error}</div>}
-    <section className="metric-grid">{cards.map(([label, value, isMoney]) => <article className="metric-card" key={label}><small>{label}</small><strong>{value == null ? "—" : isMoney ? inr(value) : value}</strong></article>)}</section>
+  return <main className="payments-page">
+    <PageHeader eyebrow="FINANCE OPERATIONS" title="Finance & Payments" description="Monitor verified collections, payment obligations and worker settlement exposure." onRefresh={() => refresh(true)} refreshing={loading} />
+    {error && <div className="payments-alert" role="alert"><span>{error}</span><button className="pay-icon-button" onClick={() => refresh(true)} aria-label="Retry loading"><RefreshCw size={16} /></button></div>}
+    <div className="finance-updated"><span><i /> Data from payment and ledger records</span><span>Updated {date(updatedAt)}</span></div>
+    <section className="finance-kpis" aria-label="Financial overview">{financeCards.map((card) => { const Icon = card.icon; return <article className="finance-kpi" key={card.key}><div className="finance-kpi-label"><span>{card.label}</span><i><Icon size={17} /></i></div><strong>{inr(data?.[card.key])}</strong><small>{card.helperKey ? `${data?.[card.helperKey] ?? '—'} ${card.helperSuffix}` : card.helper}</small></article>; })}</section>
 
-    <section className="recent-panel"><div className="panel-heading"><div><h2>Payment transactions</h2><p>Provider verified status · amounts originate from immutable booking pricing snapshots</p></div></div>
-      {!can.has("payments.read") ? <StatePanel tone="denied" title="Payments permission required" detail="Your admin grant does not include payments.read." /> : payments.length === 0 ? <div className="small-empty">No payment attempts recorded.</div> : <div className="table-scroll"><table className="data-table"><thead><tr><th>Booking</th><th>Shopkeeper</th><th>Worker</th><th>Amount</th><th>Provider order / payment</th><th>Status</th><th>Action</th></tr></thead><tbody>{payments.map((p) => <tr key={p.id}><td>{p.bookingId}</td><td>{p.shopkeeperId}</td><td>{p.workerId}</td><td>{inr(p.amountPaise)}</td><td>{p.orderId || "—"}<br />{p.paymentId || "—"}</td><td>{p.status}</td><td>{can.has("payments.refund") && p.status === "PAID" ? <button className="secondary-button" onClick={() => refund(p)}>Refund</button> : "—"}</td></tr>)}</tbody></table></div>}
-      <div className="pagination-actions"><button className="secondary-button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button><span>Showing {offset + 1}–{offset + payments.length}</span><button className="secondary-button" disabled={payments.length < 50} onClick={() => setOffset(offset + 50)}>Next</button></div>
+    <section className="finance-config-layout">
+      <div className="payment-surface finance-config">
+        <div className="payment-section-head"><div><span className="section-kicker">PAYMENT CHANNEL</span><h2>Configuration</h2><p>Current settings for new payment obligations.</p></div><span className={`config-state ${config?.configured ? 'is-ready' : ''}`}><i />{config?.configured ? 'Active' : 'Setup needed'}</span></div>
+        <div className="finance-fields"><label>Payment method<select value={provider} disabled={!canManage} onChange={(e) => setProvider(e.target.value)}><option value="MANUAL_QR">Manual QR payment</option><option value="RAZORPAY">Razorpay</option></select></label><label>Merchant display name<input value={merchant} disabled={!canManage} onChange={(e) => setMerchant(e.target.value)} placeholder="ERRNO Private Limited" /></label><label className="field-wide">Company UPI details <span className="optional-label">Optional</span><input aria-invalid={upiInvalid} aria-describedby={upiInvalid ? 'upi-validation' : undefined} value={upi} disabled={!canManage} onChange={(e) => setUpi(e.target.value)} placeholder="payments@examplebank" />{upiInvalid && <small id="upi-validation" className="field-validation">Enter a valid UPI ID, such as name@bank.</small>}</label></div>
+        <div className="config-actions"><span className={dirty ? 'unsaved-note' : 'saved-note'}>{dirty ? 'Unsaved changes' : 'No unsaved changes'}</span>{canManage && <><button className="pay-button quiet" disabled={!dirty || saving} onClick={() => { setMerchant(config?.merchantName || ''); setUpi(config?.upiId || ''); setProvider(config?.activeProvider || 'MANUAL_QR'); }}>Cancel</button><button className="pay-button solid" disabled={!dirty || saving || upiInvalid} onClick={saveConfig}>{saving ? 'Saving…' : 'Save configuration'}</button></>}</div>
+        {!canManage && <p className="permission-note">Read-only access · management controls are disabled.</p>}
+      </div>
+      <aside className="payment-surface finance-qr"><div className="payment-section-head"><div><span className="section-kicker">COMPANY DESTINATION</span><h2>Active payment QR</h2><p>Payment QR currently provided to shopkeepers.</p></div><span className={`config-state ${config?.qrImageUrl ? 'is-ready' : ''}`}><i />{config?.qrImageUrl ? 'Available' : 'Unavailable'}</span></div>
+        {config?.qrImageUrl ? <a href={config.qrImageUrl} className="finance-qr-image" target="_blank" rel="noreferrer"><img src={config.qrImageUrl} alt="Active company payment QR" /></a> : <div className="finance-qr-placeholder"><ImageIcon size={24} /><span>No active QR image</span></div>}
+        {canManage ? <label className={`upload-zone finance-upload ${uploading ? 'disabled' : ''}`}><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={(e) => { uploadQr(e.target.files?.[0]); e.target.value = ''; }} /><span className="upload-mark"><ImageIcon size={17} /></span><span><b>{uploading ? 'Uploading securely…' : config?.qrImageUrl ? 'Replace QR image' : 'Upload QR image'}</b><small>JPG, PNG or WebP · up to 5 MB</small></span><span className="upload-action">Browse</span></label> : <p className="permission-note">Read-only access · QR image replacement is restricted.</p>}
+      </aside>
     </section>
 
-    <section className="recent-panel"><div className="panel-heading"><div><h2>Refund history</h2><p>Refunds are considered complete only after provider confirmation.</p></div></div>
-      {refunds.length === 0 ? <div className="small-empty">No refund requests recorded.</div> : <div className="table-scroll"><table className="data-table"><thead><tr><th>Refund</th><th>Payment</th><th>Amount</th><th>Reason</th><th>Provider reference</th><th>Status</th></tr></thead><tbody>{refunds.map((r) => <tr key={r.id}><td>{r.id}</td><td>{r.paymentId}</td><td>{inr(r.amountPaise)}</td><td>{r.reason}</td><td>{r.providerRefundId || "—"}</td><td>{r.status}</td></tr>)}</tbody></table></div>}
+    <section className="payment-surface finance-transactions"><div className="payment-section-head"><div><span className="section-kicker">TRANSACTION LEDGER</span><h2>Recent payment activity</h2><p>Provider status and amounts from the immutable booking pricing snapshot.</p></div><span className="finance-count">{payments.length} loaded</span></div>
+      {!latestPayments.length ? <div className="payment-empty compact"><h3>No payment attempts recorded</h3><p>Payment activity will appear when a booking creates a payment obligation.</p></div> : <div className="payment-table-wrap"><table className="payment-table finance-table"><thead><tr><th>Booking</th><th>Shopkeeper</th><th>Worker</th><th>Amount</th><th>Provider reference</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>{latestPayments.map((p) => <tr key={p.id}><td data-label="Booking"><b>{p.bookingId}</b><small className="cell-sub">{p.id}</small></td><td data-label="Shopkeeper">{p.shopkeeperId}</td><td data-label="Worker">{p.workerId}</td><td data-label="Amount" className="amount-cell">{inr(p.amountPaise)}</td><td data-label="Provider reference"><span className="provider-ref">{p.orderId || p.paymentId || '—'}</span></td><td data-label="Status"><StateBadge value={p.status} /></td><td data-label="Created">{date(p.createdAt)}</td><td data-label="Action">{permissions.has('payments.refund') && p.status === 'PAID' ? <button className="pay-button outline" onClick={() => refund(p)}>Refund</button> : <span className="muted-copy">—</span>}</td></tr>)}</tbody></table></div>}
+      <div className="queue-pagination"><span>Showing {payments.length ? offset + 1 : 0}–{offset + payments.length} payment records</span><div><button className="pay-icon-button" aria-label="Previous payment records" disabled={!offset || loading} onClick={() => setOffset(Math.max(0, offset - 50))}><ArrowDownLeft size={16} /></button><button className="pay-icon-button" aria-label="Next payment records" disabled={payments.length < 50 || loading} onClick={() => setOffset(offset + 50)}><ArrowUpRight size={16} /></button></div></div>
     </section>
 
-    <section className="recent-panel"><div className="panel-heading"><div><h2>Financial audit history</h2><p>Administrative actions and provider-confirmed ledger events.</p></div></div>
-      {audit.length === 0 ? <div className="small-empty">No financial audit events recorded.</div> : audit.map((row) => <div className="recent-row" key={row.id}><div><b>{row.eventType} · {row.resourceType}</b><small>{row.actorId || "System"} · {row.resourceId} · {row.createdAt ? new Date(row.createdAt).toLocaleString() : ""}</small></div><small>{JSON.stringify(row.details || {})}</small></div>)}
-    </section>
+    <section className="finance-lower-grid"><article className="payment-surface finance-list"><div className="payment-section-head"><div><span className="section-kicker">AUDIT TRAIL</span><h2>Financial activity</h2><p>Administrative actions and payment events.</p></div><FileText size={17} /></div>{audit.length ? audit.slice(0, 8).map((row) => <div className="finance-list-row" key={row.id}><span className="finance-row-icon"><ShieldCheck size={15} /></span><div><b>{row.eventType.replaceAll('_', ' ')}</b><small>{row.actorId || 'System'} · {row.resourceType} · {row.resourceId}</small></div><time>{date(row.createdAt)}</time></div>) : <p className="muted-copy">No financial audit events recorded.</p>}</article>
+      <article className="payment-surface finance-list"><div className="payment-section-head"><div><span className="section-kicker">REFUND HISTORY</span><h2>Refund activity</h2><p>Completion depends on provider confirmation.</p></div><Banknote size={17} /></div>{refunds.length ? refunds.slice(0, 8).map((row) => <div className="finance-list-row" key={row.id}><span className="finance-row-icon"><ArrowDownLeft size={15} /></span><div><b>{inr(row.amountPaise)} · {row.status}</b><small>{row.paymentId} · {row.reason}</small></div><time>{date(row.createdAt)}</time></div>) : <p className="muted-copy">No refund requests recorded.</p>}</article></section>
 
-    <section className="recent-grid"><article className="recent-panel"><div className="panel-heading"><div><h2>Worker wallets</h2><p>Ledger-derived balance and eligibility</p></div></div>{!can.has("wallet.read") ? <p>Wallet permission required.</p> : wallets.map((w) => <div className="recent-row" key={w.workerId}><div><b>{w.name || w.workerId}</b><small>{w.eligibleCompletedOrders} eligible paid orders · {w.withdrawalEligible ? "eligible" : w.eligibilityReasons?.join("; ")}</small></div><strong>{inr(w.availableBalancePaise)}</strong></div>)}</article>
-      <article className="recent-panel"><div className="panel-heading"><div><h2>Withdrawal requests</h2><p>Approval queues external payout; completion requires an independently verified transfer reference.</p></div></div>{!can.has("withdrawals.read") ? <p>Withdrawal permission required.</p> : withdrawals.map((w) => <div className="recent-row" key={w.id}><div><b>{w.workerId}</b><small>{inr(w.amountPaise)} · {w.status}</small></div>{can.has("withdrawals.manage") ? w.status === "PENDING_EXTERNAL_PAYOUT" ? <div><button className="secondary-button" onClick={() => reviewWithdrawal(w, "APPROVED")}>Approve queue</button> <button className="secondary-button" onClick={() => reviewWithdrawal(w, "REJECTED")}>Reject</button></div> : w.status === "APPROVED" ? <button className="secondary-button" onClick={() => completeWithdrawal(w)}>Record verified transfer</button> : null : null}</div>)}</article></section>
-
-    <section className="recent-grid"><article className="recent-panel"><div className="panel-heading"><div><h2>Payout destinations</h2><p>Only provider references are stored; destination ownership review remains an audited admin decision.</p></div></div>{methods.map((m) => <div className="recent-row" key={m.id}><div><b>{m.workerId}</b><small>…{m.providerReferenceSuffix} · {m.status}</small></div>{m.status === "PENDING_VERIFICATION" && can.has("withdrawals.manage") ? <button className="secondary-button" onClick={() => reviewMethod(m)}>Review</button> : null}</div>)}</article>
-      <article className="recent-panel"><div className="panel-heading"><div><h2>Cash reconciliation</h2><p>Cash is separate from Razorpay. Reconciled records require both parties and commission evidence.</p></div></div>{reconciliation?.cashCollections?.length ? reconciliation.cashCollections.map((c) => <div className="recent-row" key={c.id}><div><b>{c.bookingId}</b><small>{inr(c.amountPaise)} · {c.status}</small></div>{can.has("reconciliation.manage") ? <button className="secondary-button" onClick={() => resolveCash(c)}>Resolve</button> : null}</div>) : <div className="small-empty">No cash items require reconciliation.</div>}</article></section>
-
-    {can.has("payments.manage") && <section className="recent-panel"><div className="panel-heading"><div><h2>Company UPI QR asset</h2><p>Worker apps display this only after an admin verifies the supplied YES BANK asset. QR scans do not prove payment.</p></div></div><label className="form-field">Approved HTTPS QR image URL<input value={companyQrUrl} onChange={(e) => setCompanyQrUrl(e.target.value)} placeholder="https://approved-assets.example/errno-upi-qr.png" /></label><label className="checkbox-field"><input type="checkbox" checked={qrVerified} onChange={(e) => setQrVerified(e.target.checked)} />I verified the account destination and QR asset</label><p>Current state: {companyQr?.status || "UNCONFIGURED"}</p><button className="primary-button" disabled={!companyQrUrl.startsWith("https://")} onClick={saveCompanyQr}>Save QR configuration</button></section>}
-  </>;
+    {(permissions.has('wallet.read') || permissions.has('withdrawals.read') || permissions.has('reconciliation.read')) && <section className="finance-lower-grid finance-operations">{permissions.has('wallet.read') && <article className="payment-surface finance-list"><div className="payment-section-head"><div><span className="section-kicker">WORKER PAYOUTS</span><h2>Wallet balances</h2><p>Ledger-derived balance and withdrawal eligibility.</p></div><Wallet size={17} /></div>{wallets.length ? wallets.map((w) => <div className="finance-list-row" key={w.workerId}><div><b>{w.name || w.workerId}</b><small>{w.eligibleCompletedOrders} eligible completed orders · {w.withdrawalEligible ? 'Eligible' : (w.eligibilityReasons || []).join('; ')}</small></div><strong>{inr(w.availableBalancePaise)}</strong></div>) : <p className="muted-copy">No wallet records in this view.</p>}{methods.map((m) => <div className="finance-list-row" key={m.id}><div><b>{m.workerId}</b><small>Destination ending {m.providerReferenceSuffix} · {m.status}</small></div>{m.status === 'PENDING_VERIFICATION' && permissions.has('withdrawals.manage') && <button className="pay-button outline" onClick={() => reviewMethod(m)}>Review</button>}</div>)}</article>}{permissions.has('withdrawals.read') && <article className="payment-surface finance-list"><div className="payment-section-head"><div><span className="section-kicker">WITHDRAWAL QUEUE</span><h2>Worker withdrawal requests</h2><p>Completion requires a verified external transfer reference.</p></div><ArrowUpRight size={17} /></div>{withdrawals.length ? withdrawals.map((w) => <div className="finance-list-row" key={w.id}><div><b>{w.workerId} · {inr(w.amountPaise)}</b><small>{w.id} · {w.status}</small></div>{permissions.has('withdrawals.manage') && <div className="withdraw-actions">{w.status === 'PENDING_EXTERNAL_PAYOUT' && <><button className="pay-button outline" onClick={() => reviewWithdrawal(w, 'APPROVED')}>Approve queue</button><button className="pay-button reject" onClick={() => reviewWithdrawal(w, 'REJECTED')}>Reject</button></>}{w.status === 'APPROVED' && <button className="pay-button outline" onClick={() => completeWithdrawal(w)}>Record transfer</button>}</div>}</div>) : <p className="muted-copy">No withdrawal requests.</p>}</article>}{permissions.has('reconciliation.read') && <article className="payment-surface finance-list"><div className="payment-section-head"><div><span className="section-kicker">CASH CONTROL</span><h2>Cash reconciliation</h2><p>Reconcile with both party confirmations and commission evidence.</p></div></div>{reconciliation?.cashCollections?.length ? reconciliation.cashCollections.map((row) => <div className="finance-list-row" key={row.id}><div><b>{row.bookingId} · {inr(row.amountPaise)}</b><small>{row.status}</small></div>{permissions.has('reconciliation.manage') && <button className="pay-button outline" onClick={() => resolveCash(row)}>Resolve</button>}</div>) : <p className="muted-copy">No cash items require reconciliation.</p>}</article>}</section>}
+    {updatedAt && <p className="finance-footer-note">Data refreshed {date(updatedAt)} · Figures reflect backend payment and ledger records.</p>}
+  </main>;
 }

@@ -1,6 +1,6 @@
 services:
   whatsapp-gateway:
-    build: .
+    image: ${WHATSAPP_GATEWAY_IMAGE:-errno-whatsapp-gateway:local}
     restart: unless-stopped
     environment:
       WHATSAPP_GATEWAY_BIND: 0.0.0.0
@@ -11,6 +11,8 @@ services:
       WHATSAPP_GATEWAY_QR_TTL_SECONDS: ${WHATSAPP_GATEWAY_QR_TTL_SECONDS:-60}
     volumes:
       - whatsapp-session:/var/lib/errno-whatsapp/session
+    ports:
+      - "127.0.0.1:8787:8787"
     networks:
       - errno-private
     security_opt:
@@ -18,6 +20,17 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    healthcheck:
+      test: ["CMD", "node", "src/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   whatsapp-session:

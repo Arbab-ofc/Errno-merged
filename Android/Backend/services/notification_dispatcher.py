@@ -6,6 +6,7 @@ import os
 import random
 import signal
 import socket
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -150,6 +151,29 @@ def run_forever() -> None:
             time.sleep(poll)
 
 
+def run_batch(limit: int = 100) -> int:
+    """Dispatch a bounded batch for Cloud Run Jobs / scheduled execution."""
+    if os.getenv("NOTIFICATION_WORKER_ENABLED", "false").strip().lower() not in {"1", "true", "yes", "on"}:
+        logger.warning("notification_worker_disabled")
+        return 0
+    processed = 0
+    while processed < max(1, min(int(limit), 1000)):
+        db = SessionLocal()
+        try:
+            worked = dispatch_one(db)
+            if not worked:
+                break
+            processed += 1
+        except Exception:
+            db.rollback()
+            logger.exception("notification_batch_iteration_failed")
+            break
+        finally:
+            db.close()
+    logger.info("notification_batch_complete processed=%s", processed)
+    return processed
+
+
 def cleanup_retained_records(db) -> tuple[int, int]:
     """Delete old delivery logs and inbox/outbox rows using configurable retention."""
     now = datetime.now(timezone.utc)
@@ -169,4 +193,12 @@ def cleanup_retained_records(db) -> tuple[int, int]:
 
 if __name__ == "__main__":
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    run_forever()
+    if "--once" in sys.argv:
+        try:
+            index = sys.argv.index("--limit")
+            limit = int(sys.argv[index + 1])
+        except (ValueError, IndexError):
+            limit = 100
+        run_batch(limit)
+    else:
+        run_forever()

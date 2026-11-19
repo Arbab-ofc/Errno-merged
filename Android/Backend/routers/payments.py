@@ -36,6 +36,12 @@ ws_router = APIRouter(prefix="/api/v1", tags=["Payment events"])
 logger = logging.getLogger(__name__)
 
 
+def _earning_notification_event_id(payment_id: str, worker_id: str) -> str:
+    """Fit deterministic earnings notification IDs into the 64-character column."""
+    digest = hashlib.sha256(f"{payment_id}:{worker_id}".encode()).hexdigest()[:48]
+    return f"payment-earned:{digest}"
+
+
 class PaymentEventHub:
     """Best-effort process-local fanout; REST state remains authoritative after reconnect."""
     def __init__(self):
@@ -343,6 +349,12 @@ def _record_paid(db: Session, txn: PaymentTransaction, payment_id: str, paid_at=
     db.add(WalletLedgerEntry(worker_id=txn.worker_id, booking_id=txn.booking_id, payment_id=txn.id,
         category="EARNING_AVAILABLE", amount_paise=txn.worker_earning_paise,
         idempotency_key=f"earning:{txn.id}"))
+    worker = db.query(User).filter_by(id=txn.worker_id).first()
+    if worker:
+        queue_notification(db, recipient=worker, event_type="worker_earning_available", category="payment",
+            title="Earnings added", body="Earnings from a completed ERRNO job are now available in your wallet.",
+            data={"route":"payment", "payment_id":txn.id, "booking_id":txn.booking_id},
+            event_id=_earning_notification_event_id(txn.id, worker.id))
     if txn.commission_paise:
         db.add(PlatformFinanceLedgerEntry(payment_id=txn.id, entry_type="COMMISSION_CREDIT",
             amount_paise=txn.commission_paise, idempotency_key=f"commission:{txn.id}"))

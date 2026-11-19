@@ -2,6 +2,7 @@
 import os
 import hashlib
 import hmac
+import logging
 from functools import lru_cache
 
 import firebase_admin
@@ -13,6 +14,7 @@ from database import get_db
 from models import AdminPermission, User
 
 PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "errno-pvt-ltd")
+logger = logging.getLogger(__name__)
 _bearer = HTTPBearer(auto_error=False)
 
 
@@ -39,7 +41,26 @@ def verify_firebase_token(token: str) -> dict:
         return claims
     except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError, auth.RevokedIdTokenError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token") from None
-    except Exception:
+    except Exception as exc:
+        # Do not log the bearer token, claims, or Firebase response body.
+        response = getattr(exc, "http_response", None)
+        error_code = getattr(exc, "code", "")
+        http_status = getattr(response, "status_code", "")
+        permission = ""
+        try:
+            body = response.json() if response is not None else {}
+            details = body.get("error", {}).get("details", [])
+            permission = next(
+                (detail.get("metadata", {}).get("permission", "") for detail in details
+                 if detail.get("metadata", {}).get("permission")),
+                "",
+            )
+        except Exception:
+            pass
+        logger.warning(
+            "firebase_token_verification_failed error_type=%s error_code=%s http_status=%s permission=%s",
+            type(exc).__name__, error_code, http_status, permission,
+        )
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Authentication service unavailable") from None
 
 

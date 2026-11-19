@@ -94,6 +94,53 @@ def test_gateway_failure_fails_closed(auth_client, monkeypatch):
     assert response.status_code == 503
 
 
+def test_gateway_https_uses_configured_private_ca(monkeypatch):
+    import ssl
+    import json
+    import certifi
+    monkeypatch.setenv("WHATSAPP_GATEWAY_ENABLED", "true")
+    monkeypatch.setenv("WHATSAPP_GATEWAY_INTERNAL_URL", "https://10.98.0.10:8443")
+    monkeypatch.setenv("WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET", "x" * 48)
+    monkeypatch.setenv("WHATSAPP_GATEWAY_CA_BUNDLE", certifi.where())
+    captured = {}
+
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self): return json.dumps({"healthy": True, "status": "DISCONNECTED"}).encode()
+
+    def fake_urlopen(request, timeout, context):
+        captured.update(url=request.full_url, timeout=timeout, context=context)
+        return Response()
+
+    monkeypatch.setattr(whatsapp_auth.urllib.request, "urlopen", fake_urlopen)
+    result = whatsapp_auth._gateway("GET", "/internal/health")
+    assert result["healthy"] is True
+    assert captured["url"] == "https://10.98.0.10:8443/internal/health"
+    assert captured["context"].verify_mode == ssl.CERT_REQUIRED
+
+
+def test_admin_management_transport_can_run_while_otp_delivery_stays_disabled(monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setenv("WHATSAPP_GATEWAY_ENABLED", "false")
+    monkeypatch.setenv("WHATSAPP_GATEWAY_MANAGEMENT_ENABLED", "true")
+    monkeypatch.setenv("WHATSAPP_GATEWAY_INTERNAL_URL", "https://10.98.0.2:8443")
+    monkeypatch.setenv("WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET", "x" * 48)
+    with pytest.raises(HTTPException) as blocked:
+        whatsapp_auth._gateway("GET", "/internal/whatsapp/status")
+    assert blocked.value.status_code == 503
+
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self): return b'{"status":"QR_REQUIRED"}'
+
+    monkeypatch.setattr(whatsapp_auth.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+    assert whatsapp_auth._gateway("GET", "/internal/whatsapp/status", allow_management=True)["status"] == "QR_REQUIRED"
+
+
 def test_expired_challenge_rejected(auth_client):
     client, factory = auth_client
     sent = client.post("/api/v1/auth/whatsapp/send-otp", json={"phone": "+919876543210", "role": "WORKER"}).json()

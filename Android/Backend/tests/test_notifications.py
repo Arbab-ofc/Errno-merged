@@ -6,8 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-os.environ.setdefault("NOTIFICATION_TOKEN_ENCRYPTION_KEY", "Z2RZbG1vT2ZrSnoyUTJFam10blp5VmlNbnV4UTVfN0c=")
-os.environ.setdefault("NOTIFICATION_TOKEN_HASH_SECRET", "unit-test-token-hash-secret-keep-it-long-32")
+# Root .env may explicitly contain blank placeholders; test credentials must win.
+os.environ["NOTIFICATION_TOKEN_ENCRYPTION_KEY"] = "Z2RZbG1vT2ZrSnoyUTJFam10blp5VmlNbnV4UTVfN0c="
+os.environ["NOTIFICATION_TOKEN_HASH_SECRET"] = "unit-test-token-hash-secret-keep-it-long-32"
 
 from database import Base, get_db
 import models
@@ -121,3 +122,17 @@ def test_accepted_and_invalid_token_delivery_are_distinguished(ctx):
     assert outbox.status=="permanently_failed"
     assert db.query(models.NotificationDeliveryAttempt).filter_by(notification_id=outbox.notification_id,status="accepted_by_fcm").count()==1
     assert db.query(models.NotificationDevice).filter_by(id=invalid.id).one().active is False
+
+def test_scheduled_dispatch_batch_is_bounded_and_respects_worker_flag(monkeypatch):
+    from services import notification_dispatcher as worker
+    calls = []
+    class FakeSession:
+        def close(self): pass
+        def rollback(self): pass
+    monkeypatch.setattr(worker, "SessionLocal", FakeSession)
+    monkeypatch.setattr(worker, "dispatch_one", lambda _db: calls.append(1) is None and len(calls) <= 3)
+    monkeypatch.setenv("NOTIFICATION_WORKER_ENABLED", "true")
+    assert worker.run_batch(2) == 2
+    assert len(calls) == 2
+    monkeypatch.setenv("NOTIFICATION_WORKER_ENABLED", "false")
+    assert worker.run_batch(10) == 0

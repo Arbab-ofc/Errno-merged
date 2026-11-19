@@ -53,6 +53,17 @@ def _database_url() -> str:
             "Non-local migrations require explicit ERRNO_ALLOW_CANONICAL_MIGRATION=1 approval."
         )
 
+    cloud_sql_name = os.environ.get("CLOUD_SQL_CONNECTION_NAME", "").strip()
+    socket_host = url.query.get("host", "")
+    cloud_sql_socket = f"/cloudsql/{cloud_sql_name}" if cloud_sql_name else ""
+    if socket_host.startswith("/cloudsql/"):
+        if not cloud_sql_socket or socket_host != cloud_sql_socket:
+            raise RuntimeError("Cloud SQL migration socket must match CLOUD_SQL_CONNECTION_NAME.")
+        query = dict(url.query)
+        query.pop("sslrootcert", None)
+        query["sslmode"] = "disable"
+        return url.set(query=query).render_as_string(hide_password=False)
+
     ca_path = os.environ.get("ERRNO_PGSSLROOTCERT")
     if not ca_path or not Path(ca_path).is_file():
         raise RuntimeError(
