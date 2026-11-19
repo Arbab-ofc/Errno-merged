@@ -332,6 +332,30 @@ def test_unauthorized_admin_finance_access_fails(payment_client):
     assert response.status_code == 403
 
 
+def test_manual_payment_permissions_are_grantable_and_enforced(payment_client):
+    from tools.provision_admin import PERMISSIONS
+
+    assert {"payments.read", "payments.manage"}.issubset(PERMISSIONS)
+    client, factory = payment_client
+    with factory() as db:
+        admin = db.query(AdminPermission).filter_by(firebase_uid="finance-admin").one()
+        admin.permissions = ["payments.manage"]
+        db.commit()
+
+    headers = {"Authorization": "Bearer admin-token"}
+    assert client.get("/api/v1/admin/payments/manual", headers=headers).status_code == 403
+    assert client.post("/api/v1/admin/payments/manual/missing/approve", headers=headers).status_code == 404
+
+    with factory() as db:
+        admin = db.query(AdminPermission).filter_by(firebase_uid="finance-admin").one()
+        admin.permissions = ["payments.read"]
+        db.commit()
+
+    queue = client.get("/api/v1/admin/payments/manual", headers=headers)
+    assert queue.status_code == 200 and queue.json()["items"] == []
+    assert client.post("/api/v1/admin/payments/manual/missing/approve", headers=headers).status_code == 403
+
+
 def test_finance_overview_includes_completed_unpaid_bookings(payment_client):
     client, _ = payment_client
     response = client.get("/api/v1/admin/finance/overview", headers={"Authorization": "Bearer admin-token"})

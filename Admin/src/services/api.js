@@ -50,7 +50,7 @@ export const api = {
   },
   manualPaymentConfig: (user) => send('/api/v1/admin/payments/config', { user }),
   updateManualPaymentConfig: (user, body) => send('/api/v1/admin/payments/config', { user, method: 'PATCH', body }),
-  manualPayments: (user, status = 'ALL', offset = 0) => send(`/api/v1/admin/payments/manual?status=${encodeURIComponent(status)}&limit=50&offset=${offset}`, { user }),
+  manualPayments: (user, status = 'ALL', offset = 0, limit = 50) => send(`/api/v1/admin/payments/manual?status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`, { user }),
   manualPayment: (user, id) => send(`/api/v1/admin/payments/manual/${encodeURIComponent(id)}`, { user }),
   approveManualPayment: (user, id) => send(`/api/v1/admin/payments/manual/${encodeURIComponent(id)}/approve`, { user, method: 'POST', body: {} }),
   rejectManualPayment: (user, id, reason) => send(`/api/v1/admin/payments/manual/${encodeURIComponent(id)}/reject`, { user, method: 'POST', body: { reason } }),
