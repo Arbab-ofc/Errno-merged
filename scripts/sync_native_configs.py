@@ -328,6 +328,13 @@ def _mark_legacy_backend_env(root: Path) -> None:
         _atomic_write(path, marker + "\n" + content)
 
 
+def _requires_complete_catalog(targets: Iterable[str]) -> bool:
+    """Client-only syncs validate their own inputs, not backend-only env names."""
+    client_targets = {"android", "ios", "admin"}
+    selected = tuple(targets)
+    return not selected or any(target not in client_targets for target in selected)
+
+
 def _check_required(values: dict[str, str], target: str) -> list[str]:
     required = {
         "android": ("ERRNO_API_BASE_URL_ANDROID", "ERRNO_API_BASE_URL"),
@@ -368,7 +375,7 @@ def run(root: Path, *, mode: str, targets: Iterable[str], adopt_local_urls: bool
             print("Adopted existing client API URLs into root .env: " + ", ".join(names))
     # A client build only needs its own allowlisted settings. Requiring the
     # complete backend catalog here couples frontend builds to runtime config.
-    result = inspect_configuration(root, require_complete_catalog=targets != ("admin",))
+    result = inspect_configuration(root, require_complete_catalog=_requires_complete_catalog(targets))
     if result.conflicts:
         print("Configuration conflicts require resolution before synchronization:", file=sys.stderr)
         for item in result.conflicts:
@@ -403,7 +410,7 @@ def run(root: Path, *, mode: str, targets: Iterable[str], adopt_local_urls: bool
     if result.migrations:
         _migrate_root(root, result.migrations)
         print("Migrated existing local values into root .env: " + ", ".join(sorted(result.migrations)))
-        result = inspect_configuration(root, require_complete_catalog=targets != ("admin",))
+        result = inspect_configuration(root, require_complete_catalog=_requires_complete_catalog(targets))
         if result.conflicts:
             raise ConfigError("Conflicts appeared after local migration; no target files were synchronized.")
     # Validate every selected target before changing any generated output.

@@ -4,8 +4,10 @@ import android.app.Activity
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.NoCredentialException
 import com.erno.app.BuildConfig
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -41,13 +43,24 @@ object FirebaseGoogleAuth {
         val clientIdName = "default_web_client_id"
         val resourceId = activity.resources.getIdentifier(clientIdName, "string", activity.packageName)
         check(resourceId != 0) { "Google OAuth web client is missing. Configure OAuth in Firebase and download google-services.json again." }
+        val serverClientId = activity.getString(resourceId)
         val option = GetGoogleIdOption.Builder()
-            .setServerClientId(activity.getString(resourceId))
+            .setServerClientId(serverClientId)
             .setFilterByAuthorizedAccounts(false)
             .setAutoSelectEnabled(false)
             .build()
-        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-        val credential = CredentialManager.create(activity).getCredential(activity, request).credential
+        val credentialManager = CredentialManager.create(activity)
+        val credential = try {
+            val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+            credentialManager.getCredential(activity, request).credential
+        } catch (_: NoCredentialException) {
+            // The regular Google ID option can have no credential to return on
+            // devices without an existing Credential Manager account session.
+            // Fall back to Google's explicit account chooser for first-time users.
+            val signInOption = GetSignInWithGoogleOption.Builder(serverClientId).build()
+            val signInRequest = GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+            credentialManager.getCredential(activity, signInRequest).credential
+        }
         check(credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
             "Google did not return a valid sign-in credential. Please try again."
         }
