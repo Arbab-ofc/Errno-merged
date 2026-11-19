@@ -7,4 +7,4 @@ COPY src ./src
 RUN mkdir -p /var/lib/errno-whatsapp/session && chown -R node:node /var/lib/errno-whatsapp
 USER node
 EXPOSE 8787
-CMD ["npm", "start"]
+CMD ["node", "src/index.js"]

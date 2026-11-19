@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import secrets
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -60,10 +61,12 @@ def _ip_digest(ip: str | None) -> str | None:
     return hmac.new(_hash_secret(), ip.encode(), hashlib.sha256).hexdigest()
 
 
-def _gateway(method: str, path: str, body: dict | None = None) -> dict:
+def _gateway(method: str, path: str, body: dict | None = None, *, allow_management: bool = False) -> dict:
     base = os.getenv("WHATSAPP_GATEWAY_INTERNAL_URL", "").rstrip("/")
     secret = os.getenv("WHATSAPP_GATEWAY_INTERNAL_AUTH_SECRET", "")
-    if os.getenv("WHATSAPP_GATEWAY_ENABLED", "false").lower() != "true" or not base or len(secret) < 32:
+    otp_enabled = os.getenv("WHATSAPP_GATEWAY_ENABLED", "false").lower() == "true"
+    management_enabled = allow_management and os.getenv("WHATSAPP_GATEWAY_MANAGEMENT_ENABLED", "false").lower() == "true"
+    if not (otp_enabled or management_enabled) or not base or len(secret) < 32:
         raise HTTPException(status_code=503, detail={"code": "WHATSAPP_GATEWAY_UNAVAILABLE", "message": "WhatsApp delivery is temporarily unavailable."})
     payload = b"" if method == "GET" else json.dumps(body or {}, separators=(",", ":")).encode()
     timestamp = str(int(time.time()))
@@ -75,12 +78,16 @@ def _gateway(method: str, path: str, body: dict | None = None) -> dict:
     })
     try:
         timeout = max(5, min(60, int(os.getenv("WHATSAPP_GATEWAY_TIMEOUT_SECONDS", "35"))))
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        ca_bundle = os.getenv("WHATSAPP_GATEWAY_CA_BUNDLE", "").strip()
+        opener_options = {}
+        if request.full_url.lower().startswith("https://") and ca_bundle:
+            opener_options["context"] = ssl.create_default_context(cafile=ca_bundle)
+        with urllib.request.urlopen(request, timeout=timeout, **opener_options) as response:
             data = json.loads(response.read().decode() or "{}")
             if response.status >= 300:
                 raise ValueError("gateway rejected request")
             return data
-    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
+    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError, OSError):
         logger.warning("whatsapp_gateway_request_failed method=%s path=%s", method, path)
         raise HTTPException(status_code=503, detail={"code": "WHATSAPP_GATEWAY_UNAVAILABLE", "message": "WhatsApp delivery is temporarily unavailable."}) from None
 
@@ -268,7 +275,7 @@ def logout(request: Request, deviceId: str | None = None, db: Session = Depends(
 def _admin_call(admin, permission: str, action: str, method: str, path: str, body=None, db: Session | None = None):
     if permission not in (admin.permissions or []):
         raise HTTPException(status_code=403, detail="Administrator permission required")
-    result = _gateway(method, path, body)
+    result = _gateway(method, path, body, allow_management=True)
     if db is not None:
         db.add(AdminAuditLog(administrator_uid=admin.firebase_uid, action=action, resource_type="whatsapp_gateway",
             resource_id=None, outcome="success", change_metadata={"result": result.get("status", result.get("accepted"))}))
@@ -280,7 +287,7 @@ def _admin_call(admin, permission: str, action: str, method: str, path: str, bod
 def gateway_status(admin=Depends(require_admin("whatsapp.read"))):
     if "whatsapp.read" not in (admin.permissions or []):
         raise HTTPException(status_code=403, detail="Administrator permission required")
-    return _gateway("GET", "/internal/whatsapp/status")
+    return _gateway("GET", "/internal/whatsapp/status", allow_management=True)
 
 
 @admin_router.get("/qr")

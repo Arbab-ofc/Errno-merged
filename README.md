@@ -263,7 +263,7 @@ Firebase Web settings use `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, 
 
 ## WhatsApp gateway
 
-The gateway runs privately and has no published port in `WhatsAppGateway/compose.yaml`. It expects the external Docker network `errno-private`, a shared internal secret of at least 32 random characters, and a private persistent session volume. FastAPI should reach it at `http://whatsapp-gateway:8787` on that network. For local development, use loopback. Do not expose the gateway port to the public internet or use this transport for bulk messages.
+The gateway expects the external Docker network `errno-private`, an internal HMAC secret of at least 32 random characters, and persistent session storage. Compose publishes its port only on host loopback (`127.0.0.1:8787`) and performs an authenticated health check. Production deployments should proxy it over verified HTTPS on a private VPC address; FastAPI supports a private CA bundle through `WHATSAPP_GATEWAY_CA_BUNDLE`. Never expose port 8787 to the public internet or use this transport for bulk messages.
 
 Baileys implements the unofficial WhatsApp Web protocol. WhatsApp can disconnect or restrict a paired account; authentication fails closed if the gateway is unavailable. A send acknowledgement is not a delivery receipt. Gateway session data is sensitive account state; protect and back it up only through approved secret storage.
 
@@ -378,7 +378,8 @@ For Docker, create the external private network once if it does not exist, then 
 
 ```sh
 docker network create errno-private
-docker compose --env-file .env -f WhatsAppGateway/compose.yaml up -d --build
+docker build -t errno-whatsapp-gateway:local WhatsAppGateway
+docker compose --env-file .env -f WhatsAppGateway/compose.yaml up -d
 ```
 
 The network creation command will report an error if the named network already exists; do not remove a shared network just to rerun it.
@@ -411,7 +412,7 @@ Backend tests import the database module. Use a dedicated disposable database an
 - Configure PostgreSQL TLS verification and trusted CA paths. Use managed runtime identity/ADC where possible for Firebase Admin.
 - Apply only the verified migration chain for the actual deployed schema, after backup, generated-SQL review, staging rehearsal, and change approval. Never use app startup to migrate.
 - Run `services.prebooking_dispatcher` and `services.notification_dispatcher` as separate supervised processes with restart/health monitoring. The API process does not start them.
-- Keep the WhatsApp gateway private on `errno-private`, protect its persistent session volume, and do not publish its port.
+- Keep the WhatsApp gateway private, preserve its session volume, expose its listener only on loopback behind verified internal HTTPS, and do not publish port 8787.
 - Restrict and monitor Google Maps keys, set quotas and billing alerts, enable only the two Maps SDKs, and verify both application identifiers/signers.
 - Before enabling payment, push, KYC, or WhatsApp features, validate provider credentials, webhook/callback registration, network reachability, permissions, retention, and rollback plans in a non-production environment.
 
